@@ -1,0 +1,61 @@
+# Keep the image build context small and free of secrets / local state.
+
+# --- version control, editors, OS -------------------------------------------
+.git
+.gitattributes
+.github
+.idea
+.vscode
+.DS_Store
+
+# --- secrets and local configuration -----------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- dependencies are installed inside the build ----------------------------
+node_modules
+vendor
+/wave/vendor
+
+# --- Vite output is built inside the image; never ship a stale/hot copy ------
+public/build
+public/hot
+public/storage
+
+# --- storage: keep the directory skeleton and the committed demo images, drop runtime data
+storage/*
+!storage/app
+!storage/framework
+!storage/logs
+storage/app/*
+!storage/app/public
+storage/app/public/*
+!storage/app/public/demo
+storage/framework/*/*
+!storage/framework/*/.gitignore
+storage/logs/*
+!storage/logs/.gitignore
+
+# --- local databases and dumps -----------------------------------------------
+**/*.sqlite
+**/*.sqlite3
+
+# --- test output, caches, logs ------------------------------------------------
+.phpunit.result.cache
+.phpunit.cache
+coverage
+**/*.log
+**/npm-debug.log
+**/yarn-error.log
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
+
+# --- not needed at runtime ------------------------------------------------------
+tests
+docs
+compose*.yaml
+docker/caddy
+docker/flarum
+docker/mariadb
+docker/setup.sh

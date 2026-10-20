@@ -1,0 +1,271 @@
+# LastPope - production stack (Docker Compose v2.24 or newer).
+#
+#   caddy    HTTPS + reverse proxy; the only service that publishes ports (80, 443)
+#   app      Laravel web app (nginx + PHP-FPM); runs migrations and caches on start
+#   queue    Laravel queue worker  (php artisan queue:work)
+#   scheduler Laravel scheduler    (php artisan schedule:work)
+#   mariadb  database for the app AND for the forum (two databases, two users)
+#   redis    cache, sessions, queue
+#   flarum   the forum, reached through Caddy at https://APP_DOMAIN/forum
+#
+# All settings come from `.env` (create it with `docker/setup.sh`). See docs/DEPLOY.md.
+# For local development add the override file:  docker compose -f compose.yaml -f compose.dev.yaml up
+
+name: lastpope
+
+# ---------------------------------------------------------------------------
+# Shared definitions for the three containers that run the Laravel code.
+# ---------------------------------------------------------------------------
+x-app-image: &app-image lastpope-app:local
+
+x-app-env: &app-env
+  # Pre-wired infrastructure. These override whatever .env says (the .env copy of
+  # DB_CONNECTION etc. is for running outside Docker), so the stack always talks
+  # to its own containers.
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_KEY: ${APP_KEY:?APP_KEY is empty - run docker/setup.sh first}
+  APP_URL: https://${APP_DOMAIN:?APP_DOMAIN is empty - run docker/setup.sh first}
+  LOG_CHANNEL: stderr
+  DB_CONNECTION: mysql # the Laravel "mysql" driver also speaks to MariaDB
+  DB_HOST: mariadb
+  DB_PORT: "3306"
+  DB_DATABASE: ${MARIADB_DATABASE:-lastpope}
+  DB_USERNAME: ${MARIADB_USER:-lastpope}
+  DB_PASSWORD: ${MARIADB_PASSWORD:?MARIADB_PASSWORD is empty - run docker/setup.sh first}
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is empty - run docker/setup.sh first}
+  CACHE_DRIVER: redis
+  CACHE_STORE: redis
+  SESSION_DRIVER: redis
+  QUEUE_CONNECTION: redis
+  # Forum: public URL (browser, SSO cookie) and container-to-container URL (server calls).
+  FORUM_ENABLED: ${FORUM_ENABLED:-true}
+  FLARUM_URL: https://${APP_DOMAIN}/forum
+  FLARUM_INTERNAL_URL: http://flarum:8000/forum
+  # Web server inside the image: Caddy is the trusted proxy in front of nginx.
+  TRUSTED_PROXY: local
+  # The app never needs these; do not hand them to PHP code.
+  MARIADB_ROOT_PASSWORD: ""
+  FLARUM_DB_PASSWORD: ""
+  FLARUM_ADMIN_PASSWORD: ""
+
+x-app-common: &app-common
+  image: *app-image
+  restart: unless-stopped
+  # Every other variable in .env (mail, Stripe keys, FLARUM_API_KEY, ...) is passed through.
+  env_file:
+    - path: .env
+      required: false
+  environment: *app-env
+  volumes:
+    - app-storage:/var/www/html/storage/app
+    - app-logs:/var/www/html/storage/logs
+  logging: &default-logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  # -------------------------------------------------------------------------
+  caddy:
+    image: caddy:2.11.7
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is empty - run docker/setup.sh first}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is empty - run docker/setup.sh first}
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # certificates: do not lose this volume
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_started
+      flarum:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  # -------------------------------------------------------------------------
+  app:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      secrets:
+        - composer_auth # optional, see docs/DEPLOY.md ("Could not authenticate against github.com")
+    environment:
+      <<: *app-env
+      # serversideup/php: run migrations, storage:link and the Laravel caches on start.
+      # Only this container does that; queue and scheduler wait for it to become healthy.
+      AUTORUN_ENABLED: "true"
+      AUTORUN_LARAVEL_MIGRATION_TIMEOUT: "60"
+      # Uploads: PHP and nginx limits come from UPLOAD_MAX_SIZE in .env.
+      PHP_UPLOAD_MAX_FILE_SIZE: ${UPLOAD_MAX_SIZE:-256M}
+      PHP_POST_MAX_SIZE: ${UPLOAD_MAX_SIZE:-256M}
+      NGINX_CLIENT_MAX_BODY_SIZE: ${UPLOAD_MAX_SIZE:-256M}
+      PHP_MEMORY_LIMIT: 512M
+      PHP_FPM_PM_MAX_CHILDREN: "10"
+      PHP_MAX_EXECUTION_TIME: "120"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthcheck >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s # first start runs all migrations
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  queue:
+    <<: *app-common
+    command: ["php", "artisan", "queue:work", "--tries=3", "--sleep=3", "--max-time=3600"]
+    stop_grace_period: 120s # let the current job finish
+    environment:
+      <<: *app-env
+      PHP_MEMORY_LIMIT: 512M
+    healthcheck:
+      test: ["CMD", "healthcheck-queue"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      app:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app-common
+    command: ["php", "artisan", "schedule:work"]
+    healthcheck:
+      test: ["CMD", "healthcheck-schedule"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  mariadb:
+    image: mariadb:11.8.9
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-allowed-packet=64M
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD is empty - run docker/setup.sh first}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-lastpope}
+      MARIADB_USER: ${MARIADB_USER:-lastpope}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?MARIADB_PASSWORD is empty - run docker/setup.sh first}
+      MARIADB_AUTO_UPGRADE: "1"
+      # Read by docker/mariadb/initdb.d/10-flarum.sh (first start only)
+      FLARUM_DB_DATABASE: ${FLARUM_DB_DATABASE:-flarum}
+      FLARUM_DB_USERNAME: ${FLARUM_DB_USERNAME:-flarum}
+      FLARUM_DB_PASSWORD: ${FLARUM_DB_PASSWORD:?FLARUM_DB_PASSWORD is empty - run docker/setup.sh first}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./docker/mariadb/initdb.d:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging: *default-logging
+
+  redis:
+    image: redis:8.2.10-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is empty - run docker/setup.sh first}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+
+  # -------------------------------------------------------------------------
+  flarum:
+    build:
+      context: docker/flarum
+    image: lastpope-flarum:1.8.20
+    restart: unless-stopped
+    environment:
+      # Public URL including the /forum sub-path. Flarum builds every link from this.
+      FLARUM_BASE_URL: https://${APP_DOMAIN:?APP_DOMAIN is empty - run docker/setup.sh first}/forum
+      FLARUM_FORUM_TITLE: ${FLARUM_FORUM_TITLE:-Community Forum}
+      # First-install admin account (only used while the forum database is still empty)
+      FLARUM_ADMIN_USER: ${FLARUM_ADMIN_USER:-forumadmin}
+      FLARUM_ADMIN_EMAIL: ${FLARUM_ADMIN_EMAIL:-${ACME_EMAIL}}
+      FLARUM_ADMIN_PASSWORD: ${FLARUM_ADMIN_PASSWORD:?FLARUM_ADMIN_PASSWORD is empty - run docker/setup.sh first}
+      FLARUM_API_KEY: ${FLARUM_API_KEY:-}
+      FLARUM_EXTENSIONS: ${FLARUM_EXTENSIONS:-flarum/embed:^1.8}
+      FLARUM_DEBUG: "false"
+      DB_HOST: mariadb
+      DB_NAME: ${FLARUM_DB_DATABASE:-flarum}
+      DB_USER: ${FLARUM_DB_USERNAME:-flarum}
+      DB_PASSWORD: ${FLARUM_DB_PASSWORD:?FLARUM_DB_PASSWORD is empty - run docker/setup.sh first}
+      DB_PREFIX: flarum_
+      DB_TIMEOUT: "120"
+      # Flarum's own mail settings are copied from the app's MAIL_* once, on first start.
+      FLARUM_MAIL_DRIVER: ${MAIL_MAILER:-}
+      FLARUM_MAIL_HOST: ${MAIL_HOST:-}
+      FLARUM_MAIL_PORT: ${MAIL_PORT:-587}
+      FLARUM_MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-}
+      FLARUM_MAIL_USERNAME: ${MAIL_USERNAME:-}
+      FLARUM_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      FLARUM_MAIL_FROM: ${MAIL_FROM_ADDRESS:-}
+      # Caddy is the only thing talking to this container; trust its X-Forwarded-For.
+      REAL_IP_FROM: 172.16.0.0/12
+      REAL_IP_HEADER: X-Forwarded-For
+      LISTEN_IPV6: "false" # containers only talk IPv4 to each other
+      TZ: ${TZ:-UTC}
+    volumes:
+      - flarum-data:/data # assets, extensions, storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8000/forum/api"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 180s # first start: install + composer require extensions
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    logging: *default-logging
+
+secrets:
+  composer_auth:
+    environment: COMPOSER_AUTH # only used while building the image; empty is fine
+
+volumes:
+  mariadb-data:
+  redis-data:
+  app-storage: # storage/app: uploads, snapshots, private files
+  app-logs: # storage/logs
+  flarum-data:
+  caddy-data:
+  caddy-config:

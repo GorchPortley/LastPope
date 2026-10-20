@@ -133,6 +133,7 @@ services:
   queue:
     <<: *app-common
     command: ["php", "artisan", "queue:work", "--tries=3", "--sleep=3", "--max-time=3600"]
+    stop_signal: SIGTERM
     stop_grace_period: 120s # let the current job finish
     environment:
       <<: *app-env
@@ -150,6 +151,7 @@ services:
   scheduler:
     <<: *app-common
     command: ["php", "artisan", "schedule:work"]
+    stop_signal: SIGTERM
     healthcheck:
       test: ["CMD", "healthcheck-schedule"]
       interval: 30s

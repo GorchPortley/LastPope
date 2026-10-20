@@ -1,0 +1,127 @@
+# LastPope - development override. Optional; never used on the production server.
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+#
+# (Or put  COMPOSE_FILE=compose.yaml:compose.dev.yaml  in your local .env and drop the -f flags.)
+#
+# What it changes:
+#   * your checkout is bind-mounted into app / queue / scheduler, so code edits show up at once
+#   * APP_ENV=local, debug on, no config/route caching, OPcache off
+#   * mail is caught by Mailpit:        http://localhost:8025
+#   * Vite dev server with hot reload:  http://localhost:5173 (service "vite")
+#   * Stripe webhooks forwarded to the app: `--profile stripe` (see below)
+#   * MariaDB is reachable from the host on 127.0.0.1:3307 (for TablePlus, DBeaver, ...)
+#
+# First-time setup:
+#   1. docker/setup.sh                      (use "localhost" as domain)
+#   2. add to .env:   DEV_UID=<id -u>   DEV_GID=<id -g>   COMPOSE_FILE=compose.yaml:compose.dev.yaml
+#   3. docker compose run --rm --no-deps -e AUTORUN_ENABLED=false app composer install
+#   4. docker compose up -d --build         -> https://localhost (accept the local certificate)
+# See docs/DEPLOY.md, section "Local development".
+
+x-dev-env: &dev-env
+  APP_ENV: local
+  APP_DEBUG: "true"
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: debug
+  PHP_OPCACHE_ENABLE: "0"
+  # All mail goes to Mailpit instead of the SMTP server in .env.
+  MAIL_MAILER: smtp
+  MAIL_HOST: mailpit
+  MAIL_PORT: "1025"
+  MAIL_USERNAME: ""
+  MAIL_PASSWORD: ""
+  MAIL_ENCRYPTION: "null"
+  # No cached config/routes/views while you are editing code.
+  AUTORUN_LARAVEL_OPTIMIZE: "false"
+  AUTORUN_LARAVEL_CONFIG_CACHE: "false"
+  AUTORUN_LARAVEL_ROUTE_CACHE: "false"
+  AUTORUN_LARAVEL_VIEW_CACHE: "false"
+  AUTORUN_LARAVEL_EVENT_CACHE: "false"
+
+x-dev-code: &dev-code
+  # `!override` replaces the production volume list: storage/app and storage/logs live in your
+  # checkout (visible and editable from the host) instead of in named volumes.
+  volumes: !override
+    - .:/var/www/html
+
+services:
+  app:
+    <<: *dev-code
+    build:
+      args:
+        # Make www-data inside the container the same user as you on the host (bind-mount permissions).
+        USER_ID: ${DEV_UID:-1000}
+        GROUP_ID: ${DEV_GID:-1000}
+    environment:
+      <<: *dev-env
+    depends_on:
+      mailpit:
+        condition: service_started
+
+  queue:
+    <<: *dev-code
+    environment:
+      <<: *dev-env
+    # `queue:work` keeps the code in memory: restart after changing job classes
+    #   docker compose restart queue
+
+  scheduler:
+    <<: *dev-code
+    environment:
+      <<: *dev-env
+
+  mariadb:
+    ports:
+      - "127.0.0.1:3307:3306"
+
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025" # web UI; SMTP (1025) is only reachable inside the compose network
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  # Vite dev server (npm run dev) with hot module replacement.
+  # Needs the PHP dependencies on disk first (Tailwind imports the Filament presets from vendor/).
+  vite:
+    image: node:22.23-alpine3.24
+    restart: unless-stopped
+    working_dir: /var/www/html
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    volumes:
+      - .:/var/www/html
+    ports:
+      - "5173:5173" # HMR / assets, opened by the browser at http://localhost:5173
+    environment:
+      HOME: /tmp
+      npm_config_cache: /tmp/.npm
+      # Makes laravel-vite-plugin write http://127.0.0.1:5173 (not 0.0.0.0) into public/hot.
+      LARAVEL_SAIL: "1"
+    command: sh -c "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"
+
+  # Forwards Stripe test-mode webhooks to your local app. Optional:
+  #   docker compose --profile stripe up -d stripe-cli
+  #   docker compose logs stripe-cli          # prints "Your webhook signing secret is whsec_..."
+  # Put that whsec_ value into BOTH STRIPE_MARKETPLACE_WEBHOOK_SECRET and
+  # STRIPE_CONNECT_WEBHOOK_SECRET in .env (the CLI signs every forwarded event with it), then
+  #   docker compose up -d app queue
+  # Uses STRIPE_SECRET_KEY (an sk_test_... key) from .env.
+  stripe-cli:
+    image: stripe/stripe-cli:v1.54.1
+    profiles: ["stripe"]
+    restart: unless-stopped
+    environment:
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-} # your sk_test_... key; stripe-cli refuses to start without it
+    command:
+      - listen
+      - --forward-to
+      - http://app:8080/stripe/marketplace/webhook
+      - --forward-connect-to
+      - http://app:8080/stripe/connect/webhook
+    depends_on:
+      app:
+        condition: service_healthy

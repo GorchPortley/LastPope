@@ -1,10 +1,16 @@
 #!/bin/sh
-# Build-time patch for the upstream crazymax/flarum installer.
+# Build-time patches for the upstream crazymax/flarum installer.
+# The build fails loudly if upstream changes its script and a patch no longer applies.
 #
-# Upstream hard-codes the first administrator as flarum / flarum, which would be
-# publicly guessable for the minutes between "container started" and "owner
-# changed the password". We read the admin account from the environment instead.
-# The build fails loudly if upstream changes its script and the patch no longer applies.
+# 1. Upstream hard-codes the first administrator as flarum / flarum, which would be
+#    publicly guessable for the minutes between "container started" and "owner
+#    changed the password". We read the admin account from the environment instead.
+#
+# 2. Upstream re-computes its "baseline" list of bundled extensions on EVERY start from the
+#    composer.json in the container. After a plain `docker compose restart` that file already
+#    contains the extensions installed earlier, so they get folded into the baseline and are
+#    dropped from /data/extensions/list; a later container re-creation (image update) then
+#    loses them. We freeze the baseline at build time instead.
 set -eu
 
 f=/etc/cont-init.d/03-config.sh
@@ -29,3 +35,16 @@ if grep -qE '^  (username|password|password_confirmation): flarum$' "$f"; then
   echo "patch-installer: default flarum/flarum credentials still present in $f" >&2
   exit 1
 fi
+
+# --- 2. freeze the baseline of bundled extensions ----------------------------------
+baseline=/opt/flarum/.docker-flarum-base-extensions
+sh /usr/local/bin/extension baseline
+[ -s "$baseline" ] || { echo "patch-installer: baseline file is empty" >&2; exit 1; }
+
+sed -i \
+  -e "s~^gosu flarum:flarum sh /usr/local/bin/extension baseline\$~[ -s $baseline ] || gosu flarum:flarum sh /usr/local/bin/extension baseline~" \
+  "$f"
+grep -q "\[ -s $baseline \]" "$f" || {
+  echo "patch-installer: could not patch the baseline step in $f; upstream installer changed" >&2
+  exit 1
+}

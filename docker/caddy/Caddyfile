@@ -29,10 +29,17 @@
 		output stdout
 	}
 
+	# HSTS only for real domains: a browser remembers it per host name (any port), which would
+	# force https on every other project you run at http://localhost:<port>.
+	@public not host localhost
+	header @public {
+		defer
+		Strict-Transport-Security "max-age=31536000"
+	}
+
 	header {
 		# `defer` makes these win over the same headers sent by the upstream containers.
 		defer
-		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		# Same-origin framing only: the design/driver pages embed /forum/embed/... in an iframe.
 		X-Frame-Options "SAMEORIGIN"

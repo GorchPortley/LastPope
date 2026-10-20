@@ -51,7 +51,7 @@ new class extends Component {
                     <!-- Items - using aspect-ratio instead of fixed height -->
                     @foreach ($design->card_image as $image)
                     <div class="hidden duration-700 ease-in-out w-full h-full" data-carousel-item="{{ $loop->first ? 'active' : '' }}">
-                        <img src="{{env('APP_URL')}}/storage/{{$image}}" 
+                        <img src="{{ Storage::url($image) }}" 
                              class="absolute block w-full h-full object-contain" 
                              alt="Design image {{ $loop->iteration }}">
                     </div>
@@ -101,7 +101,7 @@ new class extends Component {
             <!-- Designer Info -->
             <div>
                 <p class="text-sm text-gray-500">Designed by</p>
-                <a href="{{env('APP_URL')}}/profile/{{$design->designer->username}}">
+                <a href="{{ url('profile/'.$design->designer->username) }}">
                     <p class="text-lg font-medium text-gray-900 hover:text-blue-400">{{ $design->designer->name ?? 'Speaker Designer' }}</p>
                 </a>
             </div>

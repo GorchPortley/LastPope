@@ -120,7 +120,7 @@
     
     <div class="min-h-[300px]" x-show="selectedTab === 'discussion'" id="tabpanelDiscussion" role="tabpanel" aria-label="discussion">
         @if($design->forum_slug)
-            <iframe src="{{env('APP_URL')}}/forum/embed/{{ $design->forum_slug }}" style="width:100%; height: 800px;"></iframe>
+            <iframe src="{{ url('forum/embed/'.$design->forum_slug) }}" style="width:100%; height: 800px;"></iframe>
         @else
             <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
                 <p>No discussion data available</p>

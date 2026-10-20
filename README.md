@@ -35,9 +35,21 @@ You can view a <a href="https://devdojo.com/wave/demo" target="_blank">live demo
 
 ## Installation
 
-There are two ways to install Wave, you can install it via the automated installer or manually.
+Local setup (PHP 8.3, Composer, Node 22):
 
-Click here to <a href="https://devdojo.com/wave/docs/install" target="_blank">view the full installation instructions</a>.
+```bash
+composer install
+cp .env.example .env
+touch database/database.sqlite
+php artisan key:generate
+php artisan migrate:fresh --seed
+npm ci && npm run build
+php artisan serve
+```
+
+Run the tests with `php artisan test` (they use their own SQLite file, `database/testing.sqlite`).
+
+Wave's own installation instructions are <a href="https://devdojo.com/wave/docs/install" target="_blank">here</a>.
 
 ## Support the Project
 

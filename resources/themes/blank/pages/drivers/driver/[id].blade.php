@@ -127,7 +127,7 @@ new class extends Component {
                     <!-- Items - using aspect-ratio instead of fixed height -->
                     @foreach ($driver->card_image as $image)
                     <div class="hidden duration-700 ease-in-out w-full h-full" data-carousel-item="{{ $loop->first ? 'active' : '' }}">
-                        <img src="{{env('APP_URL')}}/storage/{{$image}}" 
+                        <img src="{{ Storage::url($image) }}" 
                              class="absolute block w-full h-full object-contain" 
                              alt="Design image {{ $loop->iteration }}">
                     </div>
@@ -314,7 +314,7 @@ new class extends Component {
                 <h2 class="text-xl font-semibold text-gray-900 mb-4">Discussion
                 </h2>
                  <div class="w-full h-auto min-h-[200px]"  id="tabpanelDiscussion" role="tabpanel" aria-label="discussion">
-                <iframe src="{{env('APP_URL')}}/forum/embed/{{ $driver->forum_slug }}" style="border: 0; width:100%; height: 800px; overflow: auto;" ></iframe>
+                <iframe src="{{ url('forum/embed/'.$driver->forum_slug) }}" style="border: 0; width:100%; height: 800px; overflow: auto;" ></iframe>
                 </div>
                 </div>
             </div>

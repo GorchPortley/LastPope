@@ -14,7 +14,6 @@
                 <x-app.sidebar-dropdown text="Manage My Data" icon="phosphor-stack" id="data_dropdown" :active="false" :open="true">
                     <x-app.sidebar-link href="{{route('dashboard.designs')}}">My Designs</x-app.sidebar-link>
                     <x-app.sidebar-link href="{{route('dashboard.drivers')}}">My Drivers</x-app.sidebar-link>
-                    <x-app.sidebar-link href="{{route('dashboard.files')}}">My Files</x-app.sidebar-link>
                 </x-app.sidebar-dropdown>
                 {{--<x-app.sidebar-dropdown text="My Library" icon="phosphor-stack" id="library_dropdown" :active="false" :open="true">
                 <x-app.sidebar-link href="{{route('dashboard.library')}}">Designs</x-app.sidebar-link>

@@ -15,6 +15,11 @@ return [
 
     'paths' => [
         resource_path('views'),
+        // Volt only resolves @volt fragments from the view paths and the mounted Volt
+        // directories. Mounting the theme folders would make Volt strip the PHP blocks
+        // from every theme template, so they are listed here instead.
+        resource_path('themes'),
+        base_path('wave/resources/views'),
     ],
 
     /*

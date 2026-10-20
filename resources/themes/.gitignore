@@ -5,9 +5,7 @@
 # Do not ignore the .gitignore file
 !.gitignore
 
-# Do not ignore the "anchor" folder and its contents
-!anchor/
-!anchor/**/*
+# Do not ignore the "blank" folder and its contents
 !blank/
 !blank/**/*
 

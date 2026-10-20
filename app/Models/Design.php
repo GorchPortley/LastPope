@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Log;
 use Laravel\Scout\Searchable;
 use Illuminate\Support\Facades\Storage;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -147,7 +148,7 @@ class Design extends Model
                 "summary" => $design->summary,
                 "description" => $design->description,
                 "bom" => $design->bill_of_materials,
-                "forum_link" => env('APP_URL') . "forum/$design->forum_slug",
+                "forum_link" => url("forum/{$design->forum_slug}"),
                 "components" => $design->components()->get()->map(function ($component) {
                     return [
                         'position' => $component->position,

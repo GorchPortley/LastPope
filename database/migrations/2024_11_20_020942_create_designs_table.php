@@ -18,8 +18,7 @@ return new class extends Migration
             $table->string('tag')->nullable();
             $table->json('card_image')->nullable();
             $table->boolean('active')->default(false);
-            $table->enum('category',
-                ['Subwoofer', 'Full-Range', 'Two-Way', 'Three-Way','Four-Way+','Portable', 'Esoteric', 'System']);
+            $table->string('category');
             $table->decimal('price', 8, 2)->default(0)->nullable();
             $table->decimal('build_cost', 8, 2)->default(0)->nullable();
             $table->integer('impedance')->default(4)->nullable();

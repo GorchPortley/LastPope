@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('avatar')->default('demo/default.png');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->string('forum_password')->nullable();
+            $table->text('forum_password')->nullable(); // encrypted by the User model cast
             $table->string('remember_token', 100)->nullable();
             $table->timestamps();
             $table->string('username')->unique();

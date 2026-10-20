@@ -44,6 +44,15 @@ return [
             'throw' => false,
         ],
 
+        // Design/driver source files and snapshot ZIPs. Never served by the web server and
+        // never linked into public/: downloads go through authorised controllers.
+        'private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private'),
+            'visibility' => 'private',
+            'throw' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

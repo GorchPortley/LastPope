@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use Database\Factories\BannerFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
 class Banner extends Model
 {
+    /** @use HasFactory<BannerFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'name',
         'image_path',

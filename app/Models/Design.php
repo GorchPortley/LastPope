@@ -2,27 +2,26 @@
 
 namespace App\Models;
 
-use App\Models\DesignSnapshot;
+use App\Contracts\Purchasable;
+use App\Models\Concerns\HasStorageKey;
+use App\Models\Concerns\IsDigitalPurchasable;
+use Database\Factories\DesignFactory;
+use Digikraaft\ReviewRating\Traits\HasReviewRating;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Log;
 use Laravel\Scout\Searchable;
-use Illuminate\Support\Facades\Storage;
-use Barryvdh\DomPDF\Facade\Pdf;
-use RecursiveIteratorIterator;
-use Symfony\Component\Finder\Iterator\RecursiveDirectoryIterator;
-use ZipArchive;
-use App\Models\DesignDriver;
-use Digikraaft\ReviewRating\Traits\HasReviewRating;
 
-class Design extends Model
+class Design extends Model implements Purchasable
 {
-    /** @use HasFactory<\Database\Factories\DesignFactory> */
+    /** @use HasFactory<DesignFactory> */
     use HasFactory;
     use Searchable;
     use HasReviewRating;
+    use HasStorageKey;
+    use IsDigitalPurchasable;
 
     public function toSearchableArray()
     {
@@ -36,13 +35,14 @@ class Design extends Model
 
     protected $fillable = [
         'user_id',
+        'storage_key',
         'name',
         'tag',
         'card_image',
         'active',
         'category',
-        'price',
-        'build_cost',
+        'price_cents',
+        'build_cost_cents',
         'impedance',
         'power',
         'summary',
@@ -58,6 +58,9 @@ class Design extends Model
 
     protected $casts = [
         'active' => 'boolean',
+        'official' => 'boolean',
+        'price_cents' => 'integer',
+        'build_cost_cents' => 'integer',
         'bill_of_materials' => 'array',
         'frd_files' => 'array',
         'enclosure_files' => 'array',
@@ -66,11 +69,16 @@ class Design extends Model
         'card_image' => 'array',
     ];
 
+    public static function storagePrefix(): string
+    {
+        return 'designs';
+    }
+
     public function snapshots(): HasMany
     {
         return $this->hasMany(DesignSnapshot::class);
     }
-    
+
     public function designer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
@@ -81,110 +89,35 @@ class Design extends Model
         return $this->hasMany(DesignDriver::class);
     }
 
-    public function sales(): HasMany
+    public function scopeActive(Builder $query): Builder
     {
-        return $this->hasMany(DesignPurchase::class)
-            ->with('user');
+        return $query->where('active', true);
     }
 
-    public function createDesignSnapshot(?Design $design, string $version)
+    public function scopeFree(Builder $query): Builder
     {
-        $sourceDirectory = "files/{$design->user_id}/{$design->name}/";
-        $zipFileName = "{$design->name}-{$version}-SDLabs.zip";
-        $zipFilePath = Storage::path($sourceDirectory . $zipFileName);
-
-
-        $pdf = Pdf::SetOption(['isRemoteEnabled' => true])->loadView('pdf.Design', ['variation'=>$version, 'design'=>$design]);
-        $pdf->save(Storage::path($sourceDirectory . "{$design->name}-{$version}.pdf"));
-
-//        Pdf::view('pdf.Design', ['variation'=>$version,'design' => $design])
-//            ->save(Storage::path($sourceDirectory . "{$design->name}-{$version}.pdf"));
-        try {
-            if (!Storage::exists($sourceDirectory)) {
-                Log::warning("Design snapshot failed: Directory not found", [
-                    'design_id' => $design->id,
-                    'directory' => $sourceDirectory
-                ]);
-                return false;
-            }
-
-
-
-            $zip = new ZipArchive();
-            if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                Log::error("Failed to create zip archive", [
-                    'design_id' => $design->id,
-                    'path' => $zipFilePath
-                ]);
-                return false;
-            }
-
-            $files = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator(Storage::path($sourceDirectory), RecursiveDirectoryIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::SELF_FIRST
-            );
-
-            foreach ($files as $file) {
-                $filepath = $file->getRealPath();
-                $relativePath = substr($filepath, strlen(Storage::path($sourceDirectory)));
-
-                if ($filepath === $zipFilePath) continue;
-
-                $file->isDir()
-                    ? $zip->addEmptyDir($relativePath)
-                    : $zip->addFile($filepath, $relativePath);
-            }
-            $zip->close();
-
-            $stashed_data = [
-                "name" => $design->name,
-                "designer" => $design->designer()->pluck('name'),
-                "version" => $version,
-                "images" => $design->card_image,
-                "category" => $design->category,
-                "build_cost" => $design->build_cost,
-                "impedance" => $design->impedance,
-                "power" => $design->power,
-                "summary" => $design->summary,
-                "description" => $design->description,
-                "bom" => $design->bill_of_materials,
-                "forum_link" => url("forum/{$design->forum_slug}"),
-                "components" => $design->components()->get()->map(function ($component) {
-                    return [
-                        'position' => $component->position,
-                        'quantity' => $component->quantity,
-                        'low_frequency' => $component->low_frequency,
-                        'high_frequency' => $component->high_frequency,
-                        'air_volume' => $component->air_volume,
-                        'description' => $component->description,
-                        'specifications' => $component->specifications
-                    ];
-                })->toArray()
-            ];
-
-            DesignSnapshot::create([
-                'design_id' => $design->id,
-                'snapshot_name' => $zipFileName,
-                'stashed_data' => $stashed_data,
-                'stashed_paths' => ["1"=>"1"],
-                'download_path' => $sourceDirectory . $zipFileName,
-            ]);
-
-
-            return true;
-        } catch (\Exception $e) {
-            Log::error("Snapshot creation failed", [
-                'design_id' => $design->id,
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
-
+        return $query->where('price_cents', '<=', 0);
     }
 
-    public function download(DesignSnapshot $snapshot)
+    public function scopePaid(Builder $query): Builder
     {
-        $file = public_path() . "/storage/" . $snapshot->download_path;
-        return response()->download($file);
+        return $query->where('price_cents', '>', 0);
+    }
+
+    // --- Purchasable ---------------------------------------------------------------------------
+
+    public function purchasableTitle(): string
+    {
+        return (string) ($this->name ?: 'Untitled design');
+    }
+
+    public function purchasablePriceCents(): int
+    {
+        return (int) $this->price_cents;
+    }
+
+    public function getSeller(): ?User
+    {
+        return $this->designer;
     }
 }

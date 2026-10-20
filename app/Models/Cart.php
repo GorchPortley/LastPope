@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\CartFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,9 +10,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Cart extends Model
 {
-    protected $guarded = [];
+    /** @use HasFactory<CartFactory> */
+    use HasFactory;
 
-    // Relationships
+    protected $fillable = ['user_id'];
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -19,12 +22,23 @@ class Cart extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(CartItem::class)
-            ->with('design');
+        return $this->hasMany(CartItem::class);
     }
 
-    public function total()
+    /** Number of units in the cart. */
+    public function itemCount(): int
     {
-        return $this->items->sum('price');
+        return (int) $this->items()->sum('quantity');
+    }
+
+    /** Sum of the items at the prices stored on the cart (cents). Checkout re-prices. */
+    public function subtotalCents(): int
+    {
+        return (int) $this->items->sum(fn (CartItem $item) => $item->lineTotalCents());
+    }
+
+    public function total(): int
+    {
+        return $this->subtotalCents();
     }
 }

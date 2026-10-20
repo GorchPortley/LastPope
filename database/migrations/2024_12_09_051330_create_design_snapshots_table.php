@@ -13,12 +13,17 @@ return new class extends Migration
     {
         Schema::create('design_snapshots', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('design_id')->constrained('designs');
+            $table->foreignId('design_id')->constrained()->cascadeOnDelete();
+            $table->string('version');
             $table->string('snapshot_name');
+            // manifest.json: the design's data as it was when the snapshot was taken, plus the file list.
             $table->json('stashed_data');
-            $table->json('stashed_paths');
+            $table->unsignedBigInteger('file_size')->nullable();
+            // ZIP on the private disk: designs/{storage_key}/snapshots/{slug}-{version}.zip
             $table->string('download_path');
             $table->timestamps();
+
+            $table->unique(['design_id', 'version']);
         });
     }
 

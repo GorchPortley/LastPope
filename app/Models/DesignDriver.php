@@ -2,11 +2,19 @@
 
 namespace App\Models;
 
+use Database\Factories\DesignDriverFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
 class DesignDriver extends Pivot
 {
+    /** @use HasFactory<DesignDriverFactory> */
+    use HasFactory;
+
+    // design_driver has an auto-increment id and is used as a normal hasMany model (Filament repeater).
+    public $incrementing = true;
+
     protected $fillable = [
             'design_id',
             'driver_id',

@@ -13,11 +13,17 @@ return new class extends Migration
     {
         Schema::create('driver_snapshots', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('driver_id')->constrained('drivers');
+            $table->foreignId('driver_id')->constrained()->cascadeOnDelete();
+            $table->string('version');
             $table->string('snapshot_name');
+            // manifest.json: the driver's data as it was when the snapshot was taken, plus the file list.
             $table->json('stashed_data');
+            $table->unsignedBigInteger('file_size')->nullable();
+            // ZIP on the private disk: drivers/{storage_key}/snapshots/{slug}-{version}.zip
             $table->string('download_path');
             $table->timestamps();
+
+            $table->unique(['driver_id', 'version']);
         });
     }
 

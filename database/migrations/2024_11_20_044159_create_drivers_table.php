@@ -13,7 +13,9 @@ return new class extends Migration
     {
         Schema::create('drivers', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id');
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            // Stable folder name for this driver's files (drivers/{storage_key}/...).
+            $table->uuid('storage_key')->unique();
             $table->string('brand');
             $table->string('model');
             $table->json('card_image')->nullable();
@@ -23,7 +25,9 @@ return new class extends Migration
             $table->integer('size');
             $table->string('impedance');
             $table->integer('power');
-            $table->decimal('price', 8, 2)->default(0)->nullable();
+            // Price of the driver's measurement data pack (digital), and the reference retail price of the physical driver.
+            $table->unsignedInteger('data_price_cents')->default(0);
+            $table->unsignedInteger('msrp_cents')->nullable();
             $table->string('link')->nullable();
             $table->text('summary')->nullable();
             $table->longText('description')->nullable();
@@ -34,6 +38,9 @@ return new class extends Migration
             $table->boolean('official')->default(false);
             $table->string('forum_slug')->nullable();
             $table->timestamps();
+
+            $table->index(['active', 'category']);
+            $table->index(['brand', 'model']);
         });
     }
 

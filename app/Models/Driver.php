@@ -2,23 +2,24 @@
 
 namespace App\Models;
 
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Contracts\Purchasable;
+use App\Models\Concerns\HasStorageKey;
+use App\Models\Concerns\IsDigitalPurchasable;
+use Database\Factories\DriverFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use RecursiveIteratorIterator;
-use Symfony\Component\Finder\Iterator\RecursiveDirectoryIterator;
-use ZipArchive;
 use Laravel\Scout\Searchable;
 
-class Driver extends Model
+class Driver extends Model implements Purchasable
 {
-    /** @use HasFactory<\Database\Factories\DriverFactory> */
+    /** @use HasFactory<DriverFactory> */
     use HasFactory;
     use Searchable;
+    use HasStorageKey;
+    use IsDigitalPurchasable;
 
     public function toSearchableArray()
     {
@@ -33,6 +34,7 @@ class Driver extends Model
 
     protected $fillable = [
         'user_id',
+        'storage_key',
         'brand',
         'model',
         'tag',
@@ -41,7 +43,8 @@ class Driver extends Model
         'size',
         'impedance',
         'power',
-        'price',
+        'data_price_cents',
+        'msrp_cents',
         'link',
         'summary',
         'description',
@@ -53,8 +56,12 @@ class Driver extends Model
         'official',
         'forum_slug'
     ];
+
     protected $casts = [
         'active' => 'boolean',
+        'official' => 'boolean',
+        'data_price_cents' => 'integer',
+        'msrp_cents' => 'integer',
         'factory_specs' => 'array',
         'frequency_files' => 'array',
         'impedance_files' => 'array',
@@ -62,11 +69,17 @@ class Driver extends Model
         'card_image' => 'array'
     ];
 
+    public static function storagePrefix(): string
+    {
+        return 'drivers';
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    /** The design components (DesignDriver rows) that use this driver. */
     public function designs(): HasMany
     {
         return $this->hasMany(DesignDriver::class);
@@ -76,75 +89,38 @@ class Driver extends Model
     {
         return $this->hasMany(DriverSnapshot::class);
     }
-    public function createDriverSnapshot(?Driver $driver, string $version)
+
+    /** Physical units of this driver for sale in the marketplace. */
+    public function listings(): HasMany
     {
-        $sourceDirectory = "files/{$driver->user_id}/Drivers/{$driver->model}/";
-        $zipFileName = "{$driver->brand}-{$driver->model}-{$version}-SDLabs.zip";
-        $zipFilePath = Storage::path($sourceDirectory . $zipFileName);
-
-        try {
-            if (!Storage::exists($sourceDirectory)) {
-                Log::warning("Design snapshot failed: Directory not found", [
-                    'driver_id' => $driver->id,
-                    'directory' => $sourceDirectory
-                ]);
-                return false;
-            }
-
-
-
-            $zip = new ZipArchive();
-            if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                Log::error("Failed to create zip archive", [
-                    'design_id' => $driver->id,
-                    'path' => $zipFilePath
-                ]);
-                return false;
-            }
-
-            $files = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator(Storage::path($sourceDirectory), RecursiveDirectoryIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::SELF_FIRST
-            );
-
-            foreach ($files as $file) {
-                $filepath = $file->getRealPath();
-                $relativePath = substr($filepath, strlen(Storage::path($sourceDirectory)));
-
-                if ($filepath === $zipFilePath) continue;
-
-                $file->isDir()
-                    ? $zip->addEmptyDir($relativePath)
-                    : $zip->addFile($filepath, $relativePath);
-            }
-            $zip->close();
-
-            DriverSnapshot::create([
-                'driver_id' => $driver->id,
-                'snapshot_name' => $zipFileName,
-                'stashed_data' => ["1"=>"1"],
-                'download_path' => $sourceDirectory . $zipFileName,
-            ]);
-
-
-            return true;
-        } catch (\Exception $e) {
-            Log::error("Snapshot creation failed", [
-                'driver_id' => $driver->id,
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
-
+        return $this->hasMany(Listing::class);
     }
 
-    public function download(DriverSnapshot $snapshot)
+    public function scopeActive(Builder $query): Builder
     {
+        return $query->where('active', true);
+    }
 
+    /** "Brand Model" */
+    public function fullName(): string
+    {
+        return trim($this->brand.' '.$this->model);
+    }
 
-        $file= public_path(). "/storage/". $snapshot->download_path;
+    // --- Purchasable (the driver's measurement data pack) --------------------------------------
 
+    public function purchasableTitle(): string
+    {
+        return $this->fullName().' data pack';
+    }
 
-        return response()->download($file);}
+    public function purchasablePriceCents(): int
+    {
+        return (int) $this->data_price_cents;
+    }
 
+    public function getSeller(): ?User
+    {
+        return $this->creator;
+    }
 }

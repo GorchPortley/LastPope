@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('design_driver', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('design_id');
-            $table->foreignId('driver_id');
+            $table->foreignId('design_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('driver_id')->constrained()->cascadeOnDelete();
             $table->enum('position', ['LF','LMF','MF','HMF','HF','Other']);
             $table->integer('quantity');
             $table->decimal('low_frequency', 10, 2)->nullable();

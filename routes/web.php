@@ -11,16 +11,18 @@
 |
 */
 
-use App\Models\Design;
-use App\Models\Driver;
+use App\Http\Controllers\DownloadController;
 use Illuminate\Support\Facades\Route;
 use Wave\Facades\Wave;
 
 // Wave routes
 Wave::routes();
 
-Route::get('/design-snapshots/{snapshot}/download', [Design::class, 'download'])
-    ->name('design-snapshots.download');
+// Snapshot downloads: files live on the private disk and are streamed after a policy check.
+Route::middleware('auth')->prefix('downloads')->group(function () {
+    Route::get('/design-snapshots/{snapshot}', [DownloadController::class, 'designSnapshot'])
+        ->name('design-snapshots.download');
 
-Route::get('/driver-snapshots/{snapshot}/download', [Driver::class, 'download'])
-    ->name('driver-snapshots.download');
+    Route::get('/driver-snapshots/{snapshot}', [DownloadController::class, 'driverSnapshot'])
+        ->name('driver-snapshots.download');
+});

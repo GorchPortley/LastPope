@@ -1,0 +1,2 @@
+[03-Apr-2025 04:06:35 UTC] PHP Fatal error:  Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.3.0". You are running 8.2.28. in /home/sdlabs/public_html/SDLabs/vendor/composer/platform_check.php on line 26
+[03-Apr-2025 04:07:42 UTC] PHP Fatal error:  Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.3.0". You are running 8.2.28. in /home/sdlabs/public_html/SDLabs/vendor/composer/platform_check.php on line 26

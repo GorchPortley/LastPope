@@ -17,6 +17,9 @@ class Kernel extends ConsoleKernel
     {
         // $schedule->command('inspire')->hourly();
         $schedule->command('subscriptions:cancel-expired')->hourly();
+
+        // Complete shipped orders after marketplace.auto_complete_days and retry any payout that failed.
+        $schedule->command('marketplace:auto-complete')->daily()->withoutOverlapping();
     }
 
     /**

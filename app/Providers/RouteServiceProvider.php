@@ -35,6 +35,12 @@ class RouteServiceProvider extends ServiceProvider
 
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));
+
+            Route::middleware('web')
+                ->group(base_path('routes/marketplace.php'));
+
+            // Stripe webhooks: no session / CSRF, they are authenticated by their signature.
+            Route::group([], base_path('routes/webhooks.php'));
         });
     }
 

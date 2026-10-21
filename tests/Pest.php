@@ -76,3 +76,109 @@ function dashboardPage(Tests\TestCase $test, App\Models\User $user, string $url)
 
     return Livewire\Livewire::test($snapshot['memo']['name']);
 }
+
+/*
+|--------------------------------------------------------------------------
+| Commerce helpers (carts, checkout, Stripe webhooks)
+|--------------------------------------------------------------------------
+*/
+
+/** The recording fake payment gateway the container uses in tests. */
+function fakeGateway(): App\Services\Payments\FakePaymentGateway
+{
+    return app(App\Services\Payments\PaymentGateway::class);
+}
+
+/** An active listing with stock, sold by an onboarded seller (or $seller). */
+function sellableListing(?App\Models\User $seller = null, int $cents = 5000, array $attributes = []): App\Models\Listing
+{
+    return App\Models\Listing::factory()
+        ->forSeller($seller ?? onboardedSeller())
+        ->create(array_merge(['price_cents' => $cents, 'quantity' => 5], $attributes));
+}
+
+/** A paid, active driver data pack with a snapshot, by $seller. */
+function paidDriverPack(?App\Models\User $seller = null, int $cents = 700): App\Models\Driver
+{
+    return App\Models\Driver::factory()
+        ->for($seller ?? onboardedSeller(), 'creator')
+        ->paid($cents)
+        ->withSnapshot('v1.0')
+        ->create();
+}
+
+function addressFor(App\Models\User $user, string $country = 'US', bool $default = true): App\Models\Address
+{
+    return App\Models\Address::factory()->for($user)->inCountry($country)->state(['is_default' => $default])->create();
+}
+
+/** Put purchasables ([Purchasable, qty] or Purchasable) into the user's cart through CartService. */
+function fillCart(App\Models\User $user, array $items): void
+{
+    foreach ($items as $entry) {
+        [$purchasable, $quantity] = is_array($entry) ? [$entry[0], $entry[1] ?? 1] : [$entry, 1];
+        app(App\Services\Marketplace\CartService::class)->add($user, $purchasable, $quantity);
+    }
+}
+
+/** Start a checkout for the user's current cart. */
+function startCheckout(App\Models\User $buyer, ?App\Models\Address $address = null): App\Services\Marketplace\Data\CheckoutResult
+{
+    return app(App\Services\Marketplace\CheckoutService::class)->start($buyer, $address);
+}
+
+/** A pending order for $items ([Purchasable, qty] or Purchasable), created through the real cart + checkout. */
+function pendingOrder(App\Models\User $buyer, array $items, ?App\Models\Address $address = null): App\Models\Order
+{
+    fillCart($buyer, $items);
+
+    return startCheckout($buyer, $address)->order;
+}
+
+/** Pay an order the way the webhook does. Returns true when this call fulfilled it. */
+function payOrder(App\Models\Order $order, string $paymentIntent = 'pi_test_1', string $charge = 'ch_test_1'): bool
+{
+    return app(App\Services\Marketplace\OrderFulfillment::class)->markPaid($order, $charge, $paymentIntent);
+}
+
+/** A Stripe event payload (array) shaped like the real thing. */
+function stripeEventPayload(string $type, array $object, array $extra = []): array
+{
+    return array_merge([
+        'id' => 'evt_'.Illuminate\Support\Str::random(16),
+        'object' => 'event',
+        'api_version' => '2024-06-20',
+        'created' => time(),
+        'type' => $type,
+        'livemode' => false,
+        'pending_webhooks' => 1,
+        'data' => ['object' => $object],
+    ], $extra);
+}
+
+/** POST a signed (or deliberately mis-signed) Stripe event to a webhook route. */
+function postStripeEvent(Tests\TestCase $test, string $routeName, array $event, ?string $secret, ?string $signature = null): Illuminate\Testing\TestResponse
+{
+    $payload = json_encode($event);
+    $signature ??= Stripe\WebhookSignature::generateSignatureHeader($payload, (string) $secret);
+
+    return $test->call('POST', route($routeName), [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_STRIPE_SIGNATURE' => $signature,
+    ], $payload);
+}
+
+/** The Checkout Session object Stripe sends in checkout.session.* events for $order. */
+function checkoutSessionObject(App\Models\Order $order, string $paymentStatus = 'paid', string $paymentIntent = 'pi_test_1', array $extra = []): array
+{
+    return array_merge([
+        'id' => $order->stripe_checkout_session_id,
+        'object' => 'checkout.session',
+        'payment_status' => $paymentStatus,
+        'payment_intent' => $paymentIntent,
+        'amount_total' => $order->total_cents,
+        'currency' => $order->currency,
+        'total_details' => ['amount_tax' => 0],
+        'metadata' => ['order_id' => (string) $order->getKey(), 'order_number' => $order->number],
+    ], $extra);
+}

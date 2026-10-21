@@ -162,15 +162,10 @@ a single page, so on the **first start only** run:
 docker compose exec app php artisan db:seed --force
 ```
 
-> **Run this once, on a brand-new installation.** The base seeders replace the roles, settings and users
-> tables; running them again later on a live site would reset those tables.
-> Demo products and demo accounts are only added when `APP_ENV` is `local` or `demo`; the production
-> containers run with `APP_ENV=production`, so you get none of that.
-
-<!-- TODO(P2a): confirm the production seeding story. DatabaseSeeder still calls UsersTableSeeder and
-     ModelHasRolesTableSeeder, which insert a placeholder admin (admin@sdlabs.cc, old password hash) and
-     delete()/re-insert the roles and users tables. Production needs a seeder that only creates roles,
-     permissions, settings and themes, and is safe to run twice. Update this section when it exists. -->
+`db:seed --force` only adds missing base data (roles, categories, settings, theme). It never deletes
+or changes existing rows and never creates users, so it is safe to run again after every update.
+Demo products and demo accounts are only added when `APP_ENV` is `local`, `demo` or `testing`; the
+production containers run with `APP_ENV=production`, so you get none of that.
 
 Then create your own admin account:
 

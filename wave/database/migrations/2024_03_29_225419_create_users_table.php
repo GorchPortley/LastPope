@@ -19,6 +19,7 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->text('forum_password')->nullable(); // encrypted by the User model cast
+            $table->unsignedBigInteger('forum_user_id')->nullable(); // the user's id in Flarum, once known
             $table->string('remember_token', 100)->nullable();
             $table->timestamps();
             $table->string('username')->unique();

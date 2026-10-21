@@ -37,7 +37,8 @@ class User extends WaveUser
         'verification_code',
         'verified',
         'trial_ends_at',
-        'forum_password'
+        'forum_password',
+        'forum_user_id',
     ];
 
     /**
@@ -61,6 +62,7 @@ class User extends WaveUser
     {
         return array_merge(parent::casts(), [
             'forum_password' => 'encrypted',
+            'forum_user_id' => 'integer',
         ]);
     }
 

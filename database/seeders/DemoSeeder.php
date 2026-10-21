@@ -67,6 +67,7 @@ class DemoSeeder extends Seeder
 
         DB::transaction(function () {
             $this->seedUsers();
+            $this->seedSiteContent();
             $this->seedDrivers();
             $this->seedDesigns();
             $this->seedListings();
@@ -123,6 +124,28 @@ class DemoSeeder extends Seeder
 
             $this->users[$key] = $user;
         }
+    }
+
+    /** The sample changelog entry and the admin's profile text that the legacy Wave seeders used to insert. */
+    private function seedSiteContent(): void
+    {
+        DB::table('changelogs')->insert([
+            'title' => 'SDLabs Beta 1.0 Released',
+            'description' => 'We have just released the first beta version of SDLabs.cc. Click here to learn more!',
+            'body' => '<p>Thanks for being here. Make sure to stay up-to-date on our latest releases: marketplace, payouts and more are coming.</p>',
+            'created_at' => now()->subMonths(2),
+            'updated_at' => now()->subMonths(2),
+        ]);
+
+        DB::table('profile_key_values')->insert([
+            'type' => 'text_area',
+            'keyvalue_id' => $this->users['admin']->id,
+            'keyvalue_type' => 'users',
+            'key' => 'about',
+            'value' => 'Hello, I am the admin user.',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     // --- Drivers -------------------------------------------------------------------------------

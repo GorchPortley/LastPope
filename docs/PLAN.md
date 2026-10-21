@@ -312,3 +312,49 @@ Done in R1.3 (SDLabs originals are the style authority; light theme only, no `da
   disabled under prefers-reduced-motion).
 - Admin picks the active season (Filament "Appearance" page, stored in Wave settings); the layout sets
   `data-season` on `<html>` and includes the season stylesheet. Filament admin is unaffected.
+
+## 7. Revision R2: order problems and delayed physical payouts (owner decisions)
+
+**Migration policy from now on:** the dev server holds data. Never edit existing migrations again;
+every schema change is a NEW migration file (create/alter), so `php artisan migrate --force` applies
+it on a running site.
+
+### R2.1 Payout timing
+- Physical seller orders are paid out **14 days after the seller marks them shipped**
+  (`marketplace.physical_payout_trigger = shipped_delay`, `physical_payout_delay_days = 14`; keep the
+  `paid` and `shipped` modes working). Confirming receipt marks the order delivered but does not pay
+  out earlier. Digital items (designs) are still paid out at payment.
+- No payout while the seller order has an unresolved issue. Due payouts are released by the scheduled
+  job (hourly), which also retries failed transfers. Auto-complete (14 days after shipping) skips
+  seller orders with an unresolved issue.
+
+### R2.2 "Report a problem"
+- `order_issues` (one unresolved issue per seller order): order, seller order, buyer, seller, reason
+  (`IssueReason`: NOT_SHIPPED, NOT_RECEIVED, NOT_AS_DESCRIBED, DAMAGED, WRONG_ITEM, DOWNLOAD_PROBLEM,
+  OTHER), status (`IssueStatus`: OPEN, OFFER_PENDING, AWAITING_RETURN, ESCALATED, RESOLVED), resolution
+  (`IssueResolution`: FULL_REFUND, PARTIAL_REFUND, RETURN_REFUND, NO_ACTION, WITHDRAWN, CHARGEBACK_WON,
+  CHARGEBACK_LOST), offer type/amount, refunded_cents, return carrier/tracking, stripe_dispute_id,
+  escalated_at, resolved_at, resolved_by. `order_issue_messages`: issue, author (null = system), body,
+  attachments (photos, private disk, authorised route), internal (admin-only note).
+- Window: buyer can report from payment until 14 days after shipping (`issue_window_days`); an
+  unshipped physical order can be reported any time while awaiting shipment; digital items until
+  14 days after payment.
+- Flow: buyer reports (reason, description, up to 5 photos) → seller is notified and answers in the
+  thread and/or makes an offer: full refund, partial refund (amount), or return-for-refund. Buyer
+  accepts → refund runs (RefundService, system actor); return: buyer adds return tracking → seller
+  confirms receipt → full refund. Buyer can withdraw. Either side can escalate after 3 days without
+  agreement (`issue_escalation_days`), or at once if the other side is unresponsive past that; admins
+  decide in Filament: full refund, partial refund (amount), no action. SDLabs store orders go straight
+  to ESCALATED (the platform is the seller).
+- Money: a refund before the payout reduces the payout by the refunded amount (full refund cancels it;
+  the platform fee is kept on partial refunds, waived on full ones); after the payout, the refund
+  reverses that amount of the transfer (existing behaviour).
+- Stripe bank disputes: handle `charge.dispute.created` / `charge.dispute.closed` on the marketplace
+  webhook: open (or attach to) an ESCALATED issue with the dispute id for every seller order of the
+  order, hold their payouts, notify admins; on close record won/lost; admin action "Recover from
+  seller" reverses the seller's transfer when a lost dispute warrants it. Add both events to DEPLOY.md.
+- Everyone involved gets mail + database notifications for: issue opened, new message, offer made,
+  offer accepted/declined, escalated, resolved. Buyer and seller order pages get "Contact seller" /
+  "Contact buyer" (Chatify) and the issue panel; a shared issue page `/dashboard/issues/{issue}`
+  (buyer, seller, admins only). Filament: OrderIssueResource (queue with status filters, navigation
+  badge = escalated count, thread with public reply / internal note, decision actions).

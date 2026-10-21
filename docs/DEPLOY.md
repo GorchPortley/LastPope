@@ -225,7 +225,7 @@ given their discussions in one go:
 docker compose exec app php artisan forum:setup --backfill
 ```
 
-Marketplace listings follow the same rule once the `listings` table has a `forum_slug` column.
+Marketplace listings follow the same rule (a discussion in the `marketplace` tag once a listing is active).
 
 ### Forum tips
 

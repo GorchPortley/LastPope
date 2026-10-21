@@ -50,6 +50,11 @@ return new class extends Migration
             $table->string('tracking_url')->nullable();
             $table->timestamp('shipped_at')->nullable();
             $table->timestamp('delivered_at')->nullable();
+            // Refund bookkeeping (RefundService): what was given back to the buyer for this seller's part.
+            $table->unsignedInteger('refunded_cents')->default(0);
+            $table->string('stripe_refund_id')->nullable();
+            $table->string('stripe_reversal_id')->nullable();
+            $table->timestamp('refunded_at')->nullable();
             $table->timestamps();
 
             $table->index(['seller_id', 'status']);

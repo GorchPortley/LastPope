@@ -29,6 +29,10 @@ class SellerOrder extends Model
         'tracking_url',
         'shipped_at',
         'delivered_at',
+        'refunded_cents',
+        'stripe_refund_id',
+        'stripe_reversal_id',
+        'refunded_at',
     ];
 
     protected $attributes = [
@@ -44,6 +48,8 @@ class SellerOrder extends Model
         'transferred_at' => 'datetime',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
+        'refunded_cents' => 'integer',
+        'refunded_at' => 'datetime',
     ];
 
     public function order(): BelongsTo
@@ -64,5 +70,21 @@ class SellerOrder extends Model
     public function isTransferred(): bool
     {
         return $this->transferred_at !== null;
+    }
+
+    /** Items plus shipping: what the buyer paid for this seller's part (before any tax). */
+    public function grossCents(): int
+    {
+        return $this->subtotal_cents + $this->shipping_cents;
+    }
+
+    public function hasPhysicalItems(): bool
+    {
+        return $this->items->contains(fn (OrderItem $item) => ! $item->is_digital);
+    }
+
+    public function isRefunded(): bool
+    {
+        return $this->status === SellerOrderStatus::REFUNDED;
     }
 }

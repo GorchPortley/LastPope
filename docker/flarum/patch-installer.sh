@@ -13,7 +13,14 @@
 #    loses them. We freeze the baseline at build time instead.
 set -eu
 
-f=/etc/cont-init.d/03-config.sh
+# crazymax/flarum moved to s6-overlay v3 in a re-published 1.8.20 build (2026-10-21): the
+# installer went from /etc/cont-init.d/03-config.sh to /etc/s6-overlay/scripts/config.
+if [ -f /etc/s6-overlay/scripts/config ]; then
+  f=/etc/s6-overlay/scripts/config
+else
+  f=/etc/cont-init.d/03-config.sh
+fi
+[ -f "$f" ] || { echo "patch-installer: upstream installer script not found" >&2; exit 1; }
 
 sed -i \
   -e 's|^  username: flarum$|  username: ${FLARUM_ADMIN_USER}|' \

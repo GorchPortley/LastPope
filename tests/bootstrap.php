@@ -15,7 +15,8 @@ require __DIR__.'/../vendor/autoload.php';
 |
 */
 
-$database = __DIR__.'/../database/testing.sqlite';
+// TEST_DB_PATH lets two test runs (for example two agents or CI jobs sharing a checkout) use separate files.
+$database = getenv('TEST_DB_PATH') ?: __DIR__.'/../database/testing.sqlite';
 
 foreach (['DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'APP_ENV' => 'testing'] as $name => $value) {
     putenv("$name=$value");

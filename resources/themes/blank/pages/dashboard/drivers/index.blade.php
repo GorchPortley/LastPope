@@ -27,6 +27,9 @@ use Filament\Tables\{Columns\ToggleColumn,
     Columns\TextColumn
 };
 use FilamentTiptapEditor\TiptapEditor;
+use App\Filament\Forms\MoneyInput;
+use App\Jobs\BuildDriverSnapshot;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Livewire\Volt\Component;
 use App\Models\Driver;
@@ -53,37 +56,62 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->url(fn($driver_id): string => route('driver', ['id' => $driver_id]));
     }
 
-    function getfrqpath($model)
+    // Files live under drivers/{storage_key}/..., where storage_key is a UUID filled in when the
+    // create form opens. Measurement/source files go on the private disk; the card image and
+    // rich-text attachments go on the public disk.
+    function driverdir($storageKey, string $sub): string
     {
-        if (!$model) {
-            return 'files/lost files/drivers/frequency files';
-        }
-
-        $userId = auth()->id();
-
-        return "files/{$userId}/Drivers/{$model}/Frequency";
+        return 'drivers/' . ($storageKey ?: 'unassigned') . '/' . $sub;
     }
 
-    function getzpath($model)
+    function getfrqpath($storageKey)
     {
-        if (!$model) {
-            return 'files/lost files/drivers/frequency files';
-        }
-
-        $userId = auth()->id();
-
-        return "files/{$userId}/Drivers/{$model}/Impedance";
+        return $this->driverdir($storageKey, 'Frequency');
     }
 
-    function getotherpath($model)
+    function getzpath($storageKey)
     {
-        if (!$model) {
-            return 'files/lost files/drivers/frequency files';
+        return $this->driverdir($storageKey, 'Impedance');
+    }
+
+    function getotherpath($storageKey)
+    {
+        return $this->driverdir($storageKey, 'Other');
+    }
+
+    function getphotospath($storageKey)
+    {
+        return $this->driverdir($storageKey, 'Attachments/Display Images');
+    }
+
+    function getdescriptionattachmentspath($storageKey)
+    {
+        return $this->driverdir($storageKey, 'Attachments/Description Images');
+    }
+
+    /**
+     * A driver whose data pack is paid can only be published once it can actually be sold
+     * (snapshot + payout account). Otherwise it is saved as a draft and the reasons are shown.
+     */
+    function guardPublish(array $data, ?Driver $driver = null): array
+    {
+        if (empty($data['active'])) {
+            return $data;
         }
 
-        $userId = auth()->id();
+        $probe = $driver ? clone $driver : new Driver(['user_id' => auth()->id()]);
+        $probe->data_price_cents = $data['data_price_cents'] ?? $probe->data_price_cents ?? 0;
 
-        return "files/{$userId}/Drivers/{$model}/Other";
+        if ($blockers = $probe->publishBlockers()) {
+            $data['active'] = false;
+            Notification::make()
+                ->warning()
+                ->title('Saved as a draft')
+                ->body(implode(' ', $blockers))
+                ->send();
+        }
+
+        return $data;
     }
 
     public function table(Table $table): Table
@@ -99,10 +127,12 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         if (auth()->user()->hasRole('manufacturer')) {
                             $data['official'] = 1;
                         };
-                        return $data;
+                        return $this->guardPublish($data);
                     })
                     ->form([
                         Toggle::make('active'),
+                        Hidden::make('storage_key')
+                            ->default(fn () => (string) Str::uuid()),
                         TextInput::make('brand')
                             ->required()
                             ->datalist(DB::table('drivers')->distinct()->orderBy('brand', 'asc')->pluck('brand')),
@@ -124,15 +154,24 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         TextInput::make('power')
                             ->required()
                             ->numeric(),
-                        TextInput::make('price')
-                            ->numeric(),
+                        MoneyInput::make('data_price_cents')
+                            ->label('Data pack price')
+                            ->hint('Price of this driver\'s measurement data pack. Leave at 0 to share it for free.')
+                            ->helperText('A paid data pack needs a snapshot and a connected payout account before it can be published.')
+                            ->default(0),
+                        MoneyInput::make('msrp_cents')
+                            ->label('MSRP')
+                            ->hint('Reference retail price of the physical driver')
+                            ->nullable(),
                         TextInput::make('link')
                             ->url(),
                         FileUpload::make('card_image')
                             ->label('Driver Image')
                             ->multiple()
                             ->preserveFilenames()
-                            ->directory('attachments'),
+                            ->disk('public')
+                            ->visibility('public')
+                            ->directory(fn ($get) => $this->getphotospath($get('storage_key'))),
                         Section::make('Driver File Uploads')
                             ->description('Upload the working files used to design your speaker')
                             ->collapsed()
@@ -142,32 +181,39 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->label('Frequency Measurements')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $model = $get('model');
-                                        return $this->getfrqpath($model);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getfrqpath($storageKey);
                                     }),
 
                                 FileUpload::make('impedance_files')
                                     ->label('Impedance Measurements')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $model = $get('model');
-                                        return $this->getzpath($model);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getzpath($storageKey);
                                     }),
 
                                 FileUpload::make('other_files')
                                     ->label('Other Files')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $model = $get('model');
-                                        return $this->getotherpath($model);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getotherpath($storageKey);
                                     }),]),
 
                         TextInput::make('summary'),
                         TipTapEditor::make('description')
-                            ->directory('attachments'),
+                            ->disk('public')
+                            ->directory(fn ($get) => $this->getdescriptionattachmentspath($get('storage_key'))),
                         KeyValue::make('factory_specs')
                             ->default([
                                 'Re' => '',
@@ -199,6 +245,12 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->columns([
                 ToggleColumn::make('active')
                     ->onColor('success')
+                    ->updateStateUsing(function (Driver $record, $state) {
+                        $data = $this->guardPublish(['active' => (bool) $state, 'data_price_cents' => $record->data_price_cents], $record);
+                        $record->update(['active' => $data['active']]);
+
+                        return $data['active'];
+                    })
                     ->sortable(),
                 TextColumn::make('brand')
                     ->searchable()
@@ -236,9 +288,13 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             ->placeholder('Enter version (e.g., v1.0)')
                     ])
                     ->action(function (array $data, ?Driver $record) {
-                        $driver = $record;
-                        $version = $data['version'];
-                        $driver->createDriverSnapshot($driver, $version);
+                        BuildDriverSnapshot::dispatch($record, $data['version'], auth()->user());
+
+                        Notification::make()
+                            ->success()
+                            ->title('Snapshot queued')
+                            ->body('Building ' . $data['version'] . '. You will get a notification when it is ready.')
+                            ->send();
                     }),
                 Action::make('spec_export')
                     ->name('Collect Data')
@@ -285,8 +341,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->icon('phosphor-eye')
                     ->url(fn($record): string => route('driver', ['id' => $record->id])),
                 EditAction::make()
+                    ->mutateFormDataUsing(fn (array $data, Driver $record): array => $this->guardPublish($data, $record))
                     ->form([
                         Toggle::make('active'),
+                        Hidden::make('storage_key')
+                            ->default(fn () => (string) Str::uuid()),
                         TextInput::make('brand')
                             ->datalist(DB::table('drivers')->distinct()->orderBy('brand', 'asc')->pluck('brand')),
                         TextInput::make('model')
@@ -302,14 +361,23 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             ->numeric(),
                         TextInput::make('power')
                             ->numeric(),
-                        TextInput::make('price')
-                            ->numeric(),
+                        MoneyInput::make('data_price_cents')
+                            ->label('Data pack price')
+                            ->hint('Price of this driver\'s measurement data pack. Leave at 0 to share it for free.')
+                            ->helperText('A paid data pack needs a snapshot and a connected payout account before it can be published.')
+                            ->default(0),
+                        MoneyInput::make('msrp_cents')
+                            ->label('MSRP')
+                            ->hint('Reference retail price of the physical driver')
+                            ->nullable(),
                         TextInput::make('link')
                             ->url(),
                         FileUpload::make('card_image')
                             ->multiple()
                             ->label('Driver Image')
-                            ->directory('attachments'),
+                            ->disk('public')
+                            ->visibility('public')
+                            ->directory(fn ($get) => $this->getphotospath($get('storage_key'))),
                         Section::make('Driver File Uploads')
                             ->description('Upload the working files used to design your speaker')
                             ->collapsed()
@@ -319,32 +387,39 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->label('Frequency Measurements')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $model = $get('model');
-                                        return $this->getfrqpath($model);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getfrqpath($storageKey);
                                     }),
 
                                 FileUpload::make('impedance_files')
                                     ->label('Impedance Measurements')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $model = $get('model');
-                                        return $this->getzpath($model);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getzpath($storageKey);
                                     }),
 
                                 FileUpload::make('other_files')
                                     ->label('Other Files')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $model = $get('model');
-                                        return $this->getotherpath($model);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getotherpath($storageKey);
                                     }),]),
 
                         TextInput::make('summary'),
                         TipTapEditor::make('description')
-                            ->directory('attachments'),
+                            ->disk('public')
+                            ->directory(fn ($get) => $this->getdescriptionattachmentspath($get('storage_key'))),
                         KeyValue::make('factory_specs')
                             ->default([
                                 'Re' => '',
@@ -395,10 +470,9 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                 Select::make('category')
                     ->options(['Subwoofer' => 'Subwoofer', 'Full-Range' => 'Full-Range', 'Two-Way' => 'Two-Way'
                         , 'Three-Way' => 'Three-Way', 'Four-Way+', 'Four-Way+', 'Portable' => 'Portable', 'Esoteric' => 'Esoteric']),
-                TextInput::make('price')
-                    ->numeric(),
-                TextInput::make('build_cost')
-                    ->numeric(),
+                MoneyInput::make('data_price_cents'),
+                MoneyInput::make('msrp_cents')
+                    ->nullable(),
                 TextInput::make('impedance')
                     ->numeric(),
                 TextInput::make('power')

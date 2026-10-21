@@ -17,6 +17,7 @@
         <env name="APP_KEY" value="base64:ZdraLlH8ljoICqTTIDjJ9ZAgF1inNr1NW+4vY7GQ3ro="/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_DRIVER" value="array"/>
+        <env name="FORUM_ENABLED" value="false"/>
         <!-- DB_CONNECTION and DB_DATABASE (database/testing.sqlite) are set in tests/bootstrap.php -->
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

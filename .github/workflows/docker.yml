@@ -1,0 +1,112 @@
+name: Docker stack
+
+# Builds the production images and boots the whole compose stack (caddy, app, queue, scheduler,
+# mariadb, redis, flarum) on a runner, then checks that the site and the forum answer over HTTPS.
+# The unit/feature tests live in tests.yml; this job catches what they cannot: a broken image build,
+# a migration that only fails on MariaDB, a mis-wired Caddyfile or a forum that does not start.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docker/**'
+      - 'compose*.yaml'
+      - '.dockerignore'
+      - '.env.example'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'config/**'
+      - 'database/**'
+      - 'app/Services/Forum/**'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    paths:
+      - 'docker/**'
+      - 'compose*.yaml'
+      - '.dockerignore'
+      - '.env.example'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'config/**'
+      - 'database/**'
+      - 'app/Services/Forum/**'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+  schedule:
+    # Weekly: base images and Flarum extensions move even when this repository does not.
+    - cron: '23 4 * * 1'
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      # GitHub rate-limits anonymous composer downloads; the workflow token lifts that.
+      # compose passes COMPOSER_AUTH to the image build as a secret.
+      COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env (non-interactive setup)
+        run: docker/setup.sh --non-interactive --domain localhost --email ci@example.com
+
+      - name: Validate the compose files
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.yaml -f compose.dev.yaml config --quiet
+
+      - name: Build images and start the stack
+        # --wait returns once every service with a healthcheck is healthy (or fails after the timeout).
+        run: docker compose up -d --build --wait --wait-timeout 900
+
+      - name: Show running services
+        run: docker compose ps
+
+      - name: Migrations ran on MariaDB
+        run: docker compose exec -T app php artisan migrate:status
+
+      - name: Seed base data (roles, settings, themes)
+        # Same command as "First run" in docs/DEPLOY.md.
+        run: docker compose exec -T app php artisan db:seed --force
+
+      - name: Forum is reachable from the app and the tags exist
+        run: docker compose exec -T app php artisan forum:setup
+
+      - name: Site and forum answer over HTTPS
+        run: |
+          fail=0
+          for path in / /designs /forum /forum/api; do
+            code=$(curl -ksS --retry 10 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' "https://localhost${path}" || true)
+            echo "GET https://localhost${path} -> ${code}"
+            [ "${code}" = "200" ] || fail=1
+          done
+          exit "${fail}"
+
+      - name: Forum assets are served under /forum
+        run: |
+          html=$(curl -ksS https://localhost/forum)
+          echo "${html}" | grep -o 'https://localhost/forum/assets/[^"]*' | sort -u | head -5 | while read -r url; do
+            code=$(curl -ksS -o /dev/null -w '%{http_code}' "${url}")
+            echo "${code} ${url}"
+            [ "${code}" = "200" ]
+          done
+
+      - name: Dump logs (on failure)
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail=300
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans

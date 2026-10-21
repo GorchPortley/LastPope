@@ -5,6 +5,8 @@ namespace App\Http\Livewire;
 use Livewire\Component;
 use Illuminate\Support\Facades\{Storage, Cache};
 
+// Measurement files are source files: they live on the private disk and are only read server-side here.
+
 class FrequencyResponseViewer extends Component
 {
     public $design;
@@ -49,7 +51,7 @@ class FrequencyResponseViewer extends Component
         $colorIndex = 0;
 
         foreach ($frdFiles as $filePath) {
-            if (!Storage::exists($filePath)) {
+            if (!Storage::disk('private')->exists($filePath)) {
                 continue;
             }
 
@@ -93,7 +95,7 @@ class FrequencyResponseViewer extends Component
 
     private function processFile(string $filePath): array
     {
-        $content = Storage::get($filePath);
+        $content = Storage::disk('private')->get($filePath) ?? '';
         return $this->parseFRDFile($content);
     }
 
@@ -161,26 +163,28 @@ class FrequencyResponseViewer extends Component
                 $real = $amplitude * cos($phase);
                 $imag = $amplitude * sin($phase);
 
-                if (!isset($summedData[$freq])) {
-                    $summedData[$freq] = ['real' => $real, 'imag' => $imag, 'count' => 0];
+                $key = (string) $freq;
+
+                if (!isset($summedData[$key])) {
+                    $summedData[$key] = ['real' => $real, 'imag' => $imag, 'count' => 0];
                 } else {
-                    $summedData[$freq]['real'] += $real;
-                    $summedData[$freq]['imag'] += $imag;
-                    $summedData[$freq]['count']++;
+                    $summedData[$key]['real'] += $real;
+                    $summedData[$key]['imag'] += $imag;
+                    $summedData[$key]['count']++;
                 }
             }
         }
 
         $summedResponse = [];
         if (!empty($summedData)) {
-            ksort($summedData);
+            ksort($summedData, SORT_NUMERIC);
 
             // Prepare data for smoothing
             $processedData = [];
             foreach ($summedData as $freq => $complex) {
                 $magnitude = sqrt(pow($complex['real'], 2) + pow($complex['imag'], 2));
                 $db = 20 * log10(max($magnitude, 1e-20));
-                $processedData[] = ['x' => $freq, 'y' => $db];
+                $processedData[] = ['x' => (float) $freq, 'y' => $db];
             }
 
             // Apply smoothing to low frequencies

@@ -24,14 +24,14 @@ new class extends Component {
 
         // Filter by price range
         if ($request->min_price) {
-            $query->where('price', '>=', $request->min_price);
+            $query->where('price_cents', '>=', (int) round($request->min_price * 100));
         }
         if ($request->max_price) {
-            $query->where('price', '<=', $request->max_price);
+            $query->where('price_cents', '<=', (int) round($request->max_price * 100));
         }
 
         // Sort
-        $sortField = $request->sort ?? 'created_at';
+        $sortField = $request->sort === 'price' ? 'price_cents' : ($request->sort ?? 'created_at');
         $sortDirection = $request->direction ?? 'desc';
         $query->orderBy($sortField, $sortDirection);
 
@@ -41,7 +41,7 @@ new class extends Component {
         return [
             'designs' => $query->paginate(12),
             'categories' => $categories,
-            'maxPrice' => ceil(Design::max('price'))
+            'maxPrice' => ceil(Design::max('price_cents') / 100)
         ];
     }
 } ?>

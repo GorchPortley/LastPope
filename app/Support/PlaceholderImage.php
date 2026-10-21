@@ -144,6 +144,24 @@ final class PlaceholderImage
         return self::jpeg($img, $width, $height);
     }
 
+    /** A wide promotional strip: colour gradient, soft circles and a couple of drivers. */
+    public static function banner(int $seed, int $width = 1200, int $height = 240): string
+    {
+        [$img, $w, $h] = self::canvas($width, $height);
+        $hue = self::rand($seed, 1) * 360;
+        self::background($img, $w, $h, self::hsl($hue, 0.55, 0.28), self::hsl($hue + 40, 0.60, 0.42));
+
+        for ($i = 0; $i < 6; $i++) {
+            $radius = (int) ($h * (0.25 + self::rand($seed, 10 + $i) * 0.7));
+            self::ellipse($img, (int) (self::rand($seed, 30 + $i) * $w), (int) (self::rand($seed, 50 + $i) * $h), $radius, $radius, imagecolorallocatealpha($img, 255, 255, 255, 112));
+        }
+
+        self::cone($img, (int) ($w * 0.80), (int) ($h * 0.50), (int) ($h * 0.40), $seed);
+        self::dome($img, (int) ($w * 0.93), (int) ($h * 0.50), (int) ($h * 0.22), $seed + 1);
+
+        return self::jpeg($img, $width, $height);
+    }
+
     // --- Drawing primitives --------------------------------------------------------------------
 
     /** @return array{0: GdImage, 1: int, 2: int} */

@@ -76,29 +76,9 @@ class DesignDescription extends Component
             return false;
         }
 
-        // Free design
-        if ($this->design->price < 0.01) {
-            return true;
-        }
-
-        // User is the designer
-        if ($this->design->designer && $this->design->designer->id === auth()->id()) {
-            return true;
-        }
-
-        // User is admin
-        if (auth()->user()->hasRole('admin')) {
-            return true;
-        }
-
-        // User has purchased the design
-        if ($this->design->sales->contains(function($sale) {
-            return $sale->user_id === auth()->id();
-        })) {
-            return true;
-        }
-
-        return false;
+        // Owner, admin, an entitlement (purchased or added for free), or a free design. This check
+        // has no side effects: the free entitlement is granted when the user actually downloads.
+        return auth()->user()->hasAccessTo($this->design, false);
     }
 
     public function render()

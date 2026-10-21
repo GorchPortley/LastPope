@@ -65,7 +65,17 @@ return [
 
     'temporary_file_upload' => [
         'disk' => null,        // Example: 'local', 's3'              | Default: 'default'
-        'rules' => ['required', 'file', 'max:122880'],       // Example: ['file', 'mimes:png,jpg']  | Default: ['required', 'file', 'max:12288'] (12MB)
+        // Largest temporary upload (Livewire / Filament file fields), in kilobytes. Follows UPLOAD_MAX_SIZE
+        // (the PHP and nginx limit, e.g. "256M"), so one setting controls every layer. 120 MB when unset.
+        'rules' => ['required', 'file', 'max:'.(function (): int {
+            $size = strtoupper(trim((string) env('UPLOAD_MAX_SIZE', '')));
+
+            if (! preg_match('/^(\d+)\s*([KMG])B?$/', $size, $m)) {
+                return 122880;
+            }
+
+            return (int) $m[1] * ['K' => 1, 'M' => 1024, 'G' => 1024 * 1024][$m[2]];
+        })()],
         'directory' => null,   // Example: 'tmp'                      | Default: 'livewire-tmp'
         'middleware' => null,  // Example: 'throttle:5,1'             | Default: 'throttle:60,1'
         'preview_mimes' => [   // Supported file types for temporary pre-signed file URLs...
@@ -73,7 +83,7 @@ return [
             'mov', 'avi', 'wmv', 'mp3', 'm4a',
             'jpg', 'jpeg', 'mpga', 'webp', 'wma',
         ],
-        'max_upload_time' => 5, // Max duration (in minutes) before an upload is invalidated...
+        'max_upload_time' => 15, // Max duration (in minutes) before an upload is invalidated (large files on slow lines)...
         'cleanup' => true, // Should cleanup temporary uploads older than 24 hrs...
     ],
 

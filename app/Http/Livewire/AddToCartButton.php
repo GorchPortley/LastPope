@@ -2,11 +2,10 @@
 
 namespace App\Http\Livewire;
 
-use App\Models\Cart;
+use App\Enums\EntitlementSource;
 use App\Models\Design;
-use App\Models\DesignPurchase;
-use Illuminate\Support\Str;
 use Livewire\Component;
+
 class AddToCartButton extends Component
 {
     public Design $design;
@@ -17,40 +16,54 @@ class AddToCartButton extends Component
     {
         $this->design = $design;
         $this->isInCart = $isInCart;
-        $this->isOwned = $design->sales->where('user_id', auth()->id())->isNotEmpty();
+        $this->isOwned = $this->ownsDesign();
+    }
+
+    /** The user owns the design, or already has an active entitlement (purchased or added for free). */
+    private function ownsDesign(): bool
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return $this->design->user_id === $user->id
+            || $user->entitlementFor($this->design)?->isActive() === true;
     }
 
     public function addToCart()
     {
-        if ($this->design->price <= 0) {
+        $user = auth()->user();
+
+        if (! $this->design->isAvailableForPurchase()) {
+            session()->flash('message', 'This design is not available right now.');
+            return;
+        }
+
+        if ($this->design->price_cents <= 0) {
             if ($this->isOwned) {
                 session()->flash('message', 'You already own this design!');
                 return;
             }
 
-            DesignPurchase::create([
-                'user_id' => auth()->id(),
-                'design_id' => $this->design->id,
-                'transaction_id' => 'FREE-' . Str::random(10),
-                'amount' => 0.00,
-                'purchased_at' => now()
-            ]);
+            $user->grantEntitlement($this->design, EntitlementSource::FREE);
 
             $this->isOwned = true;
             session()->flash('message', 'Free design added to your library!');
             return;
         }
 
-        if ($this->isInCart) {
-            session()->flash('message', 'Design already in cart!');
+        if ($this->isInCart || $this->isOwned) {
+            session()->flash('message', $this->isOwned ? 'You already own this design!' : 'Design already in cart!');
             return;
         }
 
-        $cart = auth()->user()->cart()->firstOrCreate();
-        $cart->items()->create([
-            'design_id' => $this->design->id,
-            'price' => $this->design->price
-        ]);
+        $cart = $user->cart()->firstOrCreate();
+        $cart->items()->firstOrCreate(
+            ['purchasable_type' => $this->design->getMorphClass(), 'purchasable_id' => $this->design->id],
+            ['quantity' => 1, 'unit_price_cents' => $this->design->price_cents],
+        );
 
         $this->isInCart = true;
         session()->flash('message', 'Added to cart!');

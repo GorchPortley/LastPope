@@ -134,11 +134,20 @@
     <div class="grid grid-cols-2 gap-4">
         <p><span class="detail-label">Tag:</span> {{ $design->tag }}</p>
         <p><span class="detail-label">Category:</span> {{ $design->category }}</p>
-        <p><span class="detail-label">Build Cost:</span> {{ $design->build_cost }}</p>
+        <p><span class="detail-label">Estimated Build Cost:</span> {{ money((int) $design->build_cost_cents) }}</p>
         <p><span class="detail-label">Impedance:</span> {{ $design->impedance }}</p>
         <p><span class="detail-label">Power Handling:</span> {{ $design->power }}</p>
     </div>
 </div>
+
+@if(!empty($images))
+    <div class="card">
+        @foreach($images as $image)
+            {{-- embedded from disk as data URIs: the PDF is rendered without network access --}}
+            <img src="{{ $image }}" style="max-width: 100%; max-height: 90mm; margin: 0 auto 10px; display: block;" alt="{{ $design->name }}">
+        @endforeach
+    </div>
+@endif
 
 <div class="page-break"></div>
 
@@ -146,7 +155,7 @@
 <h2 class="section-title">Summary</h2>
 <div class="card">
     <div class="tiptap-content">
-        {!! tiptap_converter()->asHtml($design->summary) !!}
+        {!! $summaryHtml ?? tiptap_converter()->asHtml($design->summary) !!}
     </div>
 </div>
 
@@ -156,7 +165,7 @@
 <h2 class="section-title">Description</h2>
 <div class="card">
     <div class="tiptap-content">
-        {!! tiptap_converter()->asHtml($design->description) !!}
+        {!! $descriptionHtml ?? tiptap_converter()->asHtml($design->description) !!}
     </div>
 </div>
 
@@ -176,7 +185,7 @@
 
         <div class="bg-indigo-50 p-4 rounded-lg">
             <div class="tiptap-content">
-                {!! tiptap_converter()->asHtml($component->description) !!}
+                {!! $componentHtml[$component->id] ?? tiptap_converter()->asHtml($component->description) !!}
             </div>
         </div>
     </div>

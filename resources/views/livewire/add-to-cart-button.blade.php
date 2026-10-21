@@ -3,8 +3,8 @@
         <x-button class="w-full" color="danger" tag="a" href="{{route('login')}}">Log In to Purchase</x-button>
     @endguest
     @auth
-        @if($design->price <= 0)
-            @if($design->sales->isNotEmpty())
+        @if($design->price_cents <= 0)
+            @if($isOwned)
                 <x-button class="w-full" disabled color="success">Owned</x-button>
             @else
                 <x-button class="w-full" wire:click="addToCart" wire:loading.attr="disabled" color="success">

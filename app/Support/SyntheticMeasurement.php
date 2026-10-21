@@ -44,14 +44,15 @@ final class SyntheticMeasurement
         float $max = self::FREQ_MAX,
         int $perDecade = self::POINTS_PER_DECADE,
     ): array {
-        $steps = (int) round(log10($max / $min) * $perDecade);
+        $steps = (int) ceil(log10($max / $min) * $perDecade);
         $frequencies = [];
 
         for ($i = 0; $i <= $steps; $i++) {
-            $frequencies[] = round($min * 10 ** ($i / $perDecade), 3);
+            // the last point is exactly $max
+            $frequencies[] = round(min($max, $min * 10 ** ($i / $perDecade)), 3);
         }
 
-        return $frequencies;
+        return array_values(array_unique($frequencies));
     }
 
     // --- Driver specifications -----------------------------------------------------------------
@@ -292,11 +293,56 @@ final class SyntheticMeasurement
             $highPassAt !== null && $lowPassAt !== null => sqrt($highPassAt * $lowPassAt),
             $highPassAt !== null => $highPassAt,
             $lowPassAt !== null => $lowPassAt,
-            default => 1000.0,
+            default => sqrt($spec['fs'] * max($spec['f_lp'], $spec['f_top'], $spec['fs'] * 4)),
         };
         $gain = 10 ** (($targetDb - self::db(self::pressureTransfer($spec, $reference))) / 20);
 
         return [$h[0] * $gain, $h[1] * $gain];
+    }
+
+    /**
+     * Largest deviation (dB) from $targetDb of the complex sum of a low-pass way and a high-pass way
+     * around the crossover point $xo, looked at from $xo / $span to $xo * $span.
+     *
+     * @param  array<string, mixed>  $lowSpec  driver of the lower way (low-passed at $xo)
+     * @param  array<string, mixed>  $highSpec  driver of the upper way (high-passed at $xo)
+     */
+    public static function crossoverDeviation(array $lowSpec, array $highSpec, float $xo, float $targetDb = 85.0, float $span = 1.5): float
+    {
+        $worst = 0.0;
+
+        for ($i = 0; $i <= 24; $i++) {
+            $f = $xo / $span * ($span * $span) ** ($i / 24);
+            $a = self::wayTransfer($lowSpec, null, $xo, $f, $targetDb);
+            $b = self::wayTransfer($highSpec, $xo, null, $f, $targetDb);
+            $worst = max($worst, abs(self::db([$a[0] + $b[0], $a[1] + $b[1]]) - $targetDb));
+        }
+
+        return $worst;
+    }
+
+    /**
+     * Pick the crossover frequency in [$min, $max] (rounded to a "nice" number) where the two drivers
+     * sum flattest. Drivers whose own phase differs a lot at the crossover cannot sum flat anywhere;
+     * this returns the best compromise.
+     *
+     * @param  array<string, mixed>  $lowSpec
+     * @param  array<string, mixed>  $highSpec
+     */
+    public static function bestCrossover(array $lowSpec, array $highSpec, float $min, float $max): float
+    {
+        $best = $min;
+        $bestDeviation = INF;
+
+        for ($xo = $min; $xo <= $max; $xo *= 2 ** (1 / 12)) {
+            $deviation = self::crossoverDeviation($lowSpec, $highSpec, $xo);
+            if ($deviation < $bestDeviation) {
+                $bestDeviation = $deviation;
+                $best = $xo;
+            }
+        }
+
+        return $best < 1000 ? round($best / 10) * 10 : round($best / 50) * 50;
     }
 
     // --- File content --------------------------------------------------------------------------

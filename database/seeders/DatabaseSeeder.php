@@ -30,6 +30,12 @@ class DatabaseSeeder extends Seeder
         $this->call(SettingsTableSeeder::class);
         $this->call(ProfileKeyValuesTableSeeder::class);
         $this->call(ThemesTableSeeder::class);
+
+        // Demo users, drivers, designs, listings and orders (admin@sdlabs.test / password).
+        if (app()->environment(['local', 'demo', 'testing'])) {
+            $this->call(DemoSeeder::class);
+        }
+
         fixPostgresSequence();
     }
 }

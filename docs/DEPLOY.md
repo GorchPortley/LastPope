@@ -9,7 +9,7 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 - [4. Prepare the server and install Docker](#4-prepare-the-server-and-install-docker)
 - [5. Get the code and create the settings file](#5-get-the-code-and-create-the-settings-file)
 - [6. Start everything](#6-start-everything)
-- [7. Create the first admin user](#7-create-the-first-admin-user)
+- [7. First run: base data and the first admin user](#7-first-run-base-data-and-the-first-admin-user)
 - [8. Forum setup](#8-forum-setup)
 - [9. Mail](#9-mail)
 - [10. Stripe setup](#10-stripe-setup)
@@ -130,7 +130,8 @@ Without questions: `docker/setup.sh -d shop.example.com -e you@example.com`.
 
 Things you can change in `.env` later (then run `docker compose up -d` to apply):
 
-- `UPLOAD_MAX_SIZE`: largest single upload (default `256M`).
+- `UPLOAD_MAX_SIZE`: largest single upload (default `256M`). One setting controls PHP, nginx and the
+  upload fields in the dashboard (Livewire/Filament).
 - `MAIL_*`: your SMTP service, see [Mail](#9-mail).
 - `STRIPE_*`: see [Stripe setup](#10-stripe-setup).
 - `FLARUM_FORUM_TITLE`: forum name shown at first install.
@@ -152,20 +153,33 @@ docker compose ps               # every service should end up "running" / "healt
 When `app` and `flarum` are `healthy`, open **https://shop.example.com**. The very first request
 may take a few seconds while Caddy obtains the certificate.
 
-## 7. Create the first admin user
+## 7. First run: base data and the first admin user
+
+A new database is empty. The site needs its base data (user roles, settings, the theme) before it can show
+a single page, so on the **first start only** run:
+
+```bash
+docker compose exec app php artisan db:seed --force
+```
+
+> **Run this once, on a brand-new installation.** The base seeders replace the roles, settings and users
+> tables; running them again later on a live site would reset those tables.
+> Demo products and demo accounts are only added when `APP_ENV` is `local` or `demo`; the production
+> containers run with `APP_ENV=production`, so you get none of that.
+
+<!-- TODO(P2a): confirm the production seeding story. DatabaseSeeder still calls UsersTableSeeder and
+     ModelHasRolesTableSeeder, which insert a placeholder admin (admin@sdlabs.cc, old password hash) and
+     delete()/re-insert the roles and users tables. Production needs a seeder that only creates roles,
+     permissions, settings and themes, and is safe to run twice. Update this section when it exists. -->
+
+Then create your own admin account:
 
 ```bash
 docker compose exec app php artisan app:create-user
 ```
 
-It asks for name, e-mail, username, password and role: choose `admin`.
-
-<!-- TODO(integration): on a brand-new database the roles/settings/themes must be seeded before
-     app:create-user can list the "admin" role. Document the production seeding command here
-     (do NOT run the demo seeder in production; it creates well-known demo accounts). -->
-
-Log in at https://shop.example.com/login, then open the admin panel from your profile menu (or
-`/admin`).
+It asks for name, e-mail, username, password and role: choose `admin`. Log in at
+https://shop.example.com/auth/login, then open the admin panel at `/admin`.
 
 ## 8. Forum setup
 
@@ -188,19 +202,30 @@ lives under `/forum` and not on a separate sub-domain.
 
 ### Connecting the website to the forum
 
-> **TODO:** the command `php artisan forum:setup` will be added. It will create the forum tags named
-> in `FORUM_DESIGN_TAG`, `FORUM_DRIVER_TAG` and `FORUM_LISTING_TAG` and check the connection to the forum.
-> Once it exists, run it here with:
-> `docker compose exec app php artisan forum:setup`
-
-<!-- TODO(integration): replace the note above with the final `forum:setup` instructions. -->
-
-Until then, make sure `.env` contains `FORUM_ENABLED=true` (the setup script sets it) and restart the
-website containers after any change to `.env`:
+After the first start (and after you have created your admin account), run once:
 
 ```bash
-docker compose up -d app queue scheduler
+docker compose exec app php artisan forum:setup
 ```
+
+It prints a status table: is the forum reachable from the app, does the API key work, and do the three
+forum **tags** exist. Missing tags are created: `designs`, `drivers` and `marketplace` (the slugs come
+from `FORUM_DESIGN_TAG`, `FORUM_DRIVER_TAG`, `FORUM_LISTING_TAG`; an empty value switches the automatic
+discussions off for that kind of item). The command is safe to repeat; `--check` only reports.
+
+From then on, every design and driver that is **published** (active) gets its own discussion in the
+forum, written under the owner's forum account, and the design/driver page shows it in the *Discussion*
+tab. Drafts never get a thread. Discussions are created in the background by the `queue` container, so
+they appear a few seconds after publishing; if the forum is down they are retried automatically.
+
+Designs and drivers that were published before the forum was connected (or imported demo data) can be
+given their discussions in one go:
+
+```bash
+docker compose exec app php artisan forum:setup --backfill
+```
+
+Marketplace listings follow the same rule once the `listings` table has a `forum_slug` column.
 
 ### Forum tips
 
@@ -209,6 +234,11 @@ docker compose up -d app queue scheduler
   Only extensions that support **Flarum 1.x** work with this image.
 - The forum's mail settings are copied from `MAIL_*` once, on its first start. Change them later
   in the forum administration (Administration, Email).
+- A member's forum user name is taken from their site username; Flarum only allows letters, digits, `-` and
+  `_` (3-30 characters), so other characters are replaced. The names `admin`, `administrator`, the forum
+  admin's own name and a few more are reserved: such members get a numbered name like `admin_2`.
+- If the forum is down, logging in to the site still works; the member just is not signed in to the forum
+  until the next login.
 - Changing `FLARUM_ADMIN_PASSWORD` in `.env` does **not** change an existing forum account's
   password (it is only used for the first install). Change it in the forum itself.
 
@@ -403,6 +433,7 @@ docker stats                              # CPU/RAM per container
 | `Access denied for user 'lastpope'` after changing a DB password in `.env` | MariaDB only reads passwords when its data volume is created. Change it inside the database: `docker compose exec mariadb mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "ALTER USER 'lastpope'@'%' IDENTIFIED BY 'the-new-password'"`; for the forum user re-run `docker compose exec mariadb bash /docker-entrypoint-initdb.d/10-flarum.sh`. |
 | Forum shows an error page or never gets healthy | `docker compose logs flarum`. The first start installs extensions from packagist.org, so the server needs outbound internet. |
 | Forum login / "not logged in to the forum" | `FORUM_ENABLED=true`, `FLARUM_API_KEY` set, and `FLARUM_URL` equals `https://<domain>/forum`. Then `docker compose up -d app queue scheduler`. |
+| Designs/drivers get no forum discussion | `docker compose exec app php artisan forum:setup` shows what is wrong (unreachable forum, rejected API key, missing tag). Details are in `docker compose logs queue`. "The number of primary tags must be 1" means the tag exists but is a secondary tag: in the forum administration, Tags, drag it into the primary list. |
 | Uploads fail for big files | Raise `UPLOAD_MAX_SIZE` in `.env` and `docker compose up -d app`. (Caddy allows up to 1 GB per request.) |
 | Disk is full | `docker system df`, then `docker image prune -f` and `docker builder prune -f`. Logs are rotated automatically (10 MB x 5 per container). |
 

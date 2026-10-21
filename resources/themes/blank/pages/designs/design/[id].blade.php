@@ -121,12 +121,12 @@ new class extends Component {
                     <div>
                         <dt class="text-sm text-gray-500">Plans Price</dt>
                         <dd class="mt-1 text-lg font-medium text-gray-900">
-                            ${{ number_format($design->price, 2) }}</dd>
+                            {{ $design->price_cents > 0 ? money($design->price_cents) : 'Free' }}</dd>
                     </div>
                     <div>
                         <dt class="text-sm text-gray-500">Estimated Build Cost</dt>
                         <dd class="mt-1 text-lg font-medium text-gray-900">
-                            ${{ number_format($design->build_cost, 2) }}</dd>
+                            {{ money((int) $design->build_cost_cents) }}</dd>
                     </div>
                     <div>
                         <dt class="text-sm text-gray-500">Category</dt>
@@ -167,15 +167,15 @@ new class extends Component {
                                 <dl class="space-y-1 text-gray-900">
                                     <div class="flex justify-between">
                                         <dt class="">Design Enclosure Files:</dt>
-                                        <dd>{{ json_decode(count($design->enclosure_files)) }}</dd>
+                                        <dd>{{ count($design->enclosure_files ?? []) }}</dd>
                                     </div>
                                     <div class="flex justify-between">
                                         <dt class="">Design Electronics Files:</dt>
-                                        <dd>{{ json_decode(count($design->electronic_files))}}</dd>
+                                        <dd>{{ count($design->electronic_files ?? []) }}</dd>
                                     </div>
                                     <div class="flex justify-between">
                                         <dt class="">Design Other Files:</dt>
-                                        <dd>{{ json_decode(count($design->design_other_files))}}</dd>
+                                        <dd>{{ count($design->design_other_files ?? []) }}</dd>
                                     </div>
                                 </dl>
                             </div>
@@ -238,15 +238,15 @@ new class extends Component {
                                             <dl class="space-y-1">
                                                 <div class="flex justify-between">
                                                     <dt class="text-gray-600">Frequency Files:</dt>
-                                                    <dd class="text-gray-900">{{ json_decode(count($component->frequency_files)) }}</dd>
+                                                    <dd class="text-gray-900">{{ count($component->frequency_files ?? []) }}</dd>
                                                 </div>
                                                 <div class="flex justify-between">
                                                     <dt class="text-gray-600">Impedance Files:</dt>
-                                                    <dd class="text-gray-900">{{ json_decode(count($component->impedance_files))}}</dd>
+                                                    <dd class="text-gray-900">{{ count($component->impedance_files ?? []) }}</dd>
                                                 </div>
                                                 <div class="flex justify-between">
                                                     <dt class="text-gray-600">Other Files:</dt>
-                                                    <dd class="text-gray-900">{{ json_decode(count($component->other_files))}}</dd>
+                                                    <dd class="text-gray-900">{{ count($component->other_files ?? []) }}</dd>
                                                 </div>
                                             </dl>
                                         </div>

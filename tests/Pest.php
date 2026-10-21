@@ -44,3 +44,35 @@ function something()
 {
     // ..
 }
+
+/*
+|--------------------------------------------------------------------------
+| Marketplace helpers
+|--------------------------------------------------------------------------
+*/
+
+/** A user whose Stripe account can take charges and receive payouts. */
+function onboardedSeller(): App\Models\User
+{
+    return App\Models\User::factory()->onboardedSeller()->create();
+}
+
+/** A paid, active design with a snapshot (and its ZIP on the private disk when $withFile), by $seller. */
+function paidDesign(?App\Models\User $seller = null, int $cents = 1500, bool $withFile = true): App\Models\Design
+{
+    return App\Models\Design::factory()
+        ->for($seller ?? onboardedSeller(), 'designer')
+        ->paid($cents)
+        ->withSnapshot('v1.0', $withFile)
+        ->create();
+}
+
+/** Open a Folio/Volt dashboard page as $user and return its Livewire test component. */
+function dashboardPage(Tests\TestCase $test, App\Models\User $user, string $url): Livewire\Features\SupportTesting\Testable
+{
+    $html = $test->actingAs($user)->get($url)->assertOk()->getContent();
+    preg_match('/wire:snapshot="([^"]+)"/', $html, $matches);
+    $snapshot = json_decode(html_entity_decode($matches[1]), true);
+
+    return Livewire\Livewire::test($snapshot['memo']['name']);
+}

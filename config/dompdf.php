@@ -91,6 +91,8 @@ return [
          * @var array
          */
         'allowed_protocols' => [
+            // Snapshot PDFs embed images from disk as data URIs (see App\Services\Snapshots\PdfImages).
+            'data://' => ['rules' => []],
             'file://' => ['rules' => []],
             'http://' => ['rules' => []],
             'https://' => ['rules' => []],

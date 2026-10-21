@@ -39,11 +39,11 @@
                             </tr>
                             <tr>
                                 <td class="py-1 font-medium">Price</td>
-                                <td class="text-gray-600 text-right">${{number_format($design->price, 2)}}</td>
+                                <td class="text-gray-600 text-right">{{ $design->price_cents > 0 ? money($design->price_cents) : 'Free' }}</td>
                             </tr>
                             <tr>
                                 <td class="py-1 font-medium">Build Cost</td>
-                                <td class="text-gray-600 text-right">${{number_format($design->build_cost, 2)}}</td>
+                                <td class="text-gray-600 text-right">{{ money((int) $design->build_cost_cents) }}</td>
                             </tr>
                             <tr>
                                 <td class="py-1 font-medium">Rating</td>
@@ -117,11 +117,11 @@
                             </tr>
                             <tr class="border-b">
                                 <td class="py-2 font-medium">Build Cost</td>
-                                <td class="py-2 text-right">${{number_format($design->build_cost, 2)}}</td>
+                                <td class="py-2 text-right">{{ money((int) $design->build_cost_cents) }}</td>
                             </tr>
                             <tr class="border-b">
                                 <td class="py-2 font-medium">Price</td>
-                                <td class="py-2 text-right">${{number_format($design->price, 2)}}</td>
+                                <td class="py-2 text-right">{{ $design->price_cents > 0 ? money($design->price_cents) : 'Free' }}</td>
                             </tr>
                         </tbody>
                     </table>

@@ -5,8 +5,12 @@ use App\Models\Design;
 use App\Models\Driver;
 use App\Models\DesignDriver;
 use App\Enums\DesignCategoryEnum;
+use App\Filament\Forms\MoneyInput;
+use App\Jobs\BuildDesignSnapshot;
+use Illuminate\Support\Str;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
@@ -75,127 +79,87 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
         "Premium Sound Engineering"
     ];
 
-    function getfrqpath($name, $position)
+    // Files live under designs/{storage_key}/..., where storage_key is a UUID filled in when the
+    // create form opens (so renaming a design never moves its files). Source files go on the
+    // private disk; card images and rich-text attachments go on the public disk.
+    function designdir($storageKey, string $sub): string
     {
-        if (!$name || !$position) {
-            return 'files/lost files/frequency files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-        $position = str($position)->upper()->toString();
-
-        return "files/{$userId}/{$designName}/{$position}/Frequency";
+        return 'designs/' . ($storageKey ?: 'unassigned') . '/' . $sub;
     }
 
-    function getzpath($name, $position)
+    function getfrqpath($storageKey, $position)
     {
-        if (!$name || !$position) {
-            return 'files/lost files/z files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-        $position = str($position)->upper()->toString();
-
-        return "files/{$userId}/{$designName}/{$position}/Impedance";
+        return $this->designdir($storageKey, str($position ?: 'Unsorted')->upper()->toString() . '/Frequency');
     }
 
-    function getotherpath($name, $position)
+    function getzpath($storageKey, $position)
     {
-        if (!$name || !$position) {
-            return 'files/lost files/other files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-        $position = str($position)->upper()->toString();
-
-        return "files/{$userId}/{$designName}/{$position}/Other";
+        return $this->designdir($storageKey, str($position ?: 'Unsorted')->upper()->toString() . '/Impedance');
     }
 
-    function getenclosurepath($name)
+    function getotherpath($storageKey, $position)
     {
-        if (!$name) {
-            return 'files/lost files/enclosure files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-
-        return "files/{$userId}/{$designName}/Enclosure";
+        return $this->designdir($storageKey, str($position ?: 'Unsorted')->upper()->toString() . '/Other');
     }
 
-    function getelectronicspath($name)
+    function getenclosurepath($storageKey)
     {
-        if (!$name) {
-            return 'files/lost files/lost electronic files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-
-        return "files/{$userId}/{$designName}/Electronics";
+        return $this->designdir($storageKey, 'Enclosure');
     }
 
-    function getdesignotherpath($name)
+    function getelectronicspath($storageKey)
     {
-        if (!$name) {
-            return 'files/lost files/lost design other files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-
-        return "files/{$userId}/{$designName}/Other Files";
+        return $this->designdir($storageKey, 'Electronics');
     }
 
-    function getwidgetresponsepath($name)
+    function getdesignotherpath($storageKey)
     {
-        if (!$name) {
-            return 'files/lost files/lost display response files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-
-        return "files/{$userId}/{$designName}/Attachments/Display Responses";
+        return $this->designdir($storageKey, 'Other Files');
     }
 
-    function getphotospath($name)
+    function getwidgetresponsepath($storageKey)
     {
-        if (!$name) {
-            return 'files/lost files/lost design photo files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-
-        return "files/{$userId}/{$designName}/Attachments/Display Images";
+        return $this->designdir($storageKey, 'Attachments/Display Responses');
     }
 
-    function getsummaryattachmentspath($name)
+    function getphotospath($storageKey)
     {
-        if (!$name) {
-            return 'files/lost files/lost design photo files';
-        }
-
-        $userId = auth()->id();
-        $designName = str($name);
-
-        return "files/{$userId}/{$designName}/Attachments/Summary Images";
+        return $this->designdir($storageKey, 'Attachments/Display Images');
     }
 
-    function getdescriptionattachmentspath($name)
+    function getsummaryattachmentspath($storageKey)
     {
-        if (!$name) {
-            return 'files/lost files/lost design photo files';
+        return $this->designdir($storageKey, 'Attachments/Summary Images');
+    }
+
+    function getdescriptionattachmentspath($storageKey)
+    {
+        return $this->designdir($storageKey, 'Attachments/Description Images');
+    }
+
+    /**
+     * A paid design can only be published once it can actually be sold (snapshot + payout account).
+     * Otherwise it is saved as a draft and the reasons are shown.
+     */
+    function guardPublish(array $data, ?Design $design = null): array
+    {
+        if (empty($data['active'])) {
+            return $data;
         }
 
-        $userId = auth()->id();
-        $designName = str($name);
+        $probe = $design ? clone $design : new Design(['user_id' => auth()->id()]);
+        $probe->price_cents = $data['price_cents'] ?? $probe->price_cents ?? 0;
 
-        return "files/{$userId}/{$designName}/Attachments/Description Images";
+        if ($blockers = $probe->publishBlockers()) {
+            $data['active'] = false;
+            Notification::make()
+                ->warning()
+                ->title('Saved as a draft')
+                ->body(implode(' ', $blockers))
+                ->send();
+        }
+
+        return $data;
     }
 
     public function table(Table $table): Table
@@ -212,12 +176,15 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         if (auth()->user()->hasRole('manufacturer')) {
                             $data['official'] = 1;
                         };
-                        return $data;
+                        return $this->guardPublish($data);
                     })
                     ->form([
                         Toggle::make('active')
                             ->label('Published')
                             ->onColor('success'),
+
+                        Hidden::make('storage_key')
+                            ->default(fn () => (string) Str::uuid()),
 
                         Section::make('Design Information')
                             ->description('Basic information about the design')
@@ -234,8 +201,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->hint('Images that will be displayed publicly')
                                     ->disk('public')
                                     ->directory(function ($get) {
-                                        $name = $get('name');
-                                        return $this->getphotospath($name);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getphotospath($storageKey);
                                     })
                                     ->visibility('public')
                                     ->required(),
@@ -246,9 +213,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->hint('These are representative of your designs. Upload multiple component responses or a single response')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $name = $get('name');
-                                        return $this->getwidgetresponsepath($name);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getwidgetresponsepath($storageKey);
                                     }),
 
                                 TextInput::make('tag')
@@ -258,22 +227,20 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->placeholder($this->speakerTaglines[array_rand($this->speakerTaglines)]),
 
                                 Select::make('category')
+                                    ->required()
                                     ->hint('What type of speaker is your design?')
                                     ->options(collect(DesignCategoryEnum::cases())->mapWithKeys(fn ($case) => [
                                         $case->name => $case->value,
                                     ])->toArray()),
-                                TextInput::make('price')
-                                    ->disabled()
-                                    ->helperText('Marketplace functionality disabled for beta')
-                                    ->hint('The selling price of your design')
-                                    ->default('0.00')
-                                    ->inputMode('decimal')
-                                    ->numeric(),
+                                MoneyInput::make('price_cents')
+                                    ->label('Price')
+                                    ->hint('The selling price of your design. Leave at 0 to share it for free.')
+                                    ->helperText('Paid designs need a snapshot and a connected payout account before they can be published.')
+                                    ->default(0),
 
-                                TextInput::make('build_cost')
-                                    ->hint('The cost to build a single speaker')
-                                    ->inputMode('decimal')
-                                    ->numeric(),
+                                MoneyInput::make('build_cost_cents')
+                                    ->label('Build cost')
+                                    ->hint('The cost to build a single speaker'),
 
                                 TextInput::make('impedance')
                                     ->hint('The nominal impedance of the design')
@@ -286,7 +253,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                 TiptapEditor::make('summary')
                                     ->profile('default')
                                     ->hint('The selling point of your design')
-                                    ->Directory('attachments')
+                                    ->disk('public')
+                                    ->directory(fn ($get) => $this->getsummaryattachmentspath($get('storage_key')))
                                     ->output(TiptapOutput::Html)
                                     ->extraInputAttributes(['style' => 'min-height: 12rem;']),
 
@@ -295,7 +263,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->schema([
                                         TipTapEditor::make('description')
                                             ->hint('The main information area of your design, describe the design in greater detail')
-                                            ->Directory('attachments')
+                                            ->disk('public')
+                                            ->directory(fn ($get) => $this->getdescriptionattachmentspath($get('storage_key')))
                                             ->extraInputAttributes(['style' => 'min-height: 12rem;']),
                                         KeyValue::make('bill_of_materials')
                                             ->hint('The BOM of your design'),
@@ -310,9 +279,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Enclosure Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('name');
-                                                        return $this->getenclosurepath($name);
+                                                        $storageKey = $get('storage_key');
+                                                        return $this->getenclosurepath($storageKey);
                                                     }),
 
                                                 FileUpload::make('electronic_files')
@@ -321,9 +292,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Electronics Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('name');
-                                                        return $this->getelectronicspath($name);
+                                                        $storageKey = $get('storage_key');
+                                                        return $this->getelectronicspath($storageKey);
                                                     }),
 
                                                 FileUpload::make('design_other_files')
@@ -332,9 +305,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Other Design Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('name');
-                                                        return $this->getdesignotherpath($name);
+                                                        $storageKey = $get('storage_key');
+                                                        return $this->getdesignotherpath($storageKey);
                                                     }),
                                             ]),]),]),
                         Section::make('Design Drivers')
@@ -400,34 +375,41 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Frequency Measurements')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('../../name');
+                                                        $storageKey = $get('../../storage_key');
                                                         $position = $get('position');
-                                                        return $this->getfrqpath($name, $position);
+                                                        return $this->getfrqpath($storageKey, $position);
                                                     }),
 
                                                 FileUpload::make('impedance_files')
                                                     ->label('Impedance Measurements')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('../../name');
+                                                        $storageKey = $get('../../storage_key');
                                                         $position = $get('position');
-                                                        return $this->getzpath($name, $position);
+                                                        return $this->getzpath($storageKey, $position);
                                                     }),
 
                                                 FileUpload::make('other_files')
                                                     ->label('Other Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('../../name');
+                                                        $storageKey = $get('../../storage_key');
                                                         $position = $get('position');
-                                                        return $this->getotherpath($name, $position);
+                                                        return $this->getotherpath($storageKey, $position);
                                                     }),]),
                                         TiptapEditor::make('description')
                                             ->hint('This area allows you to describe the design driver in more detail.')
-                                            ->Directory('attachments')
+                                            ->disk('public')
+                                            ->directory(fn ($get) => $this->getdescriptionattachmentspath($get('../../storage_key')))
                                             ->extraInputAttributes(['style' => 'min-height: 12rem;']),
 
                                         KeyValue::make('specifications')
@@ -465,7 +447,13 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->columns([
 
                 ToggleColumn::make('active')
-                    ->onColor('success'),
+                    ->onColor('success')
+                    ->updateStateUsing(function (Design $record, $state) {
+                        $data = $this->guardPublish(['active' => (bool) $state, 'price_cents' => $record->price_cents], $record);
+                        $record->update(['active' => $data['active']]);
+
+                        return $data['active'];
+                    }),
 
                 TextColumn::make('name')
                     ->searchable()
@@ -497,15 +485,23 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             ->placeholder('Enter version (e.g., v1.0)')
                     ])
                     ->action(function (array $data, ?Design $record) {
-                        $design = $record;
-                        $version = $data['version'];
-                        $design->createDesignSnapshot($design, $version);
+                        BuildDesignSnapshot::dispatch($record, $data['version'], auth()->user());
+
+                        Notification::make()
+                            ->success()
+                            ->title('Snapshot queued')
+                            ->body('Building ' . $data['version'] . '. You will get a notification when it is ready.')
+                            ->send();
                     }),
                 EditAction::make()
+                    ->mutateFormDataUsing(fn (array $data, Design $record): array => $this->guardPublish($data, $record))
                     ->form([
                         Toggle::make('active')
                             ->label('Published')
                             ->onColor('success'),
+
+                        Hidden::make('storage_key')
+                            ->default(fn () => (string) Str::uuid()),
 
                         Section::make('Design Information')
                             ->description('Basic information about the design')
@@ -522,8 +518,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->hint('Images that will be displayed publicly')
                                     ->disk('public')
                                     ->directory(function ($get) {
-                                        $name = $get('name');
-                                        return $this->getphotospath($name);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getphotospath($storageKey);
                                     })
                                     ->visibility('public')
                                     ->required(),
@@ -534,9 +530,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->hint('These are representative of your designs. Upload multiple component responses or a single response')
                                     ->multiple()
                                     ->preserveFilenames()
+                                    ->disk('private')
+                                    ->visibility('private')
                                     ->directory(function ($get) {
-                                        $name = $get('name');
-                                        return $this->getwidgetresponsepath($name);
+                                        $storageKey = $get('storage_key');
+                                        return $this->getwidgetresponsepath($storageKey);
                                     }),
 
                                 TextInput::make('tag')
@@ -546,22 +544,20 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->placeholder($this->speakerTaglines[array_rand($this->speakerTaglines)]),
 
                                 Select::make('category')
+                                    ->required()
                                     ->hint('What type of speaker is your design?')
                                     ->options(collect(DesignCategoryEnum::cases())->mapWithKeys(fn ($case) => [
                                         $case->name => $case->value,
                                     ])->toArray()),
-                                TextInput::make('price')
-                                    ->disabled()
-                                    ->helperText('Marketplace functionality disabled for beta')
-                                    ->hint('The selling price of your design')
-                                    ->default('0.00')
-                                    ->inputMode('decimal')
-                                    ->numeric(),
+                                MoneyInput::make('price_cents')
+                                    ->label('Price')
+                                    ->hint('The selling price of your design. Leave at 0 to share it for free.')
+                                    ->helperText('Paid designs need a snapshot and a connected payout account before they can be published.')
+                                    ->default(0),
 
-                                TextInput::make('build_cost')
-                                    ->hint('The cost to build a single speaker')
-                                    ->inputMode('decimal')
-                                    ->numeric(),
+                                MoneyInput::make('build_cost_cents')
+                                    ->label('Build cost')
+                                    ->hint('The cost to build a single speaker'),
 
                                 TextInput::make('impedance')
                                     ->hint('The nominal impedance of the design')
@@ -573,7 +569,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
 
                                 TiptapEditor::make('summary')
                                     ->hint('The selling point of your design')
-                                    ->Directory('attachments')
+                                    ->disk('public')
+                                    ->directory(fn ($get) => $this->getsummaryattachmentspath($get('storage_key')))
                                     ->extraInputAttributes(['style' => 'min-height: 12rem;']),
 
                                 Section::make('Private Information')
@@ -581,7 +578,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->schema([
                                         TipTapEditor::make('description')
                                             ->hint('The main information area of your design, describe the design in greater detail')
-                                            ->Directory('attachments')
+                                            ->disk('public')
+                                            ->directory(fn ($get) => $this->getdescriptionattachmentspath($get('storage_key')))
                                             ->extraInputAttributes(['style' => 'min-height: 12rem;']),
                                         KeyValue::make('bill_of_materials')
                                             ->hint('The BOM of your design')
@@ -597,9 +595,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Enclosure Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('name');
-                                                        return $this->getenclosurepath($name);
+                                                        $storageKey = $get('storage_key');
+                                                        return $this->getenclosurepath($storageKey);
                                                     }),
 
                                                 FileUpload::make('electronic_files')
@@ -608,9 +608,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Electronics Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('name');
-                                                        return $this->getelectronicspath($name);
+                                                        $storageKey = $get('storage_key');
+                                                        return $this->getelectronicspath($storageKey);
                                                     }),
 
                                                 FileUpload::make('design_other_files')
@@ -619,9 +621,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Other Design Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('name');
-                                                        return $this->getdesignotherpath($name);
+                                                        $storageKey = $get('storage_key');
+                                                        return $this->getdesignotherpath($storageKey);
                                                     }),
                                             ]),]),]),
                         Section::make('Design Drivers')
@@ -687,34 +691,41 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                                     ->label('Frequency Measurements')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('../../name');
+                                                        $storageKey = $get('../../storage_key');
                                                         $position = $get('position');
-                                                        return $this->getfrqpath($name, $position);
+                                                        return $this->getfrqpath($storageKey, $position);
                                                     }),
 
                                                 FileUpload::make('impedance_files')
                                                     ->label('Impedance Measurements')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('../../name');
+                                                        $storageKey = $get('../../storage_key');
                                                         $position = $get('position');
-                                                        return $this->getzpath($name, $position);
+                                                        return $this->getzpath($storageKey, $position);
                                                     }),
 
                                                 FileUpload::make('other_files')
                                                     ->label('Other Files')
                                                     ->multiple()
                                                     ->preserveFilenames()
+                                                    ->disk('private')
+                                                    ->visibility('private')
                                                     ->directory(function ($get) {
-                                                        $name = $get('../../name');
+                                                        $storageKey = $get('../../storage_key');
                                                         $position = $get('position');
-                                                        return $this->getotherpath($name, $position);
+                                                        return $this->getotherpath($storageKey, $position);
                                                     }),]),
                                         TiptapEditor::make('description')
                                             ->hint('This area allows you to describe the design driver in more detail.')
-                                            ->Directory('attachments')
+                                            ->disk('public')
+                                            ->directory(fn ($get) => $this->getdescriptionattachmentspath($get('../../storage_key')))
                                             ->extraInputAttributes(['style' => 'min-height: 12rem;']),
 
                                         KeyValue::make('specifications')
@@ -782,10 +793,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                 Select::make('category')
                     ->options(['Subwoofer' => 'Subwoofer', 'Full-Range' => 'Full-Range', 'Two-Way' => 'Two-Way'
                         , 'Three-Way' => 'Three-Way', 'Four-Way+' => 'Four-Way+', 'Portable' => 'Portable', 'Esoteric' => 'Esoteric']),
-                TextInput::make('price')
-                    ->numeric(),
-                TextInput::make('build_cost')
-                    ->numeric(),
+                MoneyInput::make('price_cents'),
+                MoneyInput::make('build_cost_cents'),
                 TextInput::make('impedance')
                     ->numeric(),
                 TextInput::make('power')

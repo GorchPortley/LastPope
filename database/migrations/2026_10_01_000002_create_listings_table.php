@@ -35,6 +35,8 @@ return new class extends Migration
             $table->text('return_policy')->nullable();
             // App\Enums\ListingStatus
             $table->string('status')->default('draft');
+            // Slug of the listing's forum discussion, when the forum integration is on.
+            $table->string('forum_slug')->nullable();
             $table->timestamps();
             $table->softDeletes();
 

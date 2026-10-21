@@ -25,13 +25,15 @@ EXAMPLE_FILE=".env.example"
 
 DOMAIN_ARG=""
 EMAIL_ARG=""
+NON_INTERACTIVE=0
 
 usage() {
   cat <<'EOF'
-Usage: docker/setup.sh [-d DOMAIN] [-e EMAIL] [-h]
+Usage: docker/setup.sh [-d DOMAIN] [-e EMAIL] [--non-interactive] [-h]
 
   -d, --domain DOMAIN   public domain name, e.g. shop.example.com (use "localhost" for a local test)
   -e, --email  EMAIL    contact address for Let's Encrypt
+  -n, --non-interactive never ask; take domain and e-mail from the options or from .env (for CI, scripts)
   -h, --help            show this help
 
 Without options the script asks, and offers the values already in .env as defaults.
@@ -42,6 +44,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -d | --domain) DOMAIN_ARG="${2:-}"; shift 2 ;;
     -e | --email) EMAIL_ARG="${2:-}"; shift 2 ;;
+    -n | --non-interactive) NON_INTERACTIVE=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -176,7 +179,7 @@ fi
 has_tty() { ( exec </dev/tty ) 2>/dev/null; }
 
 INTERACTIVE=1
-if ! has_tty || { [ -n "$DOMAIN_ARG" ] && [ -n "$EMAIL_ARG" ]; }; then
+if [ "$NON_INTERACTIVE" = 1 ] || ! has_tty || { [ -n "$DOMAIN_ARG" ] && [ -n "$EMAIL_ARG" ]; }; then
   INTERACTIVE=0
 fi
 
@@ -289,7 +292,9 @@ ${BOLD}Next steps${RESET}
          docker compose up -d --build
      The first start takes a few minutes (building the image, creating the databases, installing the forum).
      Watch it with:  docker compose logs -f
-  4. Create the first admin account:
+  4. First start only: load the base data (roles, settings, theme), connect the forum, create your admin:
+         docker compose exec app php artisan db:seed --force
+         docker compose exec app php artisan forum:setup
          docker compose exec app php artisan app:create-user
   5. Open https://$domain
      The forum is at https://$domain/forum  (forum admin login: ${BOLD}$forum_admin${RESET}, password = FLARUM_ADMIN_PASSWORD in $ENV_FILE)

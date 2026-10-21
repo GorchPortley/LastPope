@@ -1,55 +1,42 @@
 <?php
+
 namespace App\Listeners;
+
+use App\Services\Forum\ForumClient;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Cookie;
-use Illuminate\Support\Facades\Response;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
-class UserCreated
+/**
+ * Creates the member's forum account right after registration (on the queue, so signing up never
+ * waits for the forum). Logging in does the same lazily, so it does not matter which runs first.
+ */
+class UserCreated implements ShouldQueue
 {
-    /**
-     * Create the event listener.
-     */
-    public function __construct()
+    use InteractsWithQueue;
+
+    public bool $afterCommit = true;
+
+    public int $tries = 3;
+
+    public function __construct(private readonly ForumClient $forum)
     {
-        //
     }
-    /**
-     * Handle the event.
-     */
+
+    /** @return array<int, int> */
+    public function backoff(): array
+    {
+        return [30, 120];
+    }
+
     public function handle(Registered $event): void
     {
-        $this->createUser($event);
-    }
-    public function createUser(Registered $event)
-    {
-        $user = $event->user;
-        $randomPassword = Str::random(16);
-        $user->forum_password = $randomPassword;
-        $user->save();
-        
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-            'Authorization' => 'Token ' . config('forum.api') . '; userId=1'
-        ])->post(config('forum.host') . '/api/users', [
-            'data' => [
-                'type' => 'users',
-                'attributes' => [
-                    'username' => $user->username,
-                    'email' => $user->email,
-                    'password' => $randomPassword,
-                    'isEmailConfirmed' => true
-                ]
-            ]
-        ]);
-        
-        Log::info('Flarum user creation response', ['response' => $response->json()]);
-        
-        return $response->json();
+        if (! $this->forum->enabled()) {
+            return;
+        }
+
+        if ($this->forum->ensureUser($event->user) === null && $this->attempts() < $this->tries) {
+            $this->release(30);
+        }
     }
 }

@@ -5,22 +5,18 @@ namespace App\Listeners;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Support\Facades\Cookie;
 
+/** Logging out of the site also logs the member out of the forum (clears the SSO cookies). */
 class UserLoggedOut
 {
-    protected $flarumAuth;
-    /**
-     * Create the event listener.
-     */
-    public function __construct()
-    {
-    }
-
-    /**
-     * Handle the event.
-     */
     public function handle(Logout $event): void
     {
-        Cookie::queue('flarum_remember', ".", 1, "/forum");
-        Cookie::queue('flarum_session', ".", 1, "/forum");
+        if ($event->guard !== 'web') {
+            return;
+        }
+
+        $path = config('forum.cookie.path');
+
+        Cookie::queue(Cookie::forget(config('forum.cookie.name'), $path));
+        Cookie::queue(Cookie::forget('flarum_session', $path));
     }
 }

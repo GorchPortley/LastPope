@@ -195,13 +195,18 @@ new class extends Component {
                                     <dt class="text-sm text-gray-500">Category</dt>
                                     <dd class="mt-1 text-lg font-medium text-gray-900">{{ $driver->category }}</dd>
                                 </div>
-                                @if($driver->price)
+                                @if($driver->msrp_cents)
                                     <div>
-                                        <dt class="text-sm text-gray-500">Price</dt>
+                                        <dt class="text-sm text-gray-500">MSRP</dt>
                                         <dd class="mt-1 text-lg font-medium text-gray-900">
-                                            ${{ number_format($driver->price, 2) }}</dd>
+                                            {{ money($driver->msrp_cents) }}</dd>
                                     </div>
                                 @endif
+                                <div>
+                                    <dt class="text-sm text-gray-500">Data Pack</dt>
+                                    <dd class="mt-1 text-lg font-medium text-gray-900">
+                                        {{ $driver->data_price_cents > 0 ? money($driver->data_price_cents) : 'Free' }}</dd>
+                                </div>
                                 @if($driver->link)
                                     <div class="mt-4">
                                         <x-button  tag="a" href="{{ $driver->link }}"
@@ -288,15 +293,25 @@ new class extends Component {
                 @endif
                 <div class="w-full">
                     <span class="text-xl justify-center font-semibold text-gray-900">Download Files</span>
+                    @php($canDownload = auth()->check() && auth()->user()->hasAccessTo($driver, false))
                     @foreach($driver->snapshots as $snapshot)
                         <br>
                         <div>
-                            <a href="{{ route('driver-snapshots.download', $snapshot->id) }}" class="button">
-                                <span class="text-gray-900">{{$snapshot->snapshot_name}}</span>
-                                <i class="ph ph-download-simple"></i>
-                            </a>
+                            @if($canDownload)
+                                <a href="{{ route('driver-snapshots.download', $snapshot->id) }}" class="button">
+                                    <span class="text-gray-900">{{$snapshot->snapshot_name}}</span>
+                                    <i class="ph ph-download-simple"></i>
+                                </a>
+                            @else
+                                <span class="text-gray-500">{{ $snapshot->snapshot_name }}</span>
+                            @endif
                         </div>
                     @endforeach
+                    @if(! $canDownload && $driver->snapshots->isNotEmpty())
+                        <p class="mt-2 text-sm text-gray-500">
+                            {{ auth()->check() ? 'Get this data pack to download the files.' : 'Log in to download the files.' }}
+                        </p>
+                    @endif
                 </div>
 
                 <!-- Description Section -->
@@ -314,7 +329,11 @@ new class extends Component {
                 <h2 class="text-xl font-semibold text-gray-900 mb-4">Discussion
                 </h2>
                  <div class="w-full h-auto min-h-[200px]"  id="tabpanelDiscussion" role="tabpanel" aria-label="discussion">
-                <iframe src="{{ url('forum/embed/'.$driver->forum_slug) }}" style="border: 0; width:100%; height: 800px; overflow: auto;" ></iframe>
+                @if($driver->forum_slug && app(\App\Services\Forum\ForumClient::class)->enabled())
+                <iframe src="{{ app(\App\Services\Forum\ForumClient::class)->embedUrl($driver->forum_slug) }}" style="border: 0; width:100%; height: 800px; overflow: auto;" ></iframe>
+                @else
+                <p class="py-8 text-center text-gray-500">No discussion data available</p>
+                @endif
                 </div>
                 </div>
             </div>

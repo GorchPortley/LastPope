@@ -2,57 +2,30 @@
 
 use function Laravel\Folio\{name};
 use Livewire\Volt\Component;
-use App\Models\CartItem;
-use App\Models\DesignPurchase;
+use function Laravel\Folio\middleware;
 
+middleware('auth');
 name('cart');
 
 new class extends Component
 {
     public function removeItem($cartItemId)
     {
-        CartItem::find($cartItemId)->delete();
+        // Only the signed-in user's own cart lines can be removed.
+        auth()->user()->cart?->items()->whereKey($cartItemId)->delete();
         $this->dispatch('cart-updated');
     }
 
     public function checkout()
     {
-        try {
-            $cart = auth()->user()->cart;
-            $total = $cart->total();
-
-            // Process payment with Stripe/Paddle
-            $payment = auth()->user()->charge(
-                $total * 100,
-                'Design Purchase'
-            );
-
-            // Create purchase records
-            foreach($cart->items as $item) {
-                DesignPurchase::create([
-                    'user_id' => auth()->id(),
-                    'design_id' => $item->design_id,
-                    'transaction_id' => $payment->id,
-                    'amount' => $item->price,
-                    'purchased_at' => now()
-                ]);
-            }
-
-            // Clear cart
-            $cart->items()->delete();
-
-            session()->flash('message', 'Purchase successful!');
-            return redirect()->route('my-designs');
-
-        } catch (\Exception $e) {
-            session()->flash('error', 'Payment failed: ' . $e->getMessage());
-        }
+        // Real checkout (Stripe Checkout Session) is built on top of the cart in the marketplace phase.
+        session()->flash('error', 'Checkout is not available yet.');
     }
 
     public function with(): array
     {
         return [
-            'items' => auth()->user()->cart?->items->load('design', 'design.designer') ?? collect(),
+            'items' => auth()->user()->cart?->items()->with('purchasable')->get() ?? collect(),
             'total' => auth()->user()->cart?->total() ?? 0
         ];
     }
@@ -71,16 +44,16 @@ new class extends Component
                         <div class="p-6 flex items-center justify-between">
                             <div class="flex items-center">
                                 <div class="ml-4">
-                                    <h3 class="font-medium dark:text-white">{{ $item->design->name ?? 'Unknown Design' }} </h3>
+                                    <h3 class="font-medium dark:text-white">{{ $item->purchasable?->purchasableTitle() ?? 'Unavailable item' }} </h3>
                                     <p class="text-gray-500 dark:text-zinc-400">
-                                        Designed by {{ $item->design->designer->name ?? 'Unknown Designer' }}
+                                        Sold by {{ $item->purchasable?->getSeller()?->name ?? 'Unknown seller' }}
                                     </p>
                                 </div>
                             </div>
 
                             <div class="flex items-center space-x-4">
                                 <span class="font-medium dark:text-white">
-                                    ${{ number_format($item->price, 2) }}
+                                    {{ money($item->lineTotalCents()) }}
                                 </span>
                                 <button
                                     wire:click="removeItem({{ $item->id }})"
@@ -97,7 +70,7 @@ new class extends Component
                 <div class="bg-gray-50 dark:bg-zinc-900 p-6">
                     <div class="flex justify-between text-lg font-medium dark:text-white">
                         <span>Total</span>
-                        <span>${{ number_format($total, 2) }}</span>
+                        <span>{{ money($total) }}</span>
                     </div>
 
                     <button

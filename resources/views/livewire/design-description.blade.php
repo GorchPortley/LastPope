@@ -119,8 +119,8 @@
     </div>
     
     <div class="min-h-[300px]" x-show="selectedTab === 'discussion'" id="tabpanelDiscussion" role="tabpanel" aria-label="discussion">
-        @if($design->forum_slug)
-            <iframe src="{{ url('forum/embed/'.$design->forum_slug) }}" style="width:100%; height: 800px;"></iframe>
+        @if($design->forum_slug && app(\App\Services\Forum\ForumClient::class)->enabled())
+            <iframe src="{{ app(\App\Services\Forum\ForumClient::class)->embedUrl($design->forum_slug) }}" style="width:100%; height: 800px;"></iframe>
         @else
             <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
                 <p>No discussion data available</p>
@@ -174,7 +174,7 @@
     </div>
 
     <div class="min-h-[300px]" x-show="selectedTab === 'files'" id="tabpanelFiles" role="tabpanel" aria-label="files">
-        @if(count($design->snapshots) > 0)
+        @if(count($design->snapshots) > 0 && $this->hasAccess)
             <div>
                 <div class="w-full">
                     @foreach($design->snapshots as $snapshot)
@@ -187,6 +187,10 @@
                     </div>
                     @endforeach
                 </div>
+            </div>
+        @elseif(count($design->snapshots) > 0)
+            <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
+                <p>{{ auth()->check() ? 'Get this design to download its files.' : 'Log in to download this design\'s files.' }}</p>
             </div>
         @else
             <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">

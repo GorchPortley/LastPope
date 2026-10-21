@@ -42,6 +42,7 @@ class Listing extends Model implements Purchasable
         'returns_accepted',
         'return_policy',
         'status',
+        'forum_slug',
     ];
 
     protected $attributes = [

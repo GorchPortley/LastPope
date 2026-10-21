@@ -5,10 +5,6 @@ namespace App\Providers;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
-use App\Models\Design;
-use App\Models\Driver;
-use App\Observers\DesignObserver;
-use App\Observers\DriverObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -29,8 +25,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        Design::observe(DesignObserver::class);
-        Driver::observe(DriverObserver::class);
         if ($this->app->environment() == 'production') {
             $this->app['request']->server->set('HTTPS', true);
         }

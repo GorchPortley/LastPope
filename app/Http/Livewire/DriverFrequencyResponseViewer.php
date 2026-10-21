@@ -5,6 +5,8 @@ namespace App\Http\Livewire;
 use Livewire\Component;
 use Illuminate\Support\Facades\{Storage, Cache};
 
+// Measurement files are source files: they live on the private disk and are only read server-side here.
+
 class DriverFrequencyResponseViewer extends Component
 {
     public $driver;
@@ -47,7 +49,7 @@ class DriverFrequencyResponseViewer extends Component
         $colorIndex = 0;
 
         foreach ($frdFiles as $filePath) {
-            if (!Storage::exists($filePath)) {
+            if (!Storage::disk('private')->exists($filePath)) {
                 continue;
             }
 
@@ -92,7 +94,7 @@ class DriverFrequencyResponseViewer extends Component
 
     private function processFile(string $filePath): array
     {
-        $content = Storage::get($filePath);
+        $content = Storage::disk('private')->get($filePath) ?? '';
         return $this->parseFRDFile($content);
     }
 
@@ -161,25 +163,27 @@ class DriverFrequencyResponseViewer extends Component
                 $real = $amplitude * cos($phase);
                 $imag = $amplitude * sin($phase);
 
-                if (!isset($summedData[$freq])) {
-                    $summedData[$freq] = ['real' => $real, 'imag' => $imag, 'count' => 1];
+                $key = (string) $freq;
+
+                if (!isset($summedData[$key])) {
+                    $summedData[$key] = ['real' => $real, 'imag' => $imag, 'count' => 1];
                 } else {
-                    $summedData[$freq]['real'] += $real;
-                    $summedData[$freq]['imag'] += $imag;
-                    $summedData[$freq]['count']++;
+                    $summedData[$key]['real'] += $real;
+                    $summedData[$key]['imag'] += $imag;
+                    $summedData[$key]['count']++;
                 }
             }
         }
 
         $summedResponse = [];
         if (!empty($summedData)) {
-            ksort($summedData);
+            ksort($summedData, SORT_NUMERIC);
             foreach ($summedData as $freq => $complex) {
                 $magnitude = sqrt(pow($complex['real'], 2) + pow($complex['imag'], 2));
                 $db = 20 * log10(max($magnitude, 1e-20));
                 $db = max(min($db, self::AMP_RANGE['max']), self::AMP_RANGE['min']);
 
-                $summedResponse[] = ['x' => $freq, 'y' => $db];
+                $summedResponse[] = ['x' => (float) $freq, 'y' => $db];
             }
         }
 

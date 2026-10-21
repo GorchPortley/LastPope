@@ -89,6 +89,9 @@ return [
     // Prefix of human-readable order numbers (SDL-7KQ2M9).
     'order_number_prefix' => env('MARKETPLACE_ORDER_PREFIX', 'SDL'),
 
+    // Password of every DemoSeeder account. Set DEMO_PASSWORD before seeding a site the public can reach.
+    'demo_password' => env('DEMO_PASSWORD') ?: 'password',
+
     // Disk that holds design/driver source files and snapshot ZIPs. Never public.
     'private_disk' => 'private',
 

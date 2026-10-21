@@ -22,8 +22,11 @@ x-app-env: &app-env
   # Pre-wired infrastructure. These override whatever .env says (the .env copy of
   # DB_CONNECTION etc. is for running outside Docker), so the stack always talks
   # to its own containers.
-  APP_ENV: production
+  # STACK_ENV=demo in .env makes `db:seed` add the demo content (set DEMO_PASSWORD first on a public
+  # server). Debug pages stay off either way: they would show your secrets to visitors.
+  APP_ENV: ${STACK_ENV:-production}
   APP_DEBUG: "false"
+  DEMO_PASSWORD: ${DEMO_PASSWORD:-}
   APP_KEY: ${APP_KEY:?APP_KEY is empty - run docker/setup.sh first}
   APP_URL: https://${APP_DOMAIN:?APP_DOMAIN is empty - run docker/setup.sh first}
   LOG_CHANNEL: stderr

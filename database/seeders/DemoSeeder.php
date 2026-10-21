@@ -31,7 +31,7 @@ use Ramsey\Uuid\Uuid;
  * A rich demo/dev dataset: users in every role, drivers with synthetic (but physically consistent)
  * FRD/ZMA measurements, designs with components and built snapshots, listings, entitlements,
  * carts, orders in several states, reviews and banners. Login: admin@sdlabs.test / password
- * (every demo user has the password "password").
+ * (every demo user has the password "password", or DEMO_PASSWORD when that is set).
  *
  * Only runs in local, demo and testing environments. Storage keys and listing UUIDs are derived
  * from the product slug, so re-seeding overwrites the same folders instead of piling up new ones.
@@ -81,7 +81,7 @@ class DemoSeeder extends Seeder
 
     private function seedUsers(): void
     {
-        $password = Hash::make('password');
+        $password = Hash::make(config('marketplace.demo_password'));
 
         foreach (DemoCatalog::users() as $key => $data) {
             $user = User::create([

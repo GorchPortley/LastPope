@@ -222,6 +222,16 @@ or changes existing rows and never creates users, so it is safe to run again aft
 Demo products and demo accounts are only added when `APP_ENV` is `local`, `demo` or `testing`; the
 production containers run with `APP_ENV=production`, so you get none of that.
 
+**A dev/demo site with sample content** (e.g. `dev.example.com`): put these in `.env`, run
+`docker compose up -d` so the containers pick them up, then `db:seed --force`:
+
+```dotenv
+STACK_ENV=demo
+DEMO_PASSWORD=pick-something-long   # every demo account gets this; the default "password" is public knowledge
+```
+
+The demo admin is `admin@sdlabs.test`. Error pages still stay non-debug in demo mode.
+
 Then create your own admin account:
 
 ```bash

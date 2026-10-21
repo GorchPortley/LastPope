@@ -248,3 +248,51 @@ a resonance peak at fs and voice-coil inductance rise) written to the private di
 Shared files (`.env.example`, `bootstrap/providers.php` / provider registration, `composer.json`): edit with small
 targeted edits, re-read on conflict, never rewrite wholesale. P2a owns all models and migrations (incl. the
 `users.forum_password` → `text` + `encrypted` cast change); P2b does not edit models.
+
+## 6. Revision R1 (owner feedback after the first dev deploy)
+
+Owner decisions: **only SDLabs sells new drivers**, from the driver page. **Users sell kits, used gear
+and completed speakers** in the marketplace. **Paid driver data packs are removed** (driver measurement
+snapshots are free public downloads again, as in SDLabs). **Seasonal themes are switched manually** by
+an admin. **Demo forum content = threads + replies.** All new pages must look like the owner's own pages.
+
+### R1.1 Store vs marketplace (backend)
+- `listings.channel` (`ListingChannel`: STORE, MARKETPLACE) and `listings.category` (`ListingCategory`:
+  DRIVER for store items; KIT, COMPLETED_SPEAKER, USED_GEAR for marketplace items), plus nullable
+  `listings.design_id` (a kit / completed speaker built from a site design). Edit the original migration.
+- STORE listings: created/edited by admins only, seller is a platform seller (admin), `driver_id`
+  required, condition NEW, at most one active store listing per driver. They never appear in the
+  marketplace browse. `Driver::storeListing()` (active one) for the driver page.
+- MARKETPLACE listings: any user (Stripe Connect required to publish, as now). USED_GEAR may not be
+  condition NEW; KIT / COMPLETED_SPEAKER any condition. Optional `driver_id` (used gear that is a
+  catalog driver) and `design_id` (kits, completed speakers).
+- Admins ship platform-seller orders: ShipmentService allows any admin to mark a platform seller's
+  seller order shipped (Filament action), users still only their own.
+- Remove driver data packs: drop `drivers.data_price_cents`; Driver no longer implements Purchasable
+  and leaves the purchasable morph map / cart / buy box; driver snapshot downloads are public (no
+  login) for active drivers, owner/admin for inactive ones. Designs stay the only paid digital item.
+
+### R1.2 Forum demo content
+- `ForumClient::createPost(string $discussion, string $content, User $author)` (discussion = the
+  stored `{id}-{slug}`).
+- `php artisan forum:seed-demo` (local/demo envs only): ensures tags, synchronously creates the missing
+  thread for every public design/driver/listing (as its owner), then adds 2–4 replies per thread from
+  other demo users (a bank of plausible hobbyist comments in DemoCatalog). Idempotent (skips threads
+  that already have replies). DemoSeeder calls it at the end when the forum is enabled and reachable;
+  otherwise prints the command to run after `forum:setup`.
+
+### R1.3 Style alignment (UI)
+Reference pages (owner-built): `pages/designs/index`, `pages/designs/design/[id]`, `pages/drivers/index`,
+`pages/drivers/driver/[id]`, `pages/dashboard/designs/index`, `pages/dashboard/drivers/index`, and the
+card containers in `components/marketing`. Every marketplace/commerce page and the buy box must use the
+same layout skeleton, breadcrumbs, headings, cards, spacing, tab bars, Filament-table-in-Volt dashboards
+and colours as those.
+
+### R1.4 Seasonal themes (manual)
+- Brand colours become CSS variables (`--brand-50…950`, `--accent-*`) mapped to a Tailwind `brand`
+  palette; theme templates use `brand-*` instead of hard-coded purple.
+- `config/seasons.php`: seasons (none, winter holidays, Halloween, spring, summer, …) each with variable
+  overrides, an optional header garnish and an optional lightweight effect (e.g. CSS snowfall,
+  disabled under prefers-reduced-motion).
+- Admin picks the active season (Filament "Appearance" page, stored in Wave settings); the layout sets
+  `data-season` on `<html>` and includes the season stylesheet. Filament admin is unaffected.

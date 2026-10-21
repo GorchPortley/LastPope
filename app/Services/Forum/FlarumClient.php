@@ -167,6 +167,50 @@ class FlarumClient implements ForumClient
         return $slug;
     }
 
+    public function createPost(string $discussion, string $content, User $author): ?int
+    {
+        $this->assertConfigured();
+
+        $discussionId = $this->discussionId($discussion);
+
+        $authorId = $this->ensureUser($author)
+            ?? throw new ForumException("Could not find or create the forum account of user #{$author->getKey()}.");
+
+        $response = $this->request($authorId)->post('posts', [
+            'data' => [
+                'type' => 'posts',
+                'attributes' => ['content' => $content],
+                'relationships' => [
+                    'discussion' => ['data' => ['type' => 'discussions', 'id' => (string) $discussionId]],
+                ],
+            ],
+        ]);
+
+        $this->throwUnlessSuccessful($response, 'post the reply');
+
+        $id = $response->json('data.id');
+
+        return is_numeric($id) ? (int) $id : null;
+    }
+
+    public function replyCount(string $discussion): ?int
+    {
+        $this->assertConfigured();
+
+        $response = $this->request()->get('discussions/'.$this->discussionId($discussion));
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $this->throwUnlessSuccessful($response, 'read the discussion');
+
+        $comments = $response->json('data.attributes.commentCount');
+
+        // commentCount includes the opening post.
+        return is_numeric($comments) ? max(0, (int) $comments - 1) : null;
+    }
+
     public function discussionUrl(string $slug): string
     {
         return $this->forumUrl().'/d/'.rawurlencode($slug);
@@ -298,6 +342,16 @@ class FlarumClient implements ForumClient
         if ($this->internalUrl === '' || blank($this->apiKey)) {
             throw new ForumException('The forum is not configured: set FLARUM_INTERNAL_URL and FLARUM_API_KEY.');
         }
+    }
+
+    /** The numeric id at the start of a discussion slug ("12-my-design" -> 12). */
+    private function discussionId(string $discussion): int
+    {
+        if (! preg_match('/^(\d+)(?:-|$)/', trim($discussion), $matches)) {
+            throw new ForumException("'{$discussion}' is not a forum discussion slug (expected '<id>-<title>').");
+        }
+
+        return (int) $matches[1];
     }
 
     private function apiUrl(): string

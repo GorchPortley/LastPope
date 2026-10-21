@@ -27,6 +27,16 @@ class NullForumClient implements ForumClient
         throw new ForumException('The forum is disabled (FORUM_ENABLED=false).');
     }
 
+    public function createPost(string $discussion, string $content, User $author): ?int
+    {
+        return null;
+    }
+
+    public function replyCount(string $discussion): ?int
+    {
+        return null;
+    }
+
     public function discussionUrl(string $slug): string
     {
         return $this->forumUrl().'/d/'.rawurlencode($slug);

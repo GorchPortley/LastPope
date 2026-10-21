@@ -128,12 +128,15 @@ it('treats a listing quantity below one as one', function () {
     expect($this->carts->count($this->buyer))->toBe(1);
 });
 
-it('labels the data pack box of a driver', function () {
-    $driver = paidDriverPack(onboardedSeller(), 700);
+it('sells SDLabs\' new driver through the store listing box, with its label', function () {
+    $driver = App\Models\Driver::factory()->create();
+    $listing = storeListing(['price_cents' => 7000, 'quantity' => 9], $driver);
 
-    Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => $driver, 'label' => 'Measurement data pack'])
-        ->assertSee('Measurement data pack')->assertSee('$7.00')->assertSee('Add to cart')
-        ->call('add')->assertSee('data pack was added to your cart');
+    Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => $listing, 'label' => 'New from SDLabs'])
+        ->assertSee('New from SDLabs')->assertSee('$70.00')->assertSee('9 available')->assertSee('Add to cart')
+        ->call('add')->assertSee('was added to your cart');
+
+    expect($this->carts->count($this->buyer))->toBe(1);
 });
 
 // --- header cart icon -------------------------------------------------------------------------

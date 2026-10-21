@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\DriverCategoryEnum;
+use App\Enums\ListingCategory;
 use App\Enums\ListingCondition;
 use App\Models\Driver;
 use App\Models\Listing;
@@ -12,7 +13,7 @@ name('marketplace');
 
 /*
  * Plain GET filters (bookmarkable, no JavaScript needed):
- *   q, condition (new|used), category (driver category), driver (id), min_price / max_price (dollars),
+ *   q, condition (new|used), type (kit|completed_speaker|used_gear), category (driver category), driver (id), min_price / max_price (dollars),
  *   ships_to_me (1: only listings the buyer's default address country can be shipped to), sort (newest|price_asc|price_desc).
  */
 render(function (View $view) {
@@ -24,7 +25,12 @@ render(function (View $view) {
         ? $user->addresses()->orderByDesc('is_default')->orderBy('id')->value('country')
         : null;
 
-    $query = Listing::query()->forSale()->with(['seller.sellerProfile', 'driver']);
+    // Only what members sell to each other; SDLabs' own new drivers (the store channel) are sold from the driver pages.
+    $query = Listing::query()->marketplace()->forSale()->with(['seller.sellerProfile', 'driver']);
+
+    if (filled($type = $request->query('type')) && in_array($type, ListingCategory::marketplaceValues(), true)) {
+        $query->ofCategory($type);
+    }
 
     $condition = $request->query('condition');
     if ($condition === 'new') {
@@ -72,9 +78,10 @@ render(function (View $view) {
     return $view->with([
         'listings' => $query->paginate(12)->withQueryString(),
         'categories' => DriverCategoryEnum::cases(),
+        'listingTypes' => ListingCategory::marketplaceCases(),
         'myCountry' => $myCountry,
         'myCountryName' => $myCountry ? Countries::name($myCountry) : null,
-        'filtered' => $request->hasAny(['q', 'condition', 'category', 'driver', 'min_price', 'max_price', 'ships_to_me']),
+        'filtered' => $request->hasAny(['q', 'condition', 'type', 'category', 'driver', 'min_price', 'max_price', 'ships_to_me']),
         'driverFilter' => filled($request->query('driver')) ? Driver::find((int) $request->query('driver')) : null,
     ]);
 });

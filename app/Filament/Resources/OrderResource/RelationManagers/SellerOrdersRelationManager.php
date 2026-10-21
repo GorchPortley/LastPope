@@ -7,12 +7,15 @@ use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Filament\Resources\OrderResource\Pages\ViewOrder;
 use App\Models\SellerOrder;
 use App\Services\Marketplace\RefundService;
+use App\Services\Marketplace\ShipmentService;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Gate;
 
 class SellerOrdersRelationManager extends RelationManager
 {
@@ -57,6 +60,38 @@ class SellerOrdersRelationManager extends RelationManager
                     ->description(fn (SellerOrder $record): ?string => static::needsReversal($record) ? 'payout reversal pending' : null),
             ])
             ->actions([
+                // Platform sellers (SDLabs' store) have no seller dashboard of their own: any admin ships for them.
+                Tables\Actions\Action::make('markShipped')
+                    ->label(fn (SellerOrder $record): string => $record->status === SellerOrderStatus::SHIPPED ? 'Update tracking' : 'Mark shipped')
+                    ->icon('heroicon-m-truck')
+                    ->color('primary')
+                    ->visible(fn (SellerOrder $record): bool => in_array($record->status, [SellerOrderStatus::AWAITING_SHIPMENT, SellerOrderStatus::SHIPPED], true)
+                        && Gate::allows('ship', $record))
+                    ->modalHeading(fn (SellerOrder $record): string => 'Ship '.$record->order->number)
+                    ->modalDescription('The buyer gets an e-mail with these details.')
+                    ->modalSubmitActionLabel('Save and notify buyer')
+                    ->fillForm(fn (SellerOrder $record): array => [
+                        'carrier' => $record->carrier,
+                        'tracking_number' => $record->tracking_number,
+                        'tracking_url' => $record->tracking_url,
+                    ])
+                    ->form([
+                        TextInput::make('carrier')->required()->maxLength(100)
+                            ->datalist(['USPS', 'UPS', 'FedEx', 'DHL', 'Royal Mail', 'Canada Post', 'Australia Post', 'Deutsche Post', 'PostNL', 'La Poste']),
+                        TextInput::make('tracking_number')->required()->maxLength(100),
+                        TextInput::make('tracking_url')->label('Tracking link (optional)')->url()->maxLength(500)->placeholder('https://'),
+                    ])
+                    ->action(function (array $data, SellerOrder $record): void {
+                        try {
+                            app(ShipmentService::class)->markShipped(auth()->user(), $record, $data['carrier'], $data['tracking_number'], $data['tracking_url'] ?? null);
+                        } catch (InvalidOrderStateException $e) {
+                            Notification::make()->danger()->title('Could not ship this order')->body($e->getMessage())->send();
+
+                            return;
+                        }
+
+                        Notification::make()->success()->title('Marked as shipped')->body('The buyer has been notified.')->send();
+                    }),
                 Tables\Actions\Action::make('refundSellerOrder')
                     ->label('Refund')
                     ->icon('heroicon-m-arrow-uturn-left')

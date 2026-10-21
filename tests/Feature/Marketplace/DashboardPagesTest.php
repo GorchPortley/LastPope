@@ -187,7 +187,7 @@ it('edits a design and keeps its storage key and files location', function () {
         ->and($design->storage_key)->toBe($key);
 });
 
-it('creates a driver with a data pack price and an MSRP', function () {
+it('creates a driver with an MSRP', function () {
     $user = User::factory()->create();
 
     dashboardPage($this, $user, '/dashboard/drivers')
@@ -198,7 +198,6 @@ it('creates a driver with a data pack price and an MSRP', function () {
             'size' => 1,
             'impedance' => 4,
             'power' => 50,
-            'data_price_cents' => '3.99',
             'msrp_cents' => '45',
             'active' => false,
         ])
@@ -206,8 +205,7 @@ it('creates a driver with a data pack price and an MSRP', function () {
 
     $driver = Driver::where('model', 'T-1')->firstOrFail();
 
-    expect($driver->data_price_cents)->toBe(399)
-        ->and($driver->msrp_cents)->toBe(4500)
+    expect($driver->msrp_cents)->toBe(4500)
         ->and($driver->storage_key)->toMatch('/^[0-9a-f-]{36}$/')
         ->and($driver->user_id)->toBe($user->id);
 });
@@ -218,12 +216,12 @@ it('leaves the MSRP empty when it is not filled in', function () {
     dashboardPage($this, $user, '/dashboard/drivers')
         ->callTableAction('create', data: [
             'brand' => 'Aurelia', 'model' => 'T-2', 'category' => 'TWEETER', 'size' => 1, 'impedance' => 4, 'power' => 50,
-            'data_price_cents' => '', 'msrp_cents' => '', 'active' => false,
+            'msrp_cents' => '', 'active' => false,
         ])
         ->assertHasNoTableActionErrors();
 
     $driver = Driver::where('model', 'T-2')->firstOrFail();
-    expect($driver->data_price_cents)->toBe(0)->and($driver->msrp_cents)->toBeNull();
+    expect($driver->msrp_cents)->toBeNull();
 });
 
 it('queues a driver snapshot', function () {

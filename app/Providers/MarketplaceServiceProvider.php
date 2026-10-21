@@ -49,7 +49,6 @@ class MarketplaceServiceProvider extends ServiceProvider
         // Non-enforcing: other models keep storing their class name (Wave/spatie store App\Models\User).
         Relation::morphMap([
             'design' => Design::class,
-            'driver' => Driver::class,
             'listing' => Listing::class,
         ]);
 

@@ -297,3 +297,99 @@ it('reports an unreachable forum', function () {
     expect($status['reachable'])->toBeFalse()
         ->and($status['message'])->toContain('Cannot connect');
 });
+
+// --- replies (R1.2) ---------------------------------------------------------------------------------------
+
+it('posts a reply to the discussion as the author, with the same per-member credentials as discussions', function () {
+    Http::fake([
+        FORUM_API.'/users?*' => Http::response(['data' => [['id' => '44']]]),
+        FORUM_API.'/posts' => Http::response(['data' => ['type' => 'posts', 'id' => '501', 'attributes' => ['number' => 2]]], 201),
+    ]);
+
+    $postId = flarum()->createPost('12-my-design', 'Great build, how thick is the baffle?', User::factory()->create());
+
+    expect($postId)->toBe(501);
+
+    $post = collect(recorded())->first(fn ($r) => $r[0] === 'POST');
+    $data = $post[2]['data'];
+
+    expect($post[1])->toBe(FORUM_API.'/posts')
+        ->and($post[3])->toBe('Token master-key-123; userId=44') // acts as the author, not as the admin
+        ->and($data['type'])->toBe('posts')
+        ->and($data['attributes']['content'])->toBe('Great build, how thick is the baffle?')
+        ->and($data['relationships']['discussion']['data'])->toBe(['type' => 'discussions', 'id' => '12']);
+});
+
+it('creates the forum account of a replier that has none yet', function () {
+    Http::fake([
+        FORUM_API.'/users?*' => Http::response(['data' => []]),
+        FORUM_API.'/users' => Http::response(['data' => ['id' => '61']], 201),
+        FORUM_API.'/posts' => Http::response(['data' => ['id' => '7']], 201),
+    ]);
+
+    expect(flarum()->createPost('3-driver-thread', 'Nice measurements.', User::factory()->create()))->toBe(7);
+
+    $methods = collect(recorded())->map(fn ($r) => $r[0].' '.parse_url($r[1], PHP_URL_PATH))->all();
+    expect($methods)->toBe(['GET /forum/api/users', 'POST /forum/api/users', 'POST /forum/api/posts']);
+});
+
+it('takes the discussion id from the stored slug, and rejects anything else', function () {
+    Http::fake([
+        FORUM_API.'/users?*' => Http::response(['data' => [['id' => '44']]]),
+        FORUM_API.'/posts' => Http::response(['data' => ['id' => '1']], 201),
+    ]);
+
+    flarum()->createPost('345', 'Id only is fine.', User::factory()->create());
+    expect(collect(recorded())->first(fn ($r) => $r[0] === 'POST')[2]['data']['relationships']['discussion']['data']['id'])->toBe('345');
+
+    expect(fn () => flarum()->createPost('my-design', 'No id.', User::factory()->create()))
+        ->toThrow(ForumException::class, 'not a forum discussion slug');
+});
+
+it('reports Flarum errors when replying, and lets the caller see a throttled reply', function () {
+    Http::fake([
+        FORUM_API.'/users?*' => Http::response(['data' => [['id' => '44']]]),
+        FORUM_API.'/posts' => Http::sequence()
+            ->push(['errors' => [['status' => '429', 'code' => 'too_many_requests']]], 429)
+            ->push(['errors' => [['detail' => 'You are not allowed to do that.']]], 403),
+    ]);
+
+    try {
+        flarum()->createPost('12-x', 'Slow down?', User::factory()->create());
+        $this->fail('Expected a ForumException.');
+    } catch (ForumException $e) {
+        expect($e->isThrottled())->toBeTrue()->and($e->getCode())->toBe(429);
+    }
+
+    try {
+        flarum()->createPost('12-x', 'Forbidden?', User::factory()->create());
+        $this->fail('Expected a ForumException.');
+    } catch (ForumException $e) {
+        expect($e->isThrottled())->toBeFalse()->and($e->getMessage())->toContain('HTTP 403');
+    }
+});
+
+it('counts the replies of a discussion without its opening post', function () {
+    Http::fake([
+        FORUM_API.'/discussions/12' => Http::response(['data' => ['id' => '12', 'attributes' => ['commentCount' => 4]]]),
+        FORUM_API.'/discussions/13' => Http::response(['data' => ['id' => '13', 'attributes' => ['commentCount' => 1]]]),
+        FORUM_API.'/discussions/14' => Http::response(['errors' => []], 404),
+    ]);
+
+    expect(flarum()->replyCount('12-busy-thread'))->toBe(3)
+        ->and(flarum()->replyCount('13-quiet-thread'))->toBe(0)
+        ->and(flarum()->replyCount('14-gone'))->toBeNull();
+
+    // read as the forum admin
+    expect(collect(recorded())->first()[3])->toBe('Token master-key-123; userId=1');
+});
+
+it('does nothing for replies when the forum is disabled', function () {
+    $null = new App\Services\Forum\NullForumClient;
+
+    expect($null->createPost('12-x', 'Hello', User::factory()->create()))->toBeNull()
+        ->and($null->replyCount('12-x'))->toBeNull();
+
+    Http::fake();
+    Http::assertNothingSent();
+});

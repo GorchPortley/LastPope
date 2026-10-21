@@ -200,7 +200,7 @@ new class extends Component implements HasForms {
                             <p>You sell as the platform: revenue stays with {{ config('app.name') }} and no payout account is needed.</p>
                             @break
                         @case('active')
-                            <p>Payments for your paid items are transferred to your bank through Stripe. You can publish paid designs, data packs and listings.</p>
+                            <p>Payments for your paid items are transferred to your bank through Stripe. You can publish paid designs and listings.</p>
                             <x-button tag="a" href="{{ route('selling.dashboard-link') }}" color="gray">Open Stripe dashboard</x-button>
                             @break
                         @case('pending')
@@ -215,7 +215,7 @@ new class extends Component implements HasForms {
                             <x-button tag="a" href="{{ route('selling.connect') }}">Continue Stripe setup</x-button>
                             @break
                         @default
-                            <p>Connect a Stripe account to get paid. Free designs and data packs work without it, but you need it to <strong>publish paid items</strong> and listings. Setup takes a few minutes.</p>
+                            <p>Connect a Stripe account to get paid. Free designs work without it, but you need it to <strong>publish paid designs</strong> and listings. Setup takes a few minutes.</p>
                             <x-button tag="a" href="{{ route('selling.connect') }}">Connect Stripe</x-button>
                     @endswitch
                 </div>

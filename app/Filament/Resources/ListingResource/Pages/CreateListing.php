@@ -11,6 +11,13 @@ class CreateListing extends CreateRecord
 {
     protected static string $resource = ListingResource::class;
 
+    protected function beforeCreate(): void
+    {
+        if (! ListingResource::passesChannelRules($this->form->getState())) {
+            $this->halt();
+        }
+    }
+
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $uuid = (string) ($data['uuid'] ?? '');

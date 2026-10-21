@@ -1,16 +1,22 @@
 <?php
 
+use App\Enums\ListingCategory;
+use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
+use App\Enums\ListingStatus;
 use App\Enums\OrderStatus;
 use App\Http\Livewire\DriverFrequencyResponseViewer;
 use App\Http\Livewire\FrequencyResponseViewer;
 use App\Models\Banner;
 use App\Models\Cart;
+use App\Models\CartItem;
 use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Entitlement;
 use App\Models\Listing;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\User;
 use Database\Seeders\DemoSeeder;
@@ -42,7 +48,7 @@ it('creates the demo users', function () {
     expect(SellerProfile::onboarded()->count())->toBeGreaterThanOrEqual(2);
 });
 
-it('has drivers in every category with measurement files and data packs', function () {
+it('has drivers in every category with measurement files and public snapshots', function () {
     $drivers = Driver::with('snapshots')->get();
 
     expect($drivers->count())->toBeGreaterThanOrEqual(20)
@@ -101,23 +107,83 @@ it('lets every active demo design be sold, and explains the one that cannot be p
         ->and($draft->isAvailableForPurchase())->toBeFalse();
 });
 
-it('has listings: new and used, pairs, domestic-only and in several states', function () {
-    $listings = Listing::all();
+it('has a store: one active listing per ~12 catalogue drivers, sold by the demo admin', function () {
+    $admin = User::where('email', 'admin@sdlabs.test')->firstOrFail();
+    $store = Listing::store()->with('driver')->get();
 
-    expect($listings->count())->toBeGreaterThanOrEqual(15)
+    expect($store->count())->toBeGreaterThanOrEqual(10)->toBeLessThanOrEqual(14)
+        ->and($store->pluck('driver_id')->unique()->count())->toBe($store->count()) // one per driver
+        ->and($store->every(fn ($l) => $l->seller_id === $admin->id))->toBeTrue()
+        ->and($store->every(fn ($l) => $l->category === ListingCategory::DRIVER && $l->condition === ListingCondition::NEW))->toBeTrue()
+        ->and($store->every(fn ($l) => $l->status === ListingStatus::ACTIVE && $l->quantity >= 5 && $l->quantity <= 40))->toBeTrue()
+        ->and($store->every(fn ($l) => $l->price_cents > 0 && $l->ships_from_country === strtoupper(config('marketplace.default_country', 'US'))))->toBeTrue()
+        ->and($store->every(fn ($l) => $l->shipping_domestic_cents > 0 && $l->shipping_international_cents > $l->shipping_domestic_cents))->toBeTrue();
+
+    foreach ($store as $listing) {
+        expect($listing->driver->storeListing()?->is($listing))->toBeTrue()
+            ->and($listing->channelRuleViolations())->toBe([])
+            ->and($listing->isAvailableForPurchase())->toBeTrue();
+    }
+
+    // none of it leaks into the marketplace
+    expect(Listing::marketplace()->whereIn('id', $store->pluck('id'))->count())->toBe(0);
+});
+
+it('has marketplace listings: kits, completed speakers and used gear in several states, all within the rules', function () {
+    $listings = Listing::marketplace()->get();
+    $byCategory = $listings->groupBy(fn ($l) => $l->category->value);
+
+    expect($listings->count())->toBeGreaterThanOrEqual(14)->toBeLessThanOrEqual(18)
+        ->and($byCategory['kit']->count())->toBeGreaterThanOrEqual(3)
+        ->and($byCategory['completed_speaker']->count())->toBeGreaterThanOrEqual(2)
+        ->and($byCategory['used_gear']->count())->toBeGreaterThanOrEqual(5)
+        ->and($byCategory->keys()->sort()->values()->all())->toBe(['completed_speaker', 'kit', 'used_gear'])
+        // some kits / speakers are built from site designs, some used gear is a catalogue driver
+        ->and($byCategory['kit']->whereNotNull('design_id')->count())->toBeGreaterThanOrEqual(2)
+        ->and($byCategory['completed_speaker']->whereNotNull('design_id')->count())->toBeGreaterThanOrEqual(2)
+        ->and($byCategory['used_gear']->whereNotNull('driver_id')->count())->toBeGreaterThanOrEqual(4)
         ->and($listings->filter->isNew()->count())->toBeGreaterThan(3)
         ->and($listings->filter->isUsed()->count())->toBeGreaterThan(3)
         ->and($listings->where('units_per_lot', 2)->count())->toBeGreaterThan(1)
         ->and($listings->whereNull('shipping_international_cents')->count())->toBeGreaterThan(1)
         ->and($listings->pluck('status')->map->value->unique()->sort()->values()->all())->toContain('active', 'draft', 'paused', 'sold_out')
-        ->and($listings->pluck('condition')->unique()->count())->toBeGreaterThanOrEqual(4)
-        ->and($listings->whereNotNull('driver_id')->count())->toBeGreaterThan(5);
+        ->and($listings->pluck('condition')->unique()->count())->toBeGreaterThanOrEqual(4);
 
     foreach ($listings as $listing) {
-        expect($listing->photos)->not->toBeEmpty()
+        expect($listing->channelRuleViolations())->toBe([], $listing->title)
+            ->and($listing->category->channel())->toBe(ListingChannel::MARKETPLACE)
+            ->and($listing->photos)->not->toBeEmpty()
             ->and(Storage::disk('public')->exists($listing->photos[0]))->toBeTrue()
             ->and($listing->photos[0])->toStartWith('listings/'.$listing->uuid.'/');
+
+        if ($listing->category === ListingCategory::USED_GEAR) {
+            expect($listing->condition)->not->toBe(ListingCondition::NEW);
+        }
+
+        if ($listing->design_id !== null) {
+            expect($listing->design)->not->toBeNull()->and($listing->category)->not->toBe(ListingCategory::USED_GEAR);
+        }
     }
+});
+
+it('only lets orders, carts and entitlements point at things that can be bought', function () {
+    foreach (OrderItem::with('purchasable')->get() as $item) {
+        expect($item->purchasable_type)->toBeIn(['design', 'listing'])
+            ->and($item->purchasable)->not->toBeNull($item->title);
+    }
+
+    foreach (CartItem::with('purchasable')->get() as $item) {
+        expect($item->purchasable_type)->toBeIn(['design', 'listing'])
+            ->and($item->purchasable)->not->toBeNull();
+    }
+
+    foreach (Entitlement::with('entitleable')->get() as $entitlement) {
+        expect($entitlement->entitleable)->toBeInstanceOf(Design::class);
+    }
+
+    // SDLabs' own sales are in the data: awaiting shipment (an admin ships it) and already shipped
+    $adminOrders = SellerOrder::whereHas('seller', fn ($q) => $q->where('email', 'admin@sdlabs.test'))->get();
+    expect($adminOrders->pluck('status')->map->value->all())->toContain('awaiting_shipment', 'shipped');
 });
 
 it('has entitlements, carts and orders in several states, plus reviews and banners', function () {
@@ -184,10 +250,11 @@ it('does nothing when the demo data is already there', function () {
 it('only seeds demo data in local, demo and testing environments', function () {
     $this->app['env'] = 'production';
     $users = User::count();
-    User::where('email', 'admin@sdlabs.test')->delete(); // would be re-created if the guard did not hold
+    // the admin owns listings and orders, so rename instead of delete: it would be re-seeded if the guard did not hold
+    User::where('email', 'admin@sdlabs.test')->update(['email' => 'admin-renamed@sdlabs.test']);
 
     app(DemoSeeder::class)->run();
 
     expect(User::where('email', 'admin@sdlabs.test')->exists())->toBeFalse()
-        ->and(User::count())->toBeLessThan($users);
+        ->and(User::count())->toBe($users);
 });

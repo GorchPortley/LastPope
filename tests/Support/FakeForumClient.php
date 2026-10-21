@@ -12,6 +12,15 @@ class FakeForumClient implements ForumClient
     /** @var array<int, array{title: string, content: string, tag: string, author: int}> */
     public array $discussions = [];
 
+    /** @var array<int, array{discussion: string, content: string, author: int}> */
+    public array $posts = [];
+
+    /** @var array<string, int> discussion slug => replies that already exist (written by somebody else) */
+    public array $existingReplies = [];
+
+    /** The next N createDiscussion / createPost calls fail with Flarum's "429 slow down". */
+    public int $throttle = 0;
+
     /** @var array<int, int> */
     public array $ensuredUsers = [];
 
@@ -67,9 +76,35 @@ class FakeForumClient implements ForumClient
             throw new ForumException("The forum tag '{$tagSlug}' does not exist.");
         }
 
+        $this->failWhenThrottled();
+
         $this->discussions[] = ['title' => $title, 'content' => $content, 'tag' => $tagSlug, 'author' => $author->getKey()];
 
         return count($this->discussions).'-'.str($title)->slug();
+    }
+
+    public function createPost(string $discussion, string $content, User $author): ?int
+    {
+        $this->failWhenThrottled();
+
+        $this->posts[] = ['discussion' => $discussion, 'content' => $content, 'author' => $author->getKey()];
+
+        return 1000 + count($this->posts);
+    }
+
+    public function replyCount(string $discussion): ?int
+    {
+        return ($this->existingReplies[$discussion] ?? 0)
+            + count(array_filter($this->posts, fn (array $post) => $post['discussion'] === $discussion));
+    }
+
+    private function failWhenThrottled(): void
+    {
+        if ($this->throttle > 0) {
+            $this->throttle--;
+
+            throw new ForumException('Flarum could not post (HTTP 429): Too Many Requests', 429);
+        }
     }
 
     public function discussionUrl(string $slug): string

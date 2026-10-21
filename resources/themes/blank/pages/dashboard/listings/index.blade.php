@@ -1,8 +1,11 @@
 <?php
 
+use App\Enums\ListingCategory;
+use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
 use App\Enums\ListingStatus;
 use App\Filament\Forms\MoneyInput;
+use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Listing;
 use App\Services\Marketplace\ConnectOnboardingService;
@@ -64,7 +67,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
         }
 
         $probe = $record ? clone $record : new Listing(['seller_id' => auth()->id()]);
-        $probe->fill(Arr::only($data, ['price_cents', 'quantity']));
+        $probe->fill(Arr::only($data, ['price_cents', 'quantity', 'category', 'condition', 'driver_id', 'design_id']));
 
         // A sold-out listing stays published; restocking it (quantity above zero) puts it back on sale.
         if ($current === ListingStatus::SOLD_OUT && (int) $probe->quantity < 1) {
@@ -95,6 +98,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             $uuid = (string) ($data['uuid'] ?? '');
             $data['uuid'] = Str::isUuid($uuid) && ! Listing::withTrashed()->where('uuid', $uuid)->exists() ? $uuid : (string) Str::uuid();
             $data['seller_id'] = auth()->id();
+            // Users sell in the marketplace; SDLabs' own store listings are managed by admins in the admin panel.
+            $data['channel'] = ListingChannel::MARKETPLACE->value;
             // Every seller gets a shop page (shop name = their name until they pick another one).
             app(ConnectOnboardingService::class)->ensureProfile(auth()->user());
         }
@@ -128,10 +133,28 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
 
             Section::make('What are you selling?')
                 ->schema([
+                    Select::make('category')
+                        ->label('Type')
+                        ->options(ListingCategory::marketplaceOptions())
+                        ->in(ListingCategory::marketplaceValues())
+                        ->required()
+                        ->default(ListingCategory::USED_GEAR->value)
+                        ->live()
+                        ->native(false),
                     TextInput::make('title')
                         ->required()
                         ->maxLength(160)
                         ->placeholder('Dayton Audio RS225-8 8" reference woofer'),
+                    Select::make('design_id')
+                        ->label('Built from a design (optional)')
+                        ->helperText('Kits and finished speakers can link the design on this site they are built from.')
+                        ->searchable()
+                        ->getSearchResultsUsing(fn (string $search): array => Design::query()->active()
+                            ->where('name', 'like', "%{$search}%")->orderBy('name')->limit(50)->get()
+                            ->mapWithKeys(fn (Design $design) => [$design->id => $design->name])->all())
+                        ->getOptionLabelUsing(fn ($value): ?string => Design::find($value)?->name)
+                        ->exists(table: 'designs', column: 'id')
+                        ->nullable(),
                     Select::make('driver_id')
                         ->label('Driver from the catalogue (optional)')
                         ->helperText('Link a driver from the database so shoppers see its specs and measurements.')
@@ -147,8 +170,15 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         ->options(ListingCondition::options())
                         ->in(array_keys(ListingCondition::options()))
                         ->required()
-                        ->default(ListingCondition::NEW->value)
-                        ->native(false),
+                        ->default(ListingCondition::USED_GOOD->value)
+                        ->native(false)
+                        ->rules([
+                            fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
+                                if ($get('category') === ListingCategory::USED_GEAR->value && $value === ListingCondition::NEW->value) {
+                                    $fail('Used gear cannot be listed as new: pick a used condition, or list it as a kit or a completed speaker.');
+                                }
+                            },
+                        ]),
                     FileUpload::make('photos')
                         ->label('Photos')
                         ->helperText('Up to 8 pictures; the first one is the cover. Drag to reorder.')
@@ -238,9 +268,9 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
     public function table(Table $table): Table
     {
         return $table
-            ->query(Listing::query()->where('seller_id', auth()->id()))
+            ->query(Listing::query()->marketplace()->where('seller_id', auth()->id()))
             ->heading('Listings')
-            ->description('New and used drivers and gear you sell in the marketplace.')
+            ->description('Kits, finished speakers and used gear you sell in the marketplace.')
             ->headerActions([
                 CreateAction::make()
                     ->label('New listing')
@@ -273,7 +303,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->searchable()
                     ->sortable()
                     ->limit(48)
-                    ->description(fn (Listing $record): string => $record->condition->label().($record->isLot() ? ' - lot of '.$record->units_per_lot : '')),
+                    ->description(fn (Listing $record): string => $record->category->label().' - '.$record->condition->label().($record->isLot() ? ' - lot of '.$record->units_per_lot : '')),
                 TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn ($state): string => ($state instanceof ListingStatus ? $state : ListingStatus::from((string) $state))->label())
@@ -296,6 +326,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->defaultPaginationPageOption(10)
             ->filters([
                 SelectFilter::make('status')->options(ListingStatus::options()),
+                SelectFilter::make('category')->options(ListingCategory::marketplaceOptions()),
                 SelectFilter::make('condition')->options(ListingCondition::options()),
             ])
             ->actions([

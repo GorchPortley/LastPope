@@ -76,18 +76,47 @@ it('answers 404 when the file is gone', function () {
     $this->actingAs($design->designer)->get(route('design-snapshots.download', designSnapshotOf($design)))->assertNotFound();
 });
 
-it('protects driver snapshots the same way', function () {
-    $owner = onboardedSeller();
-    $driver = Driver::factory()->for($owner, 'creator')->paid()->withSnapshot('v1.0', true)->create();
+it('lets anybody download the snapshots of an active driver, with no login', function () {
+    $driver = Driver::factory()->withSnapshot('v1.0', true)->create();
     $snapshot = $driver->snapshots()->first();
-    $buyer = User::factory()->create();
+    $stranger = User::factory()->create();
+    $expected = Storage::disk('private')->get($snapshot->download_path);
 
-    $this->get(route('driver-snapshots.download', $snapshot))->assertRedirect();
-    $this->actingAs($buyer)->get(route('driver-snapshots.download', $snapshot))->assertForbidden();
+    $guest = $this->get(route('driver-snapshots.download', $snapshot))->assertOk();
+    expect($guest->streamedContent())->toBe($expected)
+        ->and($guest->headers->get('Content-Type'))->toBe('application/zip');
 
-    $buyer->grantEntitlement($driver);
-    $response = $this->actingAs($buyer)->get(route('driver-snapshots.download', $snapshot))->assertOk();
-    expect($response->streamedContent())->toBe(Storage::disk('private')->get($snapshot->download_path));
+    expect($this->actingAs($stranger)->get(route('driver-snapshots.download', $snapshot))->assertOk()->streamedContent())->toBe($expected);
+
+    // nothing is granted or recorded: the data is simply free
+    expect($stranger->entitlements()->count())->toBe(0);
+});
+
+it('keeps the snapshots of an inactive driver for its owner and admins', function () {
+    $owner = User::factory()->create();
+    $driver = Driver::factory()->for($owner, 'creator')->draft()->withSnapshot('v1.0', true)->create();
+    $snapshot = $driver->snapshots()->first();
+    $url = route('driver-snapshots.download', $snapshot);
+
+    // everybody else is told it is not there
+    $this->get($url)->assertNotFound();
+    $this->actingAs(User::factory()->create())->get($url)->assertNotFound();
+
+    $this->actingAs($owner)->get($url)->assertOk();
+    $this->actingAs(User::factory()->admin()->create())->get($url)->assertOk();
+
+    // publishing it opens the download to the world
+    $driver->update(['active' => true]);
+    auth()->logout();
+    $this->get($url)->assertOk();
+});
+
+it('still needs a login for design snapshots, and answers 404 when a public driver file is gone', function () {
+    $design = paidDesign();
+    $this->get(route('design-snapshots.download', designSnapshotOf($design)))->assertRedirect();
+
+    $driver = Driver::factory()->withSnapshot('v1.0', false)->create(); // snapshot row, no ZIP on the disk
+    $this->get(route('driver-snapshots.download', $driver->snapshots()->first()))->assertNotFound();
 });
 
 it('does not expose private files under /storage', function () {

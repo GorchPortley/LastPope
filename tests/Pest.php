@@ -97,14 +97,13 @@ function sellableListing(?App\Models\User $seller = null, int $cents = 5000, arr
         ->create(array_merge(['price_cents' => $cents, 'quantity' => 5], $attributes));
 }
 
-/** A paid, active driver data pack with a snapshot, by $seller. */
-function paidDriverPack(?App\Models\User $seller = null, int $cents = 700): App\Models\Driver
+/**
+ * An active STORE listing (SDLabs sells a new catalogue driver): sold by $admin (a new admin by default),
+ * for $driver (a new driver by default), 5-40 units unless the attributes say otherwise.
+ */
+function storeListing(array $attributes = [], ?App\Models\Driver $driver = null, ?App\Models\User $admin = null): App\Models\Listing
 {
-    return App\Models\Driver::factory()
-        ->for($seller ?? onboardedSeller(), 'creator')
-        ->paid($cents)
-        ->withSnapshot('v1.0')
-        ->create();
+    return App\Models\Listing::factory()->inStore($driver, $admin)->create(array_merge(['price_cents' => 12900], $attributes));
 }
 
 function addressFor(App\Models\User $user, string $country = 'US', bool $default = true): App\Models\Address

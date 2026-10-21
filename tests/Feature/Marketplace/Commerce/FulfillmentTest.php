@@ -19,7 +19,7 @@ beforeEach(function () {
     $this->buyer = User::factory()->create();
 });
 
-/** Digital from A, a data pack from B, a physical listing from C, a design from the platform. */
+/** Digital from A, a second paid design from B, a physical listing from C, a design from the platform. */
 function mixedOrder(User $buyer, array $listingAttributes = []): array
 {
     $admin = User::factory()->admin()->create();
@@ -29,7 +29,7 @@ function mixedOrder(User $buyer, array $listingAttributes = []): array
 
     $things = [
         'design' => paidDesign($sellerA, 2000),
-        'pack' => paidDriverPack($sellerB, 700),
+        'pack' => paidDesign($sellerB, 700),
         'listing' => sellableListing($sellerC, 8000, array_merge(['quantity' => 3, 'shipping_domestic_cents' => 900], $listingAttributes)),
         'house' => paidDesign($admin, 1500),
     ];
@@ -136,7 +136,7 @@ it('marks a listing sold out when the last unit is bought', function () {
 
 it('completes an order that only contains digital items', function () {
     Notification::fake();
-    $order = pendingOrder($this->buyer, [paidDesign(cents: 1000), paidDriverPack(cents: 500)]);
+    $order = pendingOrder($this->buyer, [paidDesign(cents: 1000), paidDesign(cents: 500)]);
 
     payOrder($order);
 

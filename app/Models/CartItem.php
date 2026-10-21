@@ -31,7 +31,7 @@ class CartItem extends Model
         return $this->belongsTo(Cart::class);
     }
 
-    /** Design, Driver or Listing. */
+    /** Design or Listing. */
     public function purchasable(): MorphTo
     {
         return $this->morphTo();

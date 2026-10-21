@@ -55,17 +55,13 @@ it('links downloads of a free design to every signed-in user without handing out
     expect($user->entitlements()->count())->toBe(0);
 });
 
-it('shows driver prices and gates the data pack links', function () {
-    $driver = Driver::factory()->for(onboardedSeller(), 'creator')->paid(399)->withSnapshot('v1.0', true)->create(['msrp_cents' => 12900]);
+it('shows the MSRP and links the measurement downloads on the driver page to everybody', function () {
+    $driver = Driver::factory()->withSnapshot('v1.0', true)->create(['msrp_cents' => 12900]);
     $url = route('driver-snapshots.download', $driver->snapshots->first());
 
-    $this->get('/drivers/driver/'.$driver->id)->assertOk()->assertSee('$129.00')->assertSee('$3.99')->assertDontSee($url, false);
+    $this->get('/drivers/driver/'.$driver->id)->assertOk()->assertSee('$129.00')->assertSee($url, false);
 
-    $buyer = User::factory()->create();
-    $this->actingAs($buyer)->get('/drivers/driver/'.$driver->id)->assertOk()->assertDontSee($url, false);
-
-    $buyer->grantEntitlement($driver);
-    $this->actingAs($buyer)->get('/drivers/driver/'.$driver->id)->assertOk()->assertSee($url, false);
+    $this->actingAs(User::factory()->create())->get('/drivers/driver/'.$driver->id)->assertOk()->assertSee($url, false);
 });
 
 it('shows the cart with prices from the cent columns and keeps guests out', function () {

@@ -1,12 +1,10 @@
 @php
     use App\Models\Design;
-    use App\Models\Driver;
 
     $p = $purchasable;
     $lotWord = $state['lot'];
     $kindWord = match (true) {
         $p instanceof Design => 'design',
-        $p instanceof Driver => 'data pack',
         default => 'listing',
     };
 @endphp

@@ -4,6 +4,7 @@ namespace Database\Seeders\Demo;
 
 use App\Enums\DesignCategoryEnum;
 use App\Enums\DriverCategoryEnum;
+use App\Enums\ListingCategory;
 use App\Enums\ListingCondition;
 use App\Enums\ListingStatus;
 
@@ -44,10 +45,10 @@ final class DemoCatalog
         $d = fn (string $slug, string $brand, string $model, DriverCategoryEnum $category, float $size, int $impedance, int $power, string $owner, array $extra = []) => [
             'slug' => $slug, 'brand' => $brand, 'model' => $model, 'category' => $category->value, 'size' => $size,
             'impedance' => $impedance, 'power' => $power, 'owner' => $owner,
-        ] + $extra + ['official' => false, 'data_price_cents' => 0, 'msrp_cents' => null, 'measure' => null];
+        ] + $extra + ['official' => false, 'msrp_cents' => null, 'measure' => null];
 
         $list = [
-            $d('a38', 'Aurelia', 'A38-S', DriverCategoryEnum::SUBWOOFER, 15, 4, 600, 'admin', ['official' => true, 'data_price_cents' => 699, 'msrp_cents' => 31900,
+            $d('a38', 'Aurelia', 'A38-S', DriverCategoryEnum::SUBWOOFER, 15, 4, 600, 'admin', ['official' => true, 'msrp_cents' => 31900,
                 'measure' => ['type' => 'subwoofer', 'fs' => 22, 'qes' => 0.38, 'qms' => 5.2, 're' => 3.4, 'sd_cm2' => 855, 'bl' => 17.5, 'le_mh' => 2.4, 'xmax_mm' => 16], 'tag' => 'Long-throw 15 inch subwoofer']),
             $d('a30', 'Aurelia', 'A30-S', DriverCategoryEnum::SUBWOOFER, 12, 4, 400, 'admin', ['official' => true, 'msrp_cents' => 21900,
                 'measure' => ['type' => 'subwoofer', 'fs' => 26, 'qes' => 0.42, 'qms' => 4.6, 're' => 3.2, 'sd_cm2' => 540, 'bl' => 14.6, 'le_mh' => 1.9, 'xmax_mm' => 13], 'tag' => 'Compact 12 inch subwoofer']),
@@ -59,7 +60,7 @@ final class DemoCatalog
                 'measure' => ['type' => 'woofer', 'fs' => 55, 'qes' => 0.5, 'qms' => 3.5, 're' => 3.1, 'sd_cm2' => 135, 'bl' => 7.0, 'le_mh' => 0.6, 'xmax_mm' => 6], 'tag' => 'Punchy 6.5 inch midbass']),
             $d('b5', 'Brightwell', 'B5-W', DriverCategoryEnum::WOOFER, 5, 4, 80, 'designer2', ['msrp_cents' => 5900,
                 'measure' => ['type' => 'woofer', 'fs' => 62, 'qes' => 0.55, 'qms' => 4.1, 're' => 3.2, 'sd_cm2' => 85, 'bl' => 5.9, 'le_mh' => 0.45, 'xmax_mm' => 4.5, 'f_lp' => 9000], 'tag' => '5 inch coated-paper woofer']),
-            $d('a16', 'Aurelia', 'A16-W', DriverCategoryEnum::WOOFER, 6.5, 6, 100, 'designer1', ['data_price_cents' => 499, 'msrp_cents' => 7900,
+            $d('a16', 'Aurelia', 'A16-W', DriverCategoryEnum::WOOFER, 6.5, 6, 100, 'designer1', ['msrp_cents' => 7900,
                 'measure' => ['type' => 'woofer', 'fs' => 38, 'qes' => 0.45, 'qms' => 3.2, 're' => 5.6, 'sd_cm2' => 133, 'bl' => 7.4, 'le_mh' => 0.7, 'xmax_mm' => 5.5], 'tag' => '6.5 inch woofer for two-way monitors']),
             $d('n17', 'NordCone', 'N17-W', DriverCategoryEnum::WOOFER, 6.5, 4, 100, 'designer2', ['msrp_cents' => 6900,
                 'measure' => ['type' => 'woofer', 'fs' => 44, 'qes' => 0.5, 'qms' => 3.8, 're' => 3.3, 'sd_cm2' => 128, 'bl' => 6.6, 'le_mh' => 0.55, 'xmax_mm' => 5], 'tag' => 'Fibre-cone 6.5 inch woofer']),
@@ -69,9 +70,9 @@ final class DemoCatalog
                 'measure' => ['type' => 'midrange', 'fs' => 140, 'qes' => 0.7, 'qms' => 2.8, 're' => 3.4, 'sd_cm2' => 28, 'bl' => 3.4, 'le_mh' => 0.12, 'xmax_mm' => 3, 'f_lp' => 12000], 'tag' => '3 inch dome midrange']),
             $d('m5', 'Brightwell', 'M5-MR', DriverCategoryEnum::MIDRANGE, 5, 6, 60, 'designer3', ['msrp_cents' => 6400,
                 'measure' => ['type' => 'midrange', 'fs' => 85, 'qes' => 0.6, 'qms' => 3.4, 're' => 5.6, 'sd_cm2' => 85, 'bl' => 6.2, 'le_mh' => 0.3, 'xmax_mm' => 3.5], 'tag' => '5 inch midrange']),
-            $d('kx8', 'Kestrel', 'KX8-C', DriverCategoryEnum::COAXIAL, 8, 8, 120, 'admin', ['official' => true, 'data_price_cents' => 299, 'msrp_cents' => 16900,
+            $d('kx8', 'Kestrel', 'KX8-C', DriverCategoryEnum::COAXIAL, 8, 8, 120, 'admin', ['official' => true, 'msrp_cents' => 16900,
                 'measure' => ['type' => 'fullrange', 'fs' => 48, 'qes' => 0.6, 'qms' => 3.5, 're' => 5.4, 'sd_cm2' => 215, 'bl' => 9.0, 'le_mh' => 0.8, 'xmax_mm' => 6, 'f_lp' => 16000], 'tag' => '8 inch coaxial']),
-            $d('at25', 'Aurelia', 'AT-25', DriverCategoryEnum::TWEETER, 1, 4, 80, 'admin', ['official' => true, 'data_price_cents' => 399, 'msrp_cents' => 3900,
+            $d('at25', 'Aurelia', 'AT-25', DriverCategoryEnum::TWEETER, 1, 4, 80, 'admin', ['official' => true, 'msrp_cents' => 3900,
                 'measure' => ['type' => 'tweeter', 'fs' => 700, 'qes' => 0.8, 'qms' => 2.4, 're' => 4.7, 'sd_cm2' => 5.7, 'bl' => 2.7, 'le_mh' => 0.04, 'xmax_mm' => 0.5], 'tag' => '1 inch soft dome tweeter']),
             $d('ht28', 'Halden', 'HT-28', DriverCategoryEnum::TWEETER, 1.1, 6, 80, 'designer1', ['msrp_cents' => 4500,
                 'measure' => ['type' => 'tweeter', 'fs' => 600, 'qes' => 0.75, 'qms' => 2.6, 're' => 5.2, 'sd_cm2' => 7.0, 'bl' => 3.1, 'le_mh' => 0.05, 'xmax_mm' => 0.6], 'tag' => '1.1 inch fabric dome tweeter']),
@@ -186,35 +187,116 @@ final class DemoCatalog
     }
 
     /**
-     * Physical listings. `kind` picks the product photo (woofer, tweeter, ...).
+     * SDLabs' own new drivers: one STORE listing per driver, sold by the demo admin. Prices sit a little
+     * under the MSRP; heavy drivers cost more to ship. Ships from config('marketplace.default_country').
+     *
+     * @return array<int, array<string, mixed>> price/shipping in cents; `driver` is a drivers() slug
+     */
+    public static function storeListings(): array
+    {
+        $s = fn (string $driver, int $price, int $quantity, int $domestic, int $international, int $additional, string $kind = 'woofer') => compact('driver', 'price', 'quantity', 'domestic', 'international', 'additional', 'kind');
+
+        return [
+            $s('a38', 29900, 12, 2900, 7900, 1900, 'subwoofer'),
+            $s('a30', 19900, 18, 2400, 6500, 1500, 'subwoofer'),
+            $s('h8', 11900, 24, 1200, 3900, 700),
+            $s('k65', 8100, 30, 899, 2900, 500),
+            $s('h20', 9900, 20, 1200, 3900, 700),
+            $s('kx8', 15500, 10, 1400, 4500, 900, 'midrange'),
+            $s('at25', 3500, 40, 599, 1900, 200, 'tweeter'),
+            $s('cd14', 10900, 8, 699, 2200, 300, 'tweeter'),
+            $s('pr8', 4500, 25, 899, 2900, 500),
+            $s('a16', 7200, 35, 899, 2900, 500),
+            $s('bt25', 3800, 40, 599, 1900, 200, 'tweeter'),
+            $s('ht28', 4100, 28, 599, 1900, 200, 'tweeter'),
+        ];
+    }
+
+    /**
+     * Marketplace listings (what members sell to each other): kits, completed speakers and used gear.
+     * `design` and `driver` are optional links to designs() / drivers() slugs; `kind` picks the product photo.
+     * Used gear is never condition NEW (Listing::channelRuleViolations()).
      *
      * @return array<int, array<string, mixed>>
      */
     public static function listings(): array
     {
-        $l = fn (string $slug, string $seller, string $title, ListingCondition $condition, int $price, array $extra = []) => [
-            'slug' => $slug, 'seller' => $seller, 'title' => $title, 'condition' => $condition, 'price_cents' => $price,
+        $l = fn (string $slug, string $seller, ListingCategory $category, string $title, ListingCondition $condition, int $price, array $extra = []) => [
+            'slug' => $slug, 'seller' => $seller, 'category' => $category, 'title' => $title, 'condition' => $condition, 'price_cents' => $price,
         ] + $extra + [
-            'driver' => null, 'quantity' => 1, 'units_per_lot' => 1, 'ships_from' => 'US', 'domestic' => 899, 'international' => 2499,
+            'driver' => null, 'design' => null, 'quantity' => 1, 'units_per_lot' => 1, 'ships_from' => 'US', 'domestic' => 899, 'international' => 2499,
             'additional' => 300, 'handling_days' => 3, 'returns' => true, 'status' => ListingStatus::ACTIVE, 'kind' => 'woofer',
         ];
 
+        $used = ListingCategory::USED_GEAR;
+        $kit = ListingCategory::KIT;
+        $built = ListingCategory::COMPLETED_SPEAKER;
+
         return [
-            $l('a16-pair-new', 'shop1', 'Aurelia A16-W 6.5" woofer, matched pair', ListingCondition::NEW, 6400, ['driver' => 'a16', 'quantity' => 6, 'units_per_lot' => 2, 'additional' => 500, 'kind' => 'woofer']),
-            $l('at25-new', 'shop1', 'Aurelia AT-25 1" soft dome tweeter', ListingCondition::NEW, 3900, ['driver' => 'at25', 'quantity' => 12, 'international' => null, 'kind' => 'tweeter']),
-            $l('h20-new', 'shop1', 'Halden H20-W 8" woofer', ListingCondition::NEW, 8900, ['driver' => 'h20', 'quantity' => 4, 'international' => 3900, 'kind' => 'woofer']),
-            $l('n25-new', 'shop1', 'NordCone N25-DVC 10" dual voice coil subwoofer', ListingCondition::NEW, 14900, ['driver' => 'n25', 'quantity' => 3, 'domestic' => 1900, 'international' => 5900, 'additional' => 1500, 'kind' => 'subwoofer']),
-            $l('bt25-pair-new', 'shop1', 'Brightwell BT-25S silk dome tweeters, pair', ListingCondition::NEW, 6800, ['driver' => 'bt25', 'quantity' => 5, 'units_per_lot' => 2, 'kind' => 'tweeter']),
-            $l('v3-open-box', 'shop1', 'Vantec V3-M 3" midrange, open box', ListingCondition::OPEN_BOX, 2900, ['driver' => 'v3', 'quantity' => 2, 'kind' => 'midrange', 'return_policy' => '14 days, buyer pays return shipping.']),
-            $l('a38-used', 'shop2', 'Aurelia A38-S 15" subwoofer, used, good condition', ListingCondition::USED_GOOD, 15900, ['driver' => 'a38', 'domestic' => 2900, 'international' => null, 'returns' => false, 'kind' => 'subwoofer']),
-            $l('h8-pair-used', 'shop2', 'Halden H8-MB 8" midbass pair, used, like new', ListingCondition::USED_LIKE_NEW, 7500, ['driver' => 'h8', 'units_per_lot' => 2, 'international' => null, 'kind' => 'woofer']),
-            $l('k65-used', 'shop2', 'Kestrel K65-MB 6.5" midbass, used', ListingCondition::USED_GOOD, 2400, ['driver' => 'k65', 'returns' => false, 'kind' => 'woofer']),
-            $l('m5-pair-used', 'shop2', 'Brightwell M5-MR 5" midrange pair, used, fair', ListingCondition::USED_FAIR, 3500, ['driver' => 'm5', 'units_per_lot' => 2, 'international' => null, 'returns' => false, 'kind' => 'midrange']),
-            $l('r4-parts', 'shop2', 'Ridgeline R4-FR 4" full-range, for parts', ListingCondition::FOR_PARTS, 800, ['driver' => 'r4', 'status' => ListingStatus::PAUSED, 'international' => null, 'returns' => false, 'kind' => 'woofer']),
-            $l('cd14-used', 'shop2', 'Kestrel CD14-HF compression driver, used, like new', ListingCondition::USED_LIKE_NEW, 9900, ['driver' => 'cd14', 'ships_from' => 'CA', 'domestic' => 1200, 'international' => 2900, 'returns' => false, 'kind' => 'tweeter']),
-            $l('n17-used', 'designer2', 'NordCone N17-W 6.5" woofer, used from my prototype', ListingCondition::USED_GOOD, 1900, ['driver' => 'n17', 'returns' => false, 'kind' => 'woofer']),
-            $l('vt19-pair-used', 'designer2', 'Vantec VT-19R ring radiators, pair, used', ListingCondition::USED_LIKE_NEW, 4200, ['driver' => 'vt19', 'units_per_lot' => 2, 'status' => ListingStatus::DRAFT, 'kind' => 'tweeter']),
-            $l('sw3-sold-out', 'shop1', 'Sonora SW3-WB 3" wideband driver', ListingCondition::NEW, 2800, ['driver' => 'sw3', 'quantity' => 0, 'status' => ListingStatus::SOLD_OUT, 'kind' => 'midrange']),
+            // Kits: parts for a site design, or a generic parts kit.
+            $l('harbor-2-kit', 'shop1', $kit, 'Harbor 2 builder kit: drivers, crossover parts and flat-pack cabinets (pair)', ListingCondition::NEW, 38900, ['design' => 'harbor-2', 'quantity' => 6, 'units_per_lot' => 2, 'domestic' => 2400, 'international' => 7900, 'additional' => 2400]),
+            $l('courtyard-monitor-kit', 'shop1', $kit, 'Courtyard Monitor parts kit: drivers and crossover components (pair)', ListingCondition::NEW, 21900, ['design' => 'courtyard-monitor', 'quantity' => 5, 'units_per_lot' => 2, 'domestic' => 1800, 'international' => 5900, 'additional' => 1800]),
+            $l('slate-tower-crossover-kit', 'designer1', $kit, 'Slate Tower crossover kit: boards, inductors and capacitors for one tower', ListingCondition::NEW, 18900, ['design' => 'slate-tower', 'quantity' => 4, 'domestic' => 799, 'international' => 2400, 'kind' => 'tweeter']),
+            $l('two-way-crossover-kit', 'shop1', $kit, 'Two-way crossover kit, 2.5 kHz LR4 for 6 ohm drivers', ListingCondition::NEW, 5900, ['quantity' => 10, 'domestic' => 499, 'international' => 1500, 'kind' => 'tweeter']),
+            $l('meadow-kit-sold-out', 'shop1', $kit, 'Meadow Full-Range kit: wideband driver and wool stuffing', ListingCondition::NEW, 4400, ['design' => 'meadow-full-range', 'quantity' => 0, 'status' => ListingStatus::SOLD_OUT, 'kind' => 'midrange']),
+
+            // Completed speakers: built from a site design.
+            $l('harbor-2-built-pair', 'designer1', $built, 'Harbor 2 monitors, built and finished (pair, walnut veneer)', ListingCondition::NEW, 89900, ['design' => 'harbor-2', 'units_per_lot' => 2, 'domestic' => 3900, 'international' => 11900, 'handling_days' => 10, 'return_policy' => '14 days, buyer pays return shipping.']),
+            $l('little-brook-built', 'designer2', $built, 'Little Brook portable speakers, built pair, lightly used', ListingCondition::USED_LIKE_NEW, 17500, ['design' => 'little-brook', 'units_per_lot' => 2, 'domestic' => 1500, 'international' => 4900, 'returns' => false]),
+            $l('quarry-sub-built', 'shop2', $built, 'Quarry Sub 15 subwoofer, built and painted satin black, used', ListingCondition::USED_GOOD, 62000, ['design' => 'quarry-sub-15', 'domestic' => 6900, 'international' => null, 'returns' => false, 'handling_days' => 5, 'kind' => 'subwoofer']),
+
+            // Used gear: drivers from the catalogue, sold between members.
+            $l('a38-used', 'shop2', $used, 'Aurelia A38-S 15" subwoofer, used, good condition', ListingCondition::USED_GOOD, 15900, ['driver' => 'a38', 'domestic' => 2900, 'international' => null, 'returns' => false, 'kind' => 'subwoofer']),
+            $l('h8-pair-used', 'shop2', $used, 'Halden H8-MB 8" midbass pair, used, like new', ListingCondition::USED_LIKE_NEW, 7500, ['driver' => 'h8', 'units_per_lot' => 2, 'international' => null]),
+            $l('k65-used', 'shop2', $used, 'Kestrel K65-MB 6.5" midbass, used', ListingCondition::USED_GOOD, 2400, ['driver' => 'k65', 'returns' => false]),
+            $l('m5-pair-used', 'shop2', $used, 'Brightwell M5-MR 5" midrange pair, used, fair', ListingCondition::USED_FAIR, 3500, ['driver' => 'm5', 'units_per_lot' => 2, 'international' => null, 'returns' => false, 'kind' => 'midrange']),
+            $l('r4-parts', 'shop2', $used, 'Ridgeline R4-FR 4" full-range, for parts', ListingCondition::FOR_PARTS, 800, ['driver' => 'r4', 'status' => ListingStatus::PAUSED, 'international' => null, 'returns' => false]),
+            $l('cd14-used', 'shop2', $used, 'Kestrel CD14-HF compression driver, used, like new', ListingCondition::USED_LIKE_NEW, 9900, ['driver' => 'cd14', 'ships_from' => 'CA', 'domestic' => 1200, 'international' => 2900, 'returns' => false, 'kind' => 'tweeter']),
+            $l('n17-used', 'designer2', $used, 'NordCone N17-W 6.5" woofer, used from my prototype', ListingCondition::USED_GOOD, 1900, ['driver' => 'n17', 'returns' => false]),
+            $l('vt19-pair-used', 'designer2', $used, 'Vantec VT-19R ring radiators, pair, used', ListingCondition::USED_LIKE_NEW, 4200, ['driver' => 'vt19', 'units_per_lot' => 2, 'status' => ListingStatus::DRAFT, 'kind' => 'tweeter']),
+        ];
+    }
+
+    /**
+     * The bank of forum replies for `forum:seed-demo` (php artisan): plausible hobbyist comments, 26 in all.
+     * `{item}` is replaced by the title of the thread's design, driver or listing.
+     *
+     *  - `design`   build and crossover questions and build reports
+     *  - `driver`   Thiele/Small and measurement remarks
+     *  - `listing`  [buyer question, seller answer] pairs about condition and shipping
+     *
+     * @return array{design: array<int, string>, driver: array<int, string>, listing: array<int, array{0: string, 1: string}>}
+     */
+    public static function forumComments(): array
+    {
+        return [
+            'design' => [
+                'Just ordered the drivers for {item}. Has anyone built it with a different baffle finish, or does the roundover radius matter for the response?',
+                'Question on the crossover: did you measure the parts with an LCR meter or did they land inside tolerance as they came? My air-core inductors were about 3% high.',
+                'Finished the cabinets last weekend. 18 mm birch plywood is much easier to work than MDF around the port cutout, if you are still deciding.',
+                'How much damping did you end up using? I started with the amount in the plans and the lower midrange sounded a bit boxy.',
+                'Would a second-order electrical slope be good enough if I skip the notch? I would like to save a couple of parts.',
+                'Thanks for sharing the cut list. Two of my panel widths came out 1 mm off, so I trimmed after gluing. Worth leaving a little extra.',
+                'Measured mine at 1 m on the tweeter axis and the sum is flat within 1.5 dB from 200 Hz to 15 kHz. Really close to the preview curve on this page.',
+                'Any plan for an active version? I have a four-channel amp and a miniDSP sitting idle and would like to try the crossover points from the notes.',
+            ],
+            'driver' => [
+                'The Fs on my sample measured about 4% above the spec sheet after a 20 hour break-in. Is that in line with what others see?',
+                'Compared the impedance curve here with mine on a DATS: the peak at resonance matches within a couple of ohms, nice.',
+                'Qts looks a little high for a sealed box under 10 litres. I would go ported or open baffle with this one.',
+                'Does anyone have off-axis data? On-axis looks very smooth, but I am curious about the 45 degree curve through the crossover region.',
+                'Breakup is visible just above 5 kHz in the on-axis curve. A simple notch filter or a steep low-pass tames it.',
+                'Used two of these in a three-way last year. Voice coil inductance is low enough that I did not need a Zobel.',
+                'The Xmax figure looks conservative to me. I pushed a pair to about 12 mm peak-to-peak in a sealed 20 litre box and distortion stayed reasonable.',
+                'Thanks for posting the measurement files, the frd and zma import cleanly into my simulator.',
+            ],
+            'listing' => [
+                ['Is there any damage on the cone or the dust cap? The photos look clean but a close-up would help.', 'No dents or tears, only light marks on the frame from mounting. I will add close-ups of the cone and the surround tonight.'],
+                ['Do you ship to Canada, and roughly what would shipping to Ontario cost?', 'I do. The international rate on the listing applies, and it goes out tracked. Handling time is a few working days.'],
+                ['Were these ever driven hard? Any chance of measurements, even just the impedance sweep?', 'They sat in a pair of living-room monitors at moderate levels. I measured Fs and Re before listing and can send the numbers.'],
+                ['Can you combine shipping if I buy two of your listings?', 'Yes, the additional item rate on each listing is meant for that. I will refund the difference if the total comes out lower.'],
+                ['Is the original box included, and are the terminals intact?', 'The box is included and the terminals are intact. I pack everything double-boxed with foam, same as every shipment.'],
+            ],
         ];
     }
 

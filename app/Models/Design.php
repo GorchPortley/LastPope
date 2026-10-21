@@ -79,6 +79,12 @@ class Design extends Model implements Purchasable
         return $this->hasMany(DesignSnapshot::class);
     }
 
+    /** Kits and completed speakers in the marketplace that are built from this design. */
+    public function listings(): HasMany
+    {
+        return $this->hasMany(Listing::class);
+    }
+
     public function designer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');

@@ -25,19 +25,30 @@ class ListingPolicy
             || ($user !== null && $listing->seller_id === $user->id);
     }
 
-    public function create(User $user): bool
+    /**
+     * Any user may create marketplace listings. Pass a listing to ask about its channel:
+     * `Gate::allows('create', new Listing(['channel' => 'store']))` is admin only (see createStore()).
+     */
+    public function create(User $user, ?Listing $listing = null): bool
     {
-        return true;
+        return $listing === null || ! $listing->isStore();
     }
 
+    /** Store listings (SDLabs' own new drivers) are created by admins only. Admins pass through before(). */
+    public function createStore(User $user): bool
+    {
+        return false;
+    }
+
+    /** Sellers edit their own marketplace listings; store listings are admin only (granted by before()). */
     public function update(User $user, Listing $listing): bool
     {
-        return $listing->seller_id === $user->id;
+        return ! $listing->isStore() && $listing->seller_id === $user->id;
     }
 
     public function delete(User $user, Listing $listing): bool
     {
-        return $listing->seller_id === $user->id;
+        return ! $listing->isStore() && $listing->seller_id === $user->id;
     }
 
     public function deleteAny(User $user): bool

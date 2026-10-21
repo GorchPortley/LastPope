@@ -1,4 +1,4 @@
-{{-- Small picture of a purchasable: the first listing photo, or the first card image of a design/driver. --}}
+{{-- Small picture of a purchasable: the first listing photo, or the first card image of a design. --}}
 @props(['purchasable' => null])
 
 @php
@@ -6,7 +6,7 @@
 
     if ($purchasable instanceof \App\Models\Listing) {
         $url = $purchasable->mainPhotoUrl();
-    } elseif ($purchasable instanceof \App\Models\Design || $purchasable instanceof \App\Models\Driver) {
+    } elseif ($purchasable instanceof \App\Models\Design) {
         $image = is_array($purchasable->card_image) ? ($purchasable->card_image[0] ?? null) : $purchasable->card_image;
         $url = $image ? \Illuminate\Support\Facades\Storage::url($image) : null;
     }

@@ -39,7 +39,7 @@ class Entitlement extends Model
         return $this->belongsTo(User::class);
     }
 
-    /** Design or Driver. */
+    /** The digital product (a Design). */
     public function entitleable(): MorphTo
     {
         return $this->morphTo();

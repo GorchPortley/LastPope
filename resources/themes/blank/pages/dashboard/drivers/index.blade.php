@@ -89,31 +89,6 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
         return $this->driverdir($storageKey, 'Attachments/Description Images');
     }
 
-    /**
-     * A driver whose data pack is paid can only be published once it can actually be sold
-     * (snapshot + payout account). Otherwise it is saved as a draft and the reasons are shown.
-     */
-    function guardPublish(array $data, ?Driver $driver = null): array
-    {
-        if (empty($data['active'])) {
-            return $data;
-        }
-
-        $probe = $driver ? clone $driver : new Driver(['user_id' => auth()->id()]);
-        $probe->data_price_cents = $data['data_price_cents'] ?? $probe->data_price_cents ?? 0;
-
-        if ($blockers = $probe->publishBlockers()) {
-            $data['active'] = false;
-            Notification::make()
-                ->warning()
-                ->title('Saved as a draft')
-                ->body(implode(' ', $blockers))
-                ->send();
-        }
-
-        return $data;
-    }
-
     public function table(Table $table): Table
     {
         return $table
@@ -127,7 +102,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         if (auth()->user()->hasRole('manufacturer')) {
                             $data['official'] = 1;
                         };
-                        return $this->guardPublish($data);
+                        return $data;
                     })
                     ->form([
                         Toggle::make('active'),
@@ -154,11 +129,6 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         TextInput::make('power')
                             ->required()
                             ->numeric(),
-                        MoneyInput::make('data_price_cents')
-                            ->label('Data pack price')
-                            ->hint('Price of this driver\'s measurement data pack. Leave at 0 to share it for free.')
-                            ->helperText('A paid data pack needs a snapshot and a connected payout account before it can be published.')
-                            ->default(0),
                         MoneyInput::make('msrp_cents')
                             ->label('MSRP')
                             ->hint('Reference retail price of the physical driver')
@@ -246,10 +216,9 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                 ToggleColumn::make('active')
                     ->onColor('success')
                     ->updateStateUsing(function (Driver $record, $state) {
-                        $data = $this->guardPublish(['active' => (bool) $state, 'data_price_cents' => $record->data_price_cents], $record);
-                        $record->update(['active' => $data['active']]);
+                        $record->update(['active' => (bool) $state]);
 
-                        return $data['active'];
+                        return (bool) $state;
                     })
                     ->sortable(),
                 TextColumn::make('brand')
@@ -341,7 +310,6 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->icon('phosphor-eye')
                     ->url(fn($record): string => route('driver', ['id' => $record->id])),
                 EditAction::make()
-                    ->mutateFormDataUsing(fn (array $data, Driver $record): array => $this->guardPublish($data, $record))
                     ->form([
                         Toggle::make('active'),
                         Hidden::make('storage_key')
@@ -361,11 +329,6 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             ->numeric(),
                         TextInput::make('power')
                             ->numeric(),
-                        MoneyInput::make('data_price_cents')
-                            ->label('Data pack price')
-                            ->hint('Price of this driver\'s measurement data pack. Leave at 0 to share it for free.')
-                            ->helperText('A paid data pack needs a snapshot and a connected payout account before it can be published.')
-                            ->default(0),
                         MoneyInput::make('msrp_cents')
                             ->label('MSRP')
                             ->hint('Reference retail price of the physical driver')
@@ -470,7 +433,6 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                 Select::make('category')
                     ->options(['Subwoofer' => 'Subwoofer', 'Full-Range' => 'Full-Range', 'Two-Way' => 'Two-Way'
                         , 'Three-Way' => 'Three-Way', 'Four-Way+', 'Four-Way+', 'Portable' => 'Portable', 'Esoteric' => 'Esoteric']),
-                MoneyInput::make('data_price_cents'),
                 MoneyInput::make('msrp_cents')
                     ->nullable(),
                 TextInput::make('impedance')

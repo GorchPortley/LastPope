@@ -19,8 +19,11 @@ use Wave\Facades\Wave;
 Wave::routes();
 
 // Snapshot downloads: files live on the private disk and are streamed after a policy check.
-Route::middleware('auth')->prefix('downloads')->group(function () {
+// Design files need a login (owner, admin, buyer or a free design); driver measurement snapshots are
+// public for active drivers (the policy still limits inactive ones to their owner and admins).
+Route::prefix('downloads')->group(function () {
     Route::get('/design-snapshots/{snapshot}', [DownloadController::class, 'designSnapshot'])
+        ->middleware('auth')
         ->name('design-snapshots.download');
 
     Route::get('/driver-snapshots/{snapshot}', [DownloadController::class, 'driverSnapshot'])

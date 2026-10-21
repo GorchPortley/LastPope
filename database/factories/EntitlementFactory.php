@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * An active purchase entitlement for a design by default. States: free(), owner(), adminGrant(),
- * revoked(), forProduct($designOrDriver), forUser($user).
+ * revoked(), forProduct($design), forUser($user).
  *
  * @extends Factory<Entitlement>
  */

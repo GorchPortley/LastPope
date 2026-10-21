@@ -45,7 +45,7 @@ class OrderItem extends Model
         return $this->belongsTo(SellerOrder::class);
     }
 
-    /** Design, Driver or Listing; null if it has been deleted since. */
+    /** Design or Listing; null if it has been deleted since. */
     public function purchasable(): MorphTo
     {
         return $this->morphTo();

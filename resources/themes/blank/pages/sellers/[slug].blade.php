@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Design;
-use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\SellerProfile;
 use Illuminate\Contracts\View\View;
@@ -18,10 +17,9 @@ render(function (View $view, string $slug) {
     return $view->with([
         'profile' => $profile,
         'seller' => $user,
-        'listings' => Listing::query()->forSale()->with(['seller.sellerProfile'])
+        'listings' => Listing::query()->marketplace()->forSale()->with(['seller.sellerProfile'])
             ->where('seller_id', $user->getKey())->latest()->paginate(12, ['*'], 'listings')->withQueryString(),
         'designs' => Design::query()->active()->where('user_id', $user->getKey())->latest()->limit(12)->get(),
-        'dataPacks' => Driver::query()->active()->where('user_id', $user->getKey())->where('data_price_cents', '>', 0)->latest()->limit(12)->get(),
     ]);
 });
 ?>
@@ -86,30 +84,6 @@ render(function (View $view, string $slug) {
                                 <h3 class="line-clamp-1 font-semibold text-gray-900 dark:text-white">{{ $design->name }}</h3>
                                 <p class="line-clamp-1 text-sm text-gray-500 dark:text-zinc-400">{{ $design->category }}</p>
                                 <p class="mt-2 font-bold text-gray-900 dark:text-white">{{ $design->price_cents > 0 ? money($design->price_cents) : 'Free' }}</p>
-                            </div>
-                        </a>
-                    @endforeach
-                </div>
-            </section>
-        @endif
-
-        @if ($dataPacks->isNotEmpty())
-            <section class="mt-12" aria-labelledby="shop-data">
-                <h2 id="shop-data" class="mb-4 text-xl font-semibold text-gray-900 dark:text-white">Driver data packs</h2>
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    @foreach ($dataPacks as $driver)
-                        <a href="{{ route('driver', ['id' => $driver->id]) }}" class="group flex flex-col overflow-hidden border border-gray-200 bg-white shadow-sm transition hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
-                            <div class="flex h-44 items-center justify-center bg-gray-50 p-3 dark:bg-zinc-900">
-                                @if ($image($driver))
-                                    <img src="{{ Storage::url($image($driver)) }}" alt="{{ $driver->fullName() }}" loading="lazy" class="max-h-full max-w-full object-contain">
-                                @else
-                                    <x-phosphor-image-duotone class="h-12 w-12 text-gray-300" />
-                                @endif
-                            </div>
-                            <div class="p-4">
-                                <h3 class="line-clamp-1 font-semibold text-gray-900 dark:text-white">{{ $driver->fullName() }}</h3>
-                                <p class="line-clamp-1 text-sm text-gray-500 dark:text-zinc-400">Measurement data pack</p>
-                                <p class="mt-2 font-bold text-gray-900 dark:text-white">{{ money($driver->data_price_cents) }}</p>
                             </div>
                         </a>
                     @endforeach

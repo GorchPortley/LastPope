@@ -25,8 +25,7 @@ return new class extends Migration
             $table->integer('size');
             $table->string('impedance');
             $table->integer('power');
-            // Price of the driver's measurement data pack (digital), and the reference retail price of the physical driver.
-            $table->unsignedInteger('data_price_cents')->default(0);
+            // Reference retail price of the physical driver (informational; SDLabs sells it as a store listing).
             $table->unsignedInteger('msrp_cents')->nullable();
             $table->string('link')->nullable();
             $table->text('summary')->nullable();

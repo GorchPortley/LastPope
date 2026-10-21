@@ -27,9 +27,11 @@ new class extends Component {
 
     public function with(): array
     {
-        $listings = $this->driver->listings()->forSale();
+        // Members' listings of this driver (mostly used units); SDLabs' own new stock is the store listing.
+        $listings = $this->driver->listings()->marketplace()->forSale();
 
         return [
+            'storeListing' => $this->driver->storeListing(),
             'listingCount' => (clone $listings)->count(),
             'listingFrom' => (clone $listings)->min('price_cents'),
         ];
@@ -166,18 +168,20 @@ new class extends Component {
                                 </div>
                             @endif
 
+                            @if ($storeListing)
+                                <div data-driver-store>
+                                    <livewire:buy-box :purchasable="$storeListing" label="New from SDLabs" :key="'store-'.$storeListing->id" />
+                                </div>
+                            @endif
+
                             @if ($listingCount > 0)
                                 <a href="{{ route('marketplace', ['driver' => $driver->id]) }}" class="flex items-center justify-between gap-3 border border-gray-200 bg-white p-4 hover:border-purple-950" data-driver-listings>
                                     <span>
                                         <span class="block font-semibold text-gray-900">{{ $listingCount }} {{ \Illuminate\Support\Str::plural('listing', $listingCount) }} in the marketplace</span>
-                                        <span class="block text-sm text-gray-500">New and used, from {{ money((int) $listingFrom) }}</span>
+                                        <span class="block text-sm text-gray-500">From {{ money((int) $listingFrom) }}</span>
                                     </span>
                                     <x-phosphor-storefront class="h-8 w-8 flex-shrink-0 text-purple-950" />
                                 </a>
-                            @endif
-
-                            @if ($driver->data_price_cents > 0 || $driver->snapshots->isNotEmpty())
-                                <livewire:buy-box :purchasable="$driver" label="Measurement data pack" />
                             @endif
                         </div>
 
@@ -279,25 +283,16 @@ new class extends Component {
                 @endif
                 <div class="w-full">
                     <span class="text-xl justify-center font-semibold text-gray-900">Download Files</span>
-                    @php($canDownload = auth()->check() && auth()->user()->hasAccessTo($driver, false))
+                    {{-- Driver measurement data is free and public: no login needed. --}}
                     @foreach($driver->snapshots as $snapshot)
                         <br>
                         <div>
-                            @if($canDownload)
-                                <a href="{{ route('driver-snapshots.download', $snapshot->id) }}" class="button">
-                                    <span class="text-gray-900">{{$snapshot->snapshot_name}}</span>
-                                    <i class="ph ph-download-simple"></i>
-                                </a>
-                            @else
-                                <span class="text-gray-500">{{ $snapshot->snapshot_name }}</span>
-                            @endif
+                            <a href="{{ route('driver-snapshots.download', $snapshot->id) }}" class="button">
+                                <span class="text-gray-900">{{$snapshot->snapshot_name}}</span>
+                                <i class="ph ph-download-simple"></i>
+                            </a>
                         </div>
                     @endforeach
-                    @if(! $canDownload && $driver->snapshots->isNotEmpty())
-                        <p class="mt-2 text-sm text-gray-500">
-                            {{ auth()->check() ? 'Get this data pack to download the files.' : 'Log in to download the files.' }}
-                        </p>
-                    @endif
                 </div>
 
                 <!-- Description Section -->

@@ -3,6 +3,10 @@
 namespace Database\Seeders;
 
 use App\Enums\EntitlementSource;
+use App\Enums\ListingCategory;
+use App\Enums\ListingChannel;
+use App\Enums\ListingCondition;
+use App\Enums\ListingStatus;
 use App\Models\Address;
 use App\Models\Banner;
 use App\Models\Cart;
@@ -15,12 +19,14 @@ use App\Models\SellerProfile;
 use App\Models\User;
 use App\Services\Snapshots\DesignSnapshotBuilder;
 use App\Services\Snapshots\DriverSnapshotBuilder;
+use App\Services\Forum\ForumClient;
 use App\Support\PlaceholderImage;
 use App\Support\SyntheticMeasurement;
 use Database\Factories\Support\OrderBuilder;
 use Database\Seeders\Demo\DemoCatalog;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -32,6 +38,10 @@ use Ramsey\Uuid\Uuid;
  * FRD/ZMA measurements, designs with components and built snapshots, listings, entitlements,
  * carts, orders in several states, reviews and banners. Login: admin@sdlabs.test / password
  * (every demo user has the password "password", or DEMO_PASSWORD when that is set).
+ *
+ * Listings come in two channels: a dozen STORE listings (SDLabs sells new catalogue drivers; seller = the
+ * demo admin) and a marketplace of kits, completed speakers and used gear sold between members. The seeder
+ * finishes with `forum:seed-demo` when the forum is switched on and reachable.
  *
  * Only runs in local, demo and testing environments. Storage keys and listing UUIDs are derived
  * from the product slug, so re-seeding overwrites the same folders instead of piling up new ones.
@@ -61,6 +71,7 @@ class DemoSeeder extends Seeder
 
         if (User::where('email', 'admin@sdlabs.test')->exists()) {
             $this->command?->info('Demo data is already present.');
+            $this->seedForum();
 
             return;
         }
@@ -75,6 +86,27 @@ class DemoSeeder extends Seeder
             $this->seedBanners();
             $this->seedCommerce();
         });
+
+        $this->seedForum();
+    }
+
+    /**
+     * Threads and replies for the demo content, when the forum is switched on and answering. It is idempotent,
+     * so it also runs when the demo data was seeded before. Otherwise say how to do it later.
+     */
+    private function seedForum(): void
+    {
+        if (config('forum.enabled')) {
+            $status = app(ForumClient::class)->checkConnection();
+
+            if ($status['reachable'] && $status['authorized']) {
+                $this->command ? $this->command->call('forum:seed-demo') : Artisan::call('forum:seed-demo');
+
+                return;
+            }
+        }
+
+        $this->command?->info('Run `php artisan forum:setup && php artisan forum:seed-demo` once the forum is up.');
     }
 
     // --- Users ---------------------------------------------------------------------------------
@@ -183,11 +215,10 @@ class DemoSeeder extends Seeder
                 'size' => $def['size'],
                 'impedance' => $def['impedance'],
                 'power' => $def['power'],
-                'data_price_cents' => $def['data_price_cents'],
                 'msrp_cents' => $def['msrp_cents'],
                 'link' => 'https://example.com/drivers/'.$slug,
                 'summary' => ($def['tag'] ?? $def['model']).' from '.$def['brand'].'.',
-                'description' => '<p>'.e($def['brand'].' '.$def['model']).' is a '.e(Str::lower($def['category'])).' with a nominal impedance of '.$def['impedance'].' ohm. The Thiele/Small parameters and the curves in the data pack were generated from one model, so they agree with each other.</p>',
+                'description' => '<p>'.e($def['brand'].' '.$def['model']).' is a '.e(Str::lower($def['category'])).' with a nominal impedance of '.$def['impedance'].' ohm. The Thiele/Small parameters and the measured curves were generated from one model, so they agree with each other.</p>',
                 'factory_specs' => $spec ? SyntheticMeasurement::factorySpecs($spec) : null,
                 'card_image' => [$image],
                 'official' => $def['official'],
@@ -356,30 +387,61 @@ class DemoSeeder extends Seeder
     private function seedListings(): void
     {
         $seed = 200;
+        $country = strtoupper((string) config('marketplace.default_country', 'US'));
+        $admin = $this->users['admin'];
 
+        // The store: SDLabs sells new catalogue drivers, one active store listing per driver.
+        foreach (DemoCatalog::storeListings() as $def) {
+            $seed++;
+            $driver = $this->drivers[$def['driver']]['model'];
+            $title = $driver->fullName().' - '.($driver->tag ?: 'new driver');
+
+            $this->listings['store-'.$def['driver']] = $this->createListing([
+                'uuid' => $this->key('listing', 'store-'.$def['driver']),
+                'channel' => ListingChannel::STORE,
+                'category' => ListingCategory::DRIVER,
+                'seller_id' => $admin->id,
+                'driver_id' => $driver->id,
+                'design_id' => null,
+                'title' => $title,
+                'condition' => ListingCondition::NEW,
+                'description' => $title.".\n\nNew, from SDLabs stock, in the original packaging. The measurements and T/S parameters are on the driver page.",
+                'price_cents' => $def['price'],
+                'quantity' => $def['quantity'],
+                'units_per_lot' => 1,
+                'ships_from_country' => $country,
+                'shipping_domestic_cents' => $def['domestic'],
+                'shipping_international_cents' => $def['international'],
+                'additional_item_shipping_cents' => $def['additional'],
+                'handling_days' => 2,
+                'returns_accepted' => true,
+                'return_policy' => '30 days, buyer pays return shipping.',
+                'status' => ListingStatus::ACTIVE,
+            ], $seed, $def['kind'], false);
+        }
+
+        // The marketplace: kits, completed speakers and used gear sold between members.
         foreach (DemoCatalog::listings() as $def) {
             $seed++;
-            $uuid = $this->key('listing', $def['slug']);
-            $photos = [];
-            foreach ([1, 2] as $n) {
-                $photos[] = $this->writePublic(
-                    "listings/{$uuid}/photo-{$n}.jpg",
-                    PlaceholderImage::listing($seed + $n * 7, $def['kind'], $def['condition']->isUsed()),
-                );
-            }
+            $used = $def['condition']->isUsed();
+            $what = match ($def['category']) {
+                ListingCategory::KIT => 'A kit of parts.',
+                ListingCategory::COMPLETED_SPEAKER => 'Built and tested by the seller.',
+                default => 'Tested and measured before listing.',
+            };
 
-            // without model events: nothing here should reach out to the forum while seeding
-            $this->listings[$def['slug']] = Model::withoutEvents(fn () => Listing::create([
-                'uuid' => $uuid,
-                'slug' => Str::slug($def['title']),
+            $this->listings[$def['slug']] = $this->createListing([
+                'uuid' => $this->key('listing', $def['slug']),
+                'channel' => ListingChannel::MARKETPLACE,
+                'category' => $def['category'],
                 'seller_id' => $this->users[$def['seller']]->id,
                 'driver_id' => $def['driver'] ? $this->drivers[$def['driver']]['model']->id : null,
+                'design_id' => $def['design'] ? $this->designs[$def['design']]->id : null,
                 'title' => $def['title'],
                 'condition' => $def['condition'],
-                'description' => $def['title'].".\n\n".($def['condition']->isUsed()
-                    ? 'Tested and measured before listing. Cosmetic wear is visible in the photos.'
-                    : 'Brand new, unused, in the original packaging.')."\nPlease ask if you need more photos or measurements.",
-                'photos' => $photos,
+                'description' => $def['title'].".\n\n".$what.' '.($used
+                    ? 'Cosmetic wear is visible in the photos.'
+                    : 'Brand new and unused.')."\nPlease ask if you need more photos or measurements.",
                 'price_cents' => $def['price_cents'],
                 'quantity' => $def['quantity'],
                 'units_per_lot' => $def['units_per_lot'],
@@ -391,8 +453,26 @@ class DemoSeeder extends Seeder
                 'returns_accepted' => $def['returns'],
                 'return_policy' => $def['returns'] ? ($def['return_policy'] ?? '30 days, buyer pays return shipping.') : null,
                 'status' => $def['status'],
-            ]));
+            ], $seed, $def['kind'], $used);
         }
+    }
+
+    /** Photos, then the listing itself (checked against the store / marketplace rules). */
+    private function createListing(array $attributes, int $seed, string $kind, bool $used): Listing
+    {
+        $uuid = $attributes['uuid'];
+        $photos = [];
+        foreach ([1, 2] as $n) {
+            $photos[] = $this->writePublic("listings/{$uuid}/photo-{$n}.jpg", PlaceholderImage::listing($seed + $n * 7, $kind, $used));
+        }
+
+        // without model events: nothing here should reach out to the forum while seeding
+        $listing = Model::withoutEvents(fn () => Listing::create($attributes + [
+            'slug' => Str::slug($attributes['title']),
+            'photos' => $photos,
+        ]));
+
+        return $listing->validateChannelRules();
     }
 
     // --- Reviews, banners ----------------------------------------------------------------------
@@ -420,35 +500,33 @@ class DemoSeeder extends Seeder
         $u = $this->users;
         $d = $this->designs;
         $l = $this->listings;
-        $dr = fn (string $slug) => $this->drivers[$slug]['model'];
 
         // Free downloads in libraries.
         foreach (['harbor-2', 'little-brook', 'meadow-full-range'] as $slug) {
             $u['buyer2']->grantEntitlement($d[$slug], EntitlementSource::FREE);
         }
-        $u['buyer3']->grantEntitlement($dr('r4'), EntitlementSource::FREE);
         $u['buyer4']->grantEntitlement($d['echo-chamber'], EntitlementSource::FREE);
         $u['buyer5']->grantEntitlement($d['harbor-2'], EntitlementSource::ADMIN_GRANT);
 
         $address = fn (string $buyer) => $u[$buyer]->addresses()->first();
 
-        // Paid, with a paid design (fulfilled instantly) and a new driver waiting to be shipped.
-        OrderBuilder::build($this->order('buyer1', 'paid', $address('buyer1')), [$d['slate-tower'], [$l['a16-pair-new'], 1]], 'paid');
-        // Shipped: two woofer pairs on their way.
-        OrderBuilder::build($this->order('buyer2', 'paid', $address('buyer2')), [[$l['h20-new'], 1], [$l['at25-new'], 2]], 'shipped');
-        // Completed: a used driver, delivered, plus a driver data pack.
-        OrderBuilder::build($this->order('buyer3', 'completed', $address('buyer3')), [[$l['k65-used'], 1], $dr('a16')], 'completed');
+        // Paid, with a paid design (fulfilled instantly) and a new driver from the store waiting for an admin to ship it.
+        OrderBuilder::build($this->order('buyer1', 'paid', $address('buyer1')), [$d['slate-tower'], [$l['store-a16'], 1]], 'paid');
+        // Shipped: two store drivers on their way (shipped by an admin).
+        OrderBuilder::build($this->order('buyer2', 'paid', $address('buyer2')), [[$l['store-h20'], 1], [$l['store-at25'], 2]], 'shipped');
+        // Completed: a used driver from a member, delivered, plus a paid design.
+        OrderBuilder::build($this->order('buyer3', 'completed', $address('buyer3')), [[$l['k65-used'], 1], $d['courtyard-monitor']], 'completed');
         // Waiting for payment.
-        OrderBuilder::build($this->order('buyer4', 'pending', $address('buyer4')), [[$l['bt25-pair-new'], 1]], 'pending');
+        OrderBuilder::build($this->order('buyer4', 'pending', $address('buyer4')), [[$l['store-bt25'], 1]], 'pending');
         // Refunded: entitlement revoked.
         OrderBuilder::build($this->order('buyer5', 'refunded', null), [$d['courtyard-monitor']], 'refunded');
         // Cancelled checkout.
         OrderBuilder::build($this->order('buyer1', 'cancelled', null), [$d['quarry-sub-15']], 'cancelled');
 
         // Carts with something in them.
-        $this->cart('buyer1', [[$l['n25-new'], 1], [$dr('at25'), 1]]);
+        $this->cart('buyer1', [[$l['store-h8'], 1], [$l['two-way-crossover-kit'], 1]]);
         $this->cart('buyer4', [[$d['atlas-four'], 1]]);
-        $this->cart('buyer5', [[$l['v3-open-box'], 2]]);
+        $this->cart('buyer5', [[$l['harbor-2-kit'], 1]]);
     }
 
     private function order(string $buyer, string $stage, ?Address $address): Order

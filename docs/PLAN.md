@@ -73,10 +73,11 @@ Known defects found during analysis (fix them):
 | Model     | Kind                      | Price column                 | Delivered as                    |
 |-----------|---------------------------|------------------------------|---------------------------------|
 | `Design`  | digital                   | `designs.price_cents`        | design snapshots (all versions) |
-| `Driver`  | digital driver data pack  | `drivers.data_price_cents`   | driver snapshots (all versions) |
+| ~~`Driver`~~ | ~~digital driver data pack~~ (removed in R1, see §6: driver data is free) | — | driver snapshots are public downloads |
 | `Listing` | physical, new or used     | `listings.price_cents`       | shipped by the seller           |
 
-`Driver` keeps `msrp_cents` (reference retail price, informational) and `link` (external "buy from" link).
+`Driver` keeps `msrp_cents` (reference retail price, informational) and `link` (external "buy from" link);
+SDLabs sells new units of a driver as a **store listing** (§6).
 
 ```php
 interface Purchasable

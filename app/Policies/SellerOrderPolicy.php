@@ -7,7 +7,8 @@ use App\Models\User;
 
 /**
  * Who may do what with one seller's part of an order. Admins may view and refund everything (which
- * also keeps the Filament resources working) but ship and confirm only through the roles they have.
+ * also keeps the Filament resources working). Shipping: the seller, or any admin when the seller is a
+ * platform seller (SDLabs' store orders have no individual owner). Confirming receipt: the buyer only.
  */
 class SellerOrderPolicy
 {
@@ -31,10 +32,11 @@ class SellerOrderPolicy
         return $sellerOrder->seller_id === $user->id || $sellerOrder->order?->user_id === $user->id;
     }
 
-    /** Only the seller enters carrier and tracking. */
+    /** The seller enters carrier and tracking; so does any admin for a platform seller's order. */
     public function ship(User $user, SellerOrder $sellerOrder): bool
     {
-        return $sellerOrder->seller_id === $user->id;
+        return $sellerOrder->seller_id === $user->id
+            || ($user->isPlatformSeller() && $sellerOrder->seller?->isPlatformSeller() === true);
     }
 
     /** Only the buyer confirms that the parcel arrived. */

@@ -241,3 +241,91 @@ it('is scheduled daily', function () {
 
     expect($events->contains(fn ($event) => str_contains($event->command, 'marketplace:auto-complete') && $event->expression === '0 0 * * *'))->toBeTrue();
 });
+
+// --- platform sellers (SDLabs' store): any admin ships ----------------------------------------------------
+
+/** A paid order of one store listing (sold by $admin); returns [Order, SellerOrder]. */
+function paidStoreOrder(object $test, ?User $admin = null): array
+{
+    $listing = storeListing(['price_cents' => 12900, 'shipping_domestic_cents' => 900, 'quantity' => 5], admin: $admin ?? adminUser());
+    $order = pendingOrder($test->buyer, [$listing], addressFor($test->buyer));
+    payOrder($order);
+
+    return [$order->fresh(), $order->sellerOrders()->sole()];
+}
+
+it('lets any admin ship an order of a platform seller, and the platform seller too', function () {
+    Notification::fake();
+    $seller = adminUser();
+    [$order, $sellerOrder] = paidStoreOrder($this, $seller);
+
+    expect($sellerOrder->status)->toBe(SellerOrderStatus::AWAITING_SHIPMENT)
+        ->and($sellerOrder->seller->is($seller))->toBeTrue()
+        ->and($sellerOrder->payout_cents)->toBe(0); // platform revenue: no transfer
+
+    $otherAdmin = adminUser();
+    $shipped = $this->shipments->markShipped($otherAdmin, $sellerOrder, 'UPS', '1ZSDLABS1', 'https://ups.example/track/1ZSDLABS1');
+
+    expect($shipped->status)->toBe(SellerOrderStatus::SHIPPED)
+        ->and($shipped->tracking_number)->toBe('1ZSDLABS1')
+        ->and($shipped->shipped_at)->not->toBeNull()
+        ->and(fakeGateway()->callCount('createTransfer'))->toBe(0);
+
+    Notification::assertSentTo($this->buyer, OrderShipped::class, 1);
+
+    // the selling admin can update the tracking too
+    expect($this->shipments->markShipped($seller, $shipped, 'UPS', '1ZFIXED')->tracking_number)->toBe('1ZFIXED');
+});
+
+it('also lets an admin ship over HTTP for a platform seller, but not a regular user', function () {
+    [, $sellerOrder] = paidStoreOrder($this);
+
+    foreach ([$this->buyer, onboardedSeller()] as $user) {
+        $this->actingAs($user)
+            ->post(route('selling.orders.ship', $sellerOrder), ['carrier' => 'UPS', 'tracking_number' => '1Z'])
+            ->assertForbidden();
+    }
+    expect($sellerOrder->fresh()->status)->toBe(SellerOrderStatus::AWAITING_SHIPMENT);
+
+    $this->actingAs(adminUser())
+        ->post(route('selling.orders.ship', $sellerOrder), ['carrier' => 'UPS', 'tracking_number' => '1Z'])
+        ->assertSessionHas('success');
+    expect($sellerOrder->fresh()->status)->toBe(SellerOrderStatus::SHIPPED);
+});
+
+it('keeps regular users out of platform orders and admins out of regular sellers orders', function () {
+    [, $storeOrder] = paidStoreOrder($this);
+    [, $marketOrder] = paidPhysicalOrder($this);
+
+    foreach ([onboardedSeller(), $this->seller, User::factory()->create()] as $user) {
+        expect(fn () => $this->shipments->markShipped($user, $storeOrder, 'UPS', '1Z'))->toThrow(AuthorizationException::class);
+    }
+
+    // an admin is a platform seller, not a superuser over other members' sales
+    expect(fn () => $this->shipments->markShipped(adminUser(), $marketOrder, 'UPS', '1Z'))->toThrow(AuthorizationException::class)
+        ->and($storeOrder->fresh()->status)->toBe(SellerOrderStatus::AWAITING_SHIPMENT)
+        ->and($marketOrder->fresh()->status)->toBe(SellerOrderStatus::AWAITING_SHIPMENT);
+});
+
+it('ships a platform order from the admin panel', function () {
+    [$order, $sellerOrder] = paidStoreOrder($this);
+    $admin = adminUser();
+    $manager = Livewire\Livewire::actingAs($admin)->test(
+        App\Filament\Resources\OrderResource\RelationManagers\SellerOrdersRelationManager::class,
+        ['ownerRecord' => $order, 'pageClass' => App\Filament\Resources\OrderResource\Pages\ViewOrder::class],
+    );
+
+    $manager->assertTableActionVisible('markShipped', $sellerOrder)
+        ->callTableAction('markShipped', $sellerOrder, data: ['carrier' => 'DHL', 'tracking_number' => 'JD0007', 'tracking_url' => 'https://dhl.example/JD0007'])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified('Marked as shipped');
+
+    expect($sellerOrder->fresh())->status->toBe(SellerOrderStatus::SHIPPED)->carrier->toBe('DHL')->tracking_number->toBe('JD0007');
+
+    // not offered for a regular seller's order
+    [$marketOrderModel, $marketSellerOrder] = paidPhysicalOrder($this);
+    Livewire\Livewire::actingAs($admin)->test(
+        App\Filament\Resources\OrderResource\RelationManagers\SellerOrdersRelationManager::class,
+        ['ownerRecord' => $marketOrderModel, 'pageClass' => App\Filament\Resources\OrderResource\Pages\ViewOrder::class],
+    )->assertTableActionHidden('markShipped', $marketSellerOrder);
+});

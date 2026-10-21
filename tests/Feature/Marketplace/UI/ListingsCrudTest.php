@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\ListingCategory;
+use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
 use App\Enums\ListingStatus;
 use App\Models\Driver;
@@ -17,6 +19,7 @@ function listingFormData(array $overrides = []): array
     return $overrides + [
         'published' => true,
         'title' => 'Dayton RS225 woofer',
+        'category' => ListingCategory::USED_GEAR->value,
         'condition' => ListingCondition::USED_GOOD->value,
         'photos' => [UploadedFile::fake()->image('front.jpg')],
         'price_cents' => '45.50',
@@ -155,7 +158,7 @@ it('edits a listing and keeps its uuid, photo folder and owner', function () {
 
     listingsPage($this, $seller)
         ->callTableAction('edit', $listing, data: [
-            'published' => true, 'title' => 'After', 'condition' => 'new', 'photos' => ['listings/x/photos/a.jpg'], 'price_cents' => '12.34', 'quantity' => 1,
+            'published' => true, 'title' => 'After', 'category' => 'kit', 'condition' => 'new', 'photos' => ['listings/x/photos/a.jpg'], 'price_cents' => '12.34', 'quantity' => 1,
             'units_per_lot' => 1, 'ships_from_country' => 'US', 'handling_days' => 2, 'shipping_domestic_cents' => '3', 'additional_item_shipping_cents' => '0',
             'uuid' => 'tampered', 'seller_id' => $other->id,
         ])
@@ -201,7 +204,7 @@ it('pauses an active listing that loses its stock instead of leaving it for sale
 
     listingsPage($this, $seller)
         ->callTableAction('edit', $listing, data: [
-            'published' => true, 'title' => $listing->title, 'condition' => 'new', 'photos' => $listing->photos ?: [UploadedFile::fake()->image('p.jpg')], 'price_cents' => '10', 'quantity' => 0,
+            'published' => true, 'title' => $listing->title, 'category' => 'kit', 'condition' => 'new', 'photos' => $listing->photos ?: [UploadedFile::fake()->image('p.jpg')], 'price_cents' => '10', 'quantity' => 0,
             'units_per_lot' => 1, 'ships_from_country' => 'US', 'handling_days' => 3, 'shipping_domestic_cents' => '0', 'additional_item_shipping_cents' => '0',
         ])
         ->assertNotified('Listing paused');
@@ -213,7 +216,7 @@ it('keeps a sold out listing published and puts it back on sale when it is resto
     $seller = onboardedSeller();
     $listing = Listing::factory()->forSeller($seller)->soldOut()->create(['quantity' => 0]);
     $data = fn (int $quantity) => [
-        'published' => true, 'title' => $listing->title, 'condition' => 'new', 'photos' => [UploadedFile::fake()->image('p.jpg')], 'price_cents' => '10', 'quantity' => $quantity,
+        'published' => true, 'title' => $listing->title, 'category' => 'kit', 'condition' => 'new', 'photos' => [UploadedFile::fake()->image('p.jpg')], 'price_cents' => '10', 'quantity' => $quantity,
         'units_per_lot' => 1, 'ships_from_country' => 'US', 'handling_days' => 3, 'shipping_domestic_cents' => '0', 'additional_item_shipping_cents' => '0',
     ];
 
@@ -233,4 +236,64 @@ it('deletes a listing softly', function () {
 
     expect(Listing::find($listing->id))->toBeNull()->and(Listing::withTrashed()->find($listing->id))->not->toBeNull();
     $this->get(route('listing', ['uuid' => $listing->uuid]))->assertNotFound();
+});
+
+// --- channel and category (R1.1) ---------------------------------------------------------------------------
+
+it('always creates marketplace listings with the chosen type, whatever the form is told', function () {
+    $seller = onboardedSeller();
+    $design = App\Models\Design::factory()->create();
+
+    listingsPage($this, $seller)
+        ->callTableAction('create', data: listingFormData([
+            'title' => 'Harbor kit', 'category' => ListingCategory::KIT->value, 'condition' => 'new', 'design_id' => $design->id,
+            'channel' => 'store', // not a field of the form: ignored
+        ]))
+        ->assertHasNoTableActionErrors();
+
+    $listing = Listing::where('title', 'Harbor kit')->firstOrFail();
+    expect($listing->channel)->toBe(ListingChannel::MARKETPLACE)
+        ->and($listing->category)->toBe(ListingCategory::KIT)
+        ->and($listing->design_id)->toBe($design->id)
+        ->and($listing->status)->toBe(ListingStatus::ACTIVE);
+});
+
+it('offers kits, completed speakers and used gear, never the store category', function () {
+    $seller = onboardedSeller();
+
+    foreach (['kit', 'completed_speaker', 'used_gear'] as $category) {
+        listingsPage($this, $seller)
+            ->callTableAction('create', data: listingFormData(['title' => "Type {$category}", 'category' => $category, 'condition' => 'used_fair']))
+            ->assertHasNoTableActionErrors();
+        expect(Listing::where('title', "Type {$category}")->first()->category->value)->toBe($category);
+    }
+
+    listingsPage($this, $seller)
+        ->callTableAction('create', data: listingFormData(['title' => 'Store attempt', 'category' => 'driver']))
+        ->assertHasTableActionErrors(['category']);
+    expect(Listing::where('title', 'Store attempt')->exists())->toBeFalse();
+});
+
+it('refuses used gear listed as new, but a new kit is fine', function () {
+    $seller = onboardedSeller();
+
+    listingsPage($this, $seller)
+        ->callTableAction('create', data: listingFormData(['title' => 'Liar', 'category' => 'used_gear', 'condition' => 'new']))
+        ->assertHasTableActionErrors(['condition']);
+    expect(Listing::where('title', 'Liar')->exists())->toBeFalse();
+
+    listingsPage($this, $seller)
+        ->callTableAction('create', data: listingFormData(['title' => 'Honest kit', 'category' => 'kit', 'condition' => 'new']))
+        ->assertHasNoTableActionErrors();
+    expect(Listing::where('title', 'Honest kit')->exists())->toBeTrue();
+});
+
+it('keeps store listings out of the sellers own list, even for an admin', function () {
+    $admin = adminUser();
+    $store = storeListing(['title' => 'Store thing'], admin: $admin);
+    $mine = Listing::factory()->forSeller($admin)->kit()->create(['title' => 'Admin kit']);
+
+    listingsPage($this, $admin)
+        ->assertCanSeeTableRecords([$mine])
+        ->assertCanNotSeeTableRecords([$store]);
 });

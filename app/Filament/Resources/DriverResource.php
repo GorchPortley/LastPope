@@ -7,7 +7,6 @@ use App\Filament\Resources\DriverResource\RelationManagers;
 use App\Models\Driver;
 use Filament\Forms;
 use Filament\Forms\Form;
-use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -33,18 +32,6 @@ class DriverResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\ToggleColumn::make('active')
-                    ->afterStateUpdated(function (Driver $record, $state): void {
-                        // Admins may publish anything, but they are told when it could not be sold as it is
-                        // (paid without a snapshot, seller without a payout account).
-                        if ($state && ($blockers = $record->publishBlockers()) !== []) {
-                            Notification::make()
-                                ->warning()
-                                ->title('Published despite open issues')
-                                ->body(implode(' ', $blockers))
-                                ->persistent()
-                                ->send();
-                        }
-                    })
                     ->searchable(),
                 Tables\Columns\TextColumn::make('id')
                 ->searchable(),

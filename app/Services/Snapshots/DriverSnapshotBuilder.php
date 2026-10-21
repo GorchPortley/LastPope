@@ -6,7 +6,7 @@ use App\Models\Driver;
 use App\Models\DriverSnapshot;
 
 /**
- * Builds a versioned driver data-pack snapshot: a ZIP on the private disk with the driver's
+ * Builds a versioned driver measurement snapshot: a ZIP on the private disk with the driver's
  * frequency, impedance and other files, manifest.json and README.txt, plus the DriverSnapshot row.
  *
  * Path: drivers/{storage_key}/snapshots/{slug}-{version}.zip
@@ -49,7 +49,6 @@ class DriverSnapshotBuilder extends SnapshotBuilder
                 'size' => $driver->size,
                 'impedance' => $driver->impedance,
                 'power' => $driver->power,
-                'data_price_cents' => $driver->data_price_cents,
                 'msrp_cents' => $driver->msrp_cents,
                 'link' => $driver->link,
                 'summary' => $driver->summary,

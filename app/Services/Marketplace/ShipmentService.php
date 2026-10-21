@@ -14,8 +14,9 @@ use Illuminate\Support\Facades\Validator;
 /**
  * Shipping a seller's part of an order (docs/PLAN.md 3.8 step 5).
  *
- *   markShipped()     seller enters carrier + tracking: awaiting_shipment -> shipped, payout released
- *                     (trigger "shipped"), buyer notified
+ *   markShipped()     seller (or any admin, for a platform seller's order such as SDLabs' store sales) enters
+ *                     carrier + tracking: awaiting_shipment -> shipped, payout released (trigger "shipped"),
+ *                     buyer notified
  *   confirmReceived() buyer confirms the parcel arrived: shipped -> completed
  *   autoComplete()    system: a parcel shipped more than auto_complete_days ago completes by itself
  *
@@ -31,13 +32,15 @@ class ShipmentService
     }
 
     /**
-     * @throws \Illuminate\Auth\Access\AuthorizationException  when $seller is not this seller order's seller
+     * @param  User  $actor  the seller, or an admin when the seller order belongs to a platform seller (SellerOrderPolicy::ship)
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException  when $actor may not ship this seller order
      * @throws \Illuminate\Validation\ValidationException  carrier / tracking missing or the URL is not a URL
      * @throws InvalidOrderStateException  nothing to ship (unpaid, digital-only, refunded, completed)
      */
-    public function markShipped(User $seller, SellerOrder $sellerOrder, string $carrier, string $trackingNumber, ?string $trackingUrl = null): SellerOrder
+    public function markShipped(User $actor, SellerOrder $sellerOrder, string $carrier, string $trackingNumber, ?string $trackingUrl = null): SellerOrder
     {
-        Gate::forUser($seller)->authorize('ship', $sellerOrder);
+        Gate::forUser($actor)->authorize('ship', $sellerOrder);
 
         $data = Validator::make(
             ['carrier' => trim($carrier), 'tracking_number' => trim($trackingNumber), 'tracking_url' => filled($trackingUrl) ? trim((string) $trackingUrl) : null],

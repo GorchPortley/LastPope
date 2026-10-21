@@ -23,7 +23,7 @@ render(function (View $view, string $uuid) {
         'shop' => $listing->seller?->sellerProfile,
         'driver' => $listing->driver?->active ? $listing->driver : null,
         'buyerCountry' => $buyerCountry,
-        'moreFromSeller' => Listing::query()->forSale()->with(['seller.sellerProfile'])
+        'moreFromSeller' => Listing::query()->marketplace()->forSale()->with(['seller.sellerProfile'])
             ->where('seller_id', $listing->seller_id)->whereKeyNot($listing->getKey())->latest()->limit(4)->get(),
     ]);
 });

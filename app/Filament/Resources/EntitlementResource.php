@@ -4,8 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Enums\EntitlementSource;
 use App\Filament\Resources\EntitlementResource\Pages;
-use App\Models\Design;
-use App\Models\Driver;
 use App\Models\Entitlement;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -42,13 +40,9 @@ class EntitlementResource extends Resource
                     ->label('User')
                     ->searchable(['name', 'email'])
                     ->description(fn (Entitlement $record): ?string => $record->user?->email),
-                Tables\Columns\TextColumn::make('entitleable_type')
-                    ->label('Type')
-                    ->formatStateUsing(fn ($state): string => $state === 'driver' || $state === Driver::class ? 'Driver data pack' : 'Design')
-                    ->badge(),
                 Tables\Columns\TextColumn::make('item')
-                    ->label('Item')
-                    ->state(fn (Entitlement $record): string => $record->entitleable?->purchasableTitle() ?? 'Deleted item'),
+                    ->label('Design')
+                    ->state(fn (Entitlement $record): string => $record->entitleable?->purchasableTitle() ?? 'Deleted design'),
                 Tables\Columns\TextColumn::make('source')
                     ->badge()
                     ->formatStateUsing(fn ($state): string => ($state instanceof EntitlementSource ? $state : EntitlementSource::from((string) $state))->label()),
@@ -71,9 +65,6 @@ class EntitlementResource extends Resource
                         true: fn (Builder $query) => $query->whereNull('revoked_at'),
                         false: fn (Builder $query) => $query->whereNotNull('revoked_at'),
                     ),
-                Tables\Filters\SelectFilter::make('entitleable_type')
-                    ->label('Type')
-                    ->options(['design' => 'Design', 'driver' => 'Driver data pack']),
             ])
             ->actions([
                 Tables\Actions\Action::make('revoke')
@@ -99,11 +90,5 @@ class EntitlementResource extends Resource
         return [
             'index' => Pages\ListEntitlements::route('/'),
         ];
-    }
-
-    /** @return class-string<Design|Driver> */
-    public static function modelFor(string $type): string
-    {
-        return $type === 'driver' ? Driver::class : Design::class;
     }
 }

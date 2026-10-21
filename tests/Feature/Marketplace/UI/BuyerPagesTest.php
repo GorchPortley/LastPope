@@ -54,13 +54,11 @@ it('shows the Marketplace group in the dashboard sidebar', function () {
 
 // --- library --------------------------------------------------------------------------------------------
 
-it('lists the library with downloads for designs and driver data packs and the way they were obtained', function () {
+it('lists the library with downloads for designs and the way they were obtained', function () {
     $design = paidDesign(onboardedSeller(), 1500);
-    $pack = Driver::factory()->paid(500)->withSnapshot('v2.0', true)->for(onboardedSeller(), 'creator')->create(['brand' => 'Libra', 'model' => 'Pack1']);
     $free = Design::factory()->free()->withSnapshot('v1.0', true)->create(['name' => 'Free Library Design']);
     $revoked = Design::factory()->withSnapshot()->create(['name' => 'Revoked Library Design']);
     $this->buyer->grantEntitlement($design);
-    $this->buyer->grantEntitlement($pack);
     $this->buyer->grantEntitlement($free, App\Enums\EntitlementSource::FREE);
     $this->buyer->grantEntitlement($revoked)->revoke();
     User::factory()->create()->grantEntitlement(Design::factory()->withSnapshot()->create(['name' => 'Somebody Elses Design']));
@@ -68,8 +66,6 @@ it('lists the library with downloads for designs and driver data packs and the w
     $this->actingAs($this->buyer)->get('/dashboard/library')
         ->assertOk()
         ->assertSee($design->name)->assertSee(route('design-snapshots.download', $design->snapshots->first()), false)
-        ->assertSee('Libra Pack1 data pack')->assertSee(route('driver-snapshots.download', $pack->snapshots->first()), false)
-        ->assertSee('Driver data pack')
         ->assertSee('Purchased')
         ->assertSee('Free Library Design')->assertSee('Free download')
         ->assertDontSee('Revoked Library Design')

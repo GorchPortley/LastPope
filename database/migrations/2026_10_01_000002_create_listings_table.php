@@ -12,8 +12,14 @@ return new class extends Migration
             $table->id();
             $table->uuid('uuid')->unique();
             $table->foreignId('seller_id')->constrained('users')->cascadeOnDelete();
-            // Optional link to the driver catalogue entry this listing sells.
+            // App\Enums\ListingChannel: store (SDLabs' own new drivers, admins only) or marketplace (users' kits, speakers, used gear).
+            $table->string('channel')->default('marketplace');
+            // App\Enums\ListingCategory: driver (store) | kit | completed_speaker | used_gear (marketplace).
+            $table->string('category');
+            // Link to the driver catalogue entry this listing sells (required for the store, optional for used gear).
             $table->foreignId('driver_id')->nullable()->constrained()->nullOnDelete();
+            // The site design a kit or a completed speaker is built from (optional).
+            $table->foreignId('design_id')->nullable()->constrained()->nullOnDelete();
             $table->string('title');
             $table->string('slug');
             // App\Enums\ListingCondition
@@ -41,6 +47,8 @@ return new class extends Migration
             $table->softDeletes();
 
             $table->index(['status', 'condition']);
+            $table->index(['channel', 'status']);
+            $table->index('category');
             $table->index('price_cents');
             $table->index('slug');
         });

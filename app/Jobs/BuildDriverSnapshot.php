@@ -14,7 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Throwable;
 
 /**
- * Builds a driver data-pack snapshot (ZIP) off the request and notifies the owner when it is ready.
+ * Builds a driver measurement snapshot (ZIP) off the request and notifies the owner when it is ready.
  *
  *     BuildDriverSnapshot::dispatch($driver, 'v1.0', $request->user());
  */

@@ -114,22 +114,6 @@ it('keeps a purchase entitlement when the same item is later accessed for free',
     expect($user->entitlementFor($design)->source)->toBe(EntitlementSource::PURCHASE);
 });
 
-it('applies the same rules to driver data packs', function () {
-    $owner = onboardedSeller();
-    $buyer = User::factory()->create();
-    $stranger = User::factory()->create();
-    $paid = Driver::factory()->for($owner, 'creator')->paid()->withSnapshot()->create();
-    $free = Driver::factory()->withSnapshot()->create();
-
-    $buyer->grantEntitlement($paid);
-
-    expect($owner->hasAccessTo($paid))->toBeTrue()
-        ->and($buyer->hasAccessTo($paid))->toBeTrue()
-        ->and($stranger->hasAccessTo($paid))->toBeFalse()
-        ->and($stranger->hasAccessTo($free))->toBeTrue()
-        ->and($stranger->entitlementFor($free)->entitleable->is($free))->toBeTrue();
-});
-
 it('never gives access to physical goods, except to the seller and admins', function () {
     $listing = Listing::factory()->create();
     $buyer = User::factory()->create();
@@ -164,4 +148,19 @@ it('has update and delete policies for listings and drivers too', function () {
         ->and(Gate::forUser($stranger)->denies('download', $listing))->toBeTrue()
         ->and(Gate::forUser($driver->creator)->allows('delete', $driver))->toBeTrue()
         ->and(Gate::forUser($stranger)->denies('delete', $driver))->toBeTrue();
+});
+
+it('makes the measurement downloads of an active driver public and keeps inactive ones for the owner and admins', function () {
+    $active = Driver::factory()->create();
+    $inactive = Driver::factory()->draft()->create();
+    $stranger = User::factory()->create();
+
+    expect(Gate::forUser($stranger)->allows('download', $active))->toBeTrue()
+        ->and(Gate::forUser($active->creator)->allows('download', $active))->toBeTrue()
+        ->and(Gate::forUser($stranger)->denies('download', $inactive))->toBeTrue()
+        ->and(Gate::forUser($inactive->creator)->allows('download', $inactive))->toBeTrue()
+        ->and(Gate::forUser(User::factory()->admin()->create())->allows('download', $inactive))->toBeTrue()
+        // guests may download too (the policy takes a nullable user)
+        ->and(Gate::forUser(null)->allows('download', $active))->toBeTrue()
+        ->and(Gate::allows('download', $inactive))->toBeFalse();
 });

@@ -8,18 +8,20 @@ use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Schema;
 
-it('is implemented by designs, drivers and listings', function () {
+it('is implemented by designs and listings, and no longer by drivers', function () {
     expect(new Design())->toBeInstanceOf(Purchasable::class)
-        ->and(new Driver())->toBeInstanceOf(Purchasable::class)
-        ->and(new Listing())->toBeInstanceOf(Purchasable::class);
+        ->and(new Listing())->toBeInstanceOf(Purchasable::class)
+        ->and(new Driver())->not->toBeInstanceOf(Purchasable::class);
 });
 
 it('registers a non-enforcing morph map', function () {
     expect((new Design())->getMorphClass())->toBe('design')
-        ->and((new Driver())->getMorphClass())->toBe('driver')
+        ->and((new Driver())->getMorphClass())->toBe(Driver::class) // drivers are not sold any more: no alias
         ->and((new Listing())->getMorphClass())->toBe('listing')
         ->and(Relation::getMorphedModel('listing'))->toBe(Listing::class)
+        ->and(Relation::getMorphedModel('driver'))->toBeNull()
         ->and(Relation::morphMap()['user'] ?? null)->toBeNull()   // we do not map users (Wave owns that alias)
         ->and(Relation::requiresMorphMap())->toBeFalse();
 });
@@ -81,28 +83,13 @@ it('explains why a design cannot be published', function () {
 
 // --- Driver ----------------------------------------------------------------------------------
 
-it('sells a driver data pack under the same rules', function () {
-    $seller = onboardedSeller();
-    $driver = Driver::factory()->for($seller, 'creator')->paid(399)->withSnapshot()->create(['brand' => 'Aurelia', 'model' => 'A16']);
-
-    expect($driver->purchasableTitle())->toBe('Aurelia A16 data pack')
-        ->and($driver->purchasablePriceCents())->toBe(399)
-        ->and($driver->getSeller()->is($seller))->toBeTrue()
-        ->and($driver->isDigital())->toBeTrue()
-        ->and($driver->requiresShipping())->toBeFalse()
-        ->and($driver->isAvailableForPurchase())->toBeTrue()
-        ->and(Driver::factory()->paid()->withSnapshot()->create()->isAvailableForPurchase())->toBeFalse() // seller cannot be paid
-        ->and(Driver::factory()->for($seller, 'creator')->paid()->create()->isAvailableForPurchase())->toBeFalse()
-        ->and(Driver::factory()->withSnapshot()->create()->isAvailableForPurchase())->toBeTrue()
-        ->and(Driver::factory()->paid()->create()->publishBlockers())->toHaveCount(2)
-        ->and(Driver::factory()->create()->publishBlockers())->toBe([]);
-});
-
-it('keeps the MSRP separate from the data pack price', function () {
-    $driver = Driver::factory()->create(['msrp_cents' => 12900, 'data_price_cents' => 0]);
+it('keeps the MSRP as information only: drivers have no price of their own to sell', function () {
+    $driver = Driver::factory()->create(['msrp_cents' => 12900]);
 
     expect($driver->msrp_cents)->toBe(12900)
-        ->and($driver->purchasablePriceCents())->toBe(0);
+        ->and(Schema::hasColumn('drivers', 'data_price_cents'))->toBeFalse()
+        ->and(method_exists($driver, 'purchasablePriceCents'))->toBeFalse()
+        ->and(method_exists($driver, 'isAvailableForPurchase'))->toBeFalse();
 });
 
 // --- Listing ---------------------------------------------------------------------------------

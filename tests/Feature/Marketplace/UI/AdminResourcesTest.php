@@ -266,22 +266,18 @@ it('refreshes the Stripe flags of a seller profile on demand', function () {
 
 // --- entitlements ----------------------------------------------------------------------------------------------------
 
-it('grants, revokes and restores access to digital items', function () {
+it('grants, revokes and restores access to designs', function () {
     $design = Design::factory()->withSnapshot()->create();
-    $pack = Driver::factory()->withSnapshot()->create();
     $list = \App\Filament\Resources\EntitlementResource\Pages\ListEntitlements::class;
 
     Livewire::actingAs($this->admin)->test($list)
-        ->callAction('grant', data: ['user_id' => $this->buyer->id, 'type' => 'design', 'item_id' => $design->id])
+        ->callAction('grant', data: ['user_id' => $this->buyer->id, 'item_id' => $design->id])
         ->assertHasNoActionErrors()
         ->assertNotified('Access granted');
 
     $entitlement = $this->buyer->entitlementFor($design);
     expect($entitlement->isActive())->toBeTrue()->and($entitlement->source)->toBe(EntitlementSource::ADMIN_GRANT)
         ->and($this->buyer->hasAccessTo($design, false))->toBeTrue();
-
-    Livewire::actingAs($this->admin)->test($list)->callAction('grant', data: ['user_id' => $this->buyer->id, 'type' => 'driver', 'item_id' => $pack->id]);
-    expect($this->buyer->entitlementFor($pack)?->isActive())->toBeTrue();
 
     $table = Livewire::actingAs($this->admin)->test($list)
         ->assertCanSeeTableRecords([$entitlement])
@@ -302,7 +298,7 @@ it('does not duplicate or downgrade an existing entitlement when granting again'
     $this->buyer->grantEntitlement($design, EntitlementSource::PURCHASE);
 
     Livewire::actingAs($this->admin)->test(\App\Filament\Resources\EntitlementResource\Pages\ListEntitlements::class)
-        ->callAction('grant', data: ['user_id' => $this->buyer->id, 'type' => 'design', 'item_id' => $design->id]);
+        ->callAction('grant', data: ['user_id' => $this->buyer->id, 'item_id' => $design->id]);
 
     expect(Entitlement::where('user_id', $this->buyer->id)->count())->toBe(1)
         ->and($this->buyer->entitlementFor($design)->source)->toBe(EntitlementSource::PURCHASE);
@@ -376,7 +372,7 @@ it('creates a listing from the admin with a generated uuid', function () {
 
     Livewire::actingAs($this->admin)->test(ListingResource\Pages\CreateListing::class)
         ->fillForm([
-            'seller_id' => $seller->id, 'title' => 'Created by admin', 'status' => 'draft', 'condition' => 'new', 'price_cents' => '10.00',
+            'seller_id' => $seller->id, 'title' => 'Created by admin', 'status' => 'draft', 'channel' => 'marketplace', 'category' => 'kit', 'condition' => 'new', 'price_cents' => '10.00',
             'quantity' => 1, 'units_per_lot' => 1, 'ships_from_country' => 'US', 'handling_days' => 3,
             'shipping_domestic_cents' => '0', 'additional_item_shipping_cents' => '0',
         ])
@@ -384,16 +380,56 @@ it('creates a listing from the admin with a generated uuid', function () {
         ->assertHasNoFormErrors();
 
     $listing = Listing::where('title', 'Created by admin')->firstOrFail();
-    expect($listing->uuid)->toMatch('/^[0-9a-f-]{36}$/')->and($listing->seller_id)->toBe($seller->id)->and($listing->price_cents)->toBe(1000);
+    expect($listing->uuid)->toMatch('/^[0-9a-f-]{36}$/')->and($listing->seller_id)->toBe($seller->id)->and($listing->price_cents)->toBe(1000)
+        ->and($listing->channel)->toBe(App\Enums\ListingChannel::MARKETPLACE)->and($listing->category)->toBe(App\Enums\ListingCategory::KIT);
+});
+
+it('creates store listings from the admin and refuses the ones that break the store rules', function () {
+    $driver = Driver::factory()->create();
+    $form = fn (array $overrides = []) => $overrides + [
+        'seller_id' => $this->admin->id, 'title' => 'Store from admin', 'status' => 'active', 'channel' => 'store', 'category' => 'driver',
+        'driver_id' => $driver->id, 'condition' => 'new', 'price_cents' => '129.00', 'quantity' => 12, 'units_per_lot' => 1,
+        'ships_from_country' => 'US', 'handling_days' => 2, 'shipping_domestic_cents' => '8.99', 'additional_item_shipping_cents' => '2',
+    ];
+    $create = fn (array $overrides = []) => Livewire::actingAs($this->admin)->test(ListingResource\Pages\CreateListing::class)->fillForm($form($overrides))->call('create');
+
+    $create()->assertHasNoFormErrors();
+    $store = Listing::where('title', 'Store from admin')->firstOrFail();
+    expect($store->channel)->toBe(App\Enums\ListingChannel::STORE)
+        ->and($store->category)->toBe(App\Enums\ListingCategory::DRIVER)
+        ->and($store->seller_id)->toBe($this->admin->id)
+        ->and($driver->storeListing()?->is($store))->toBeTrue();
+
+    // a second active store listing for the same driver
+    $create(['title' => 'Duplicate store'])->assertNotified('This listing breaks a rule');
+    // a seller who is not an admin
+    $create(['title' => 'Store by a user', 'seller_id' => onboardedSeller()->id, 'status' => 'draft'])->assertNotified('This listing breaks a rule');
+    // used condition
+    $create(['title' => 'Used store', 'condition' => 'used_good', 'status' => 'draft'])->assertNotified('This listing breaks a rule');
+    // used gear that claims to be new
+    $create(['title' => 'Fake used', 'channel' => 'marketplace', 'category' => 'used_gear', 'status' => 'draft'])->assertNotified('This listing breaks a rule');
+
+    expect(Listing::whereIn('title', ['Duplicate store', 'Store by a user', 'Used store', 'Fake used'])->count())->toBe(0);
+
+    // editing rechecks the rules: the store listing cannot become used
+    Livewire::actingAs($this->admin)->test(ListingResource\Pages\EditListing::class, ['record' => $store->getRouteKey()])
+        ->fillForm(['condition' => 'used_good'])
+        ->call('save')
+        ->assertNotified('This listing breaks a rule');
+    expect($store->fresh()->condition)->toBe(App\Enums\ListingCondition::NEW);
+
+    // the table shows and filters by channel
+    $market = sellableListing();
+    Livewire::actingAs($this->admin)->test(ListingResource\Pages\ListListings::class)
+        ->filterTable('channel', 'store')->assertCanSeeTableRecords([$store])->assertCanNotSeeTableRecords([$market]);
 });
 
 // --- design / driver activation -----------------------------------------------------------------------------------------
 
-it('warns admins who publish a design or driver that cannot be sold as it is', function () {
+it('warns admins who publish a design that cannot be sold as it is', function () {
     $unpaidSeller = User::factory()->create();
     $design = Design::factory()->for($unpaidSeller, 'designer')->paid(1000)->draft()->create();
     $free = Design::factory()->draft()->create();
-    $driver = Driver::factory()->for($unpaidSeller, 'creator')->paid(500)->draft()->create();
 
     Livewire::actingAs($this->admin)->test(DesignResource\Pages\ListDesigns::class)
         ->call('updateTableColumnState', 'active', $design->getKey(), true)
@@ -404,8 +440,10 @@ it('warns admins who publish a design or driver that cannot be sold as it is', f
         ->call('updateTableColumnState', 'active', $free->getKey(), true)
         ->assertNotNotified('Published despite open issues');
 
+    // drivers carry no price any more: publishing one is never a problem
+    $driver = Driver::factory()->draft()->create();
     Livewire::actingAs($this->admin)->test(DriverResource\Pages\ListDrivers::class)
         ->call('updateTableColumnState', 'active', $driver->getKey(), true)
-        ->assertNotified('Published despite open issues');
+        ->assertNotNotified('Published despite open issues');
     expect($driver->fresh()->active)->toBeTrue();
 });

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Contracts\Purchasable;
+use App\Enums\ListingCategory;
+use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
 use App\Enums\ListingStatus;
 use App\Models\Concerns\IsPurchasable;
@@ -14,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class Listing extends Model implements Purchasable
 {
@@ -25,7 +28,10 @@ class Listing extends Model implements Purchasable
     protected $fillable = [
         'uuid',
         'seller_id',
+        'channel',
+        'category',
         'driver_id',
+        'design_id',
         'title',
         'slug',
         'condition',
@@ -46,6 +52,7 @@ class Listing extends Model implements Purchasable
     ];
 
     protected $attributes = [
+        'channel' => 'marketplace',
         'condition' => 'new',
         'status' => 'draft',
         'quantity' => 1,
@@ -53,6 +60,8 @@ class Listing extends Model implements Purchasable
     ];
 
     protected $casts = [
+        'channel' => ListingChannel::class,
+        'category' => ListingCategory::class,
         'condition' => ListingCondition::class,
         'status' => ListingStatus::class,
         'photos' => 'array',
@@ -80,6 +89,11 @@ class Listing extends Model implements Purchasable
             if (blank($listing->ships_from_country)) {
                 $listing->ships_from_country = strtoupper((string) config('marketplace.default_country', 'US'));
             }
+
+            // A listing always has a category: the channel and the condition imply a sensible one.
+            if ($listing->category === null) {
+                $listing->category = $listing->defaultCategory();
+            }
         });
     }
 
@@ -93,10 +107,16 @@ class Listing extends Model implements Purchasable
         return $this->belongsTo(User::class, 'seller_id');
     }
 
-    /** The driver catalogue entry this listing is an instance of (optional). */
+    /** The driver catalogue entry this listing is an instance of (required for the store, optional otherwise). */
     public function driver(): BelongsTo
     {
         return $this->belongsTo(Driver::class);
+    }
+
+    /** The site design a kit or a completed speaker is built from (optional). */
+    public function design(): BelongsTo
+    {
+        return $this->belongsTo(Design::class);
     }
 
     // --- Scopes --------------------------------------------------------------------------------
@@ -106,7 +126,24 @@ class Listing extends Model implements Purchasable
         return $query->where('status', ListingStatus::ACTIVE->value);
     }
 
-    /** Active, in stock, and priced: what the marketplace shows. */
+    /** SDLabs' own new drivers (sold from the driver page, never shown in the marketplace browse). */
+    public function scopeStore(Builder $query): Builder
+    {
+        return $query->where('channel', ListingChannel::STORE->value);
+    }
+
+    /** What users sell to each other: kits, completed speakers, used gear. */
+    public function scopeMarketplace(Builder $query): Builder
+    {
+        return $query->where('channel', ListingChannel::MARKETPLACE->value);
+    }
+
+    public function scopeOfCategory(Builder $query, ListingCategory|string $category): Builder
+    {
+        return $query->where('category', $category instanceof ListingCategory ? $category->value : $category);
+    }
+
+    /** Active, in stock, and priced: what the shop shows. Combine with marketplace() or store(). */
     public function scopeForSale(Builder $query): Builder
     {
         return $query->active()->where('quantity', '>', 0)->where('price_cents', '>', 0);
@@ -123,6 +160,26 @@ class Listing extends Model implements Purchasable
     }
 
     // --- Helpers -------------------------------------------------------------------------------
+
+    public function isStore(): bool
+    {
+        return $this->channel === ListingChannel::STORE;
+    }
+
+    public function isMarketplace(): bool
+    {
+        return ! $this->isStore();
+    }
+
+    /** The category a listing gets when none is given: store = driver; marketplace = used gear if used, else a kit. */
+    public function defaultCategory(): ListingCategory
+    {
+        return match (true) {
+            $this->isStore() => ListingCategory::DRIVER,
+            $this->condition?->isUsed() === true => ListingCategory::USED_GEAR,
+            default => ListingCategory::KIT,
+        };
+    }
 
     public function isNew(): bool
     {
@@ -241,6 +298,95 @@ class Listing extends Model implements Purchasable
             $blockers[] = 'Quantity must be at least 1.';
         }
 
+        $blockers = array_merge($blockers, array_values($this->channelRuleViolations()));
+
+        // Switching a store listing on must not collide with the driver's current one.
+        if ($this->isStore() && $this->status !== ListingStatus::ACTIVE && ($conflict = $this->activeStoreConflictMessage()) !== null) {
+            $blockers[] = $conflict;
+        }
+
         return array_merge($blockers, $this->sellerBlockers());
+    }
+
+    // --- Channel rules (store vs marketplace) ----------------------------------------------------
+
+    /**
+     * Where this listing breaks the store / marketplace rules, as field => message (empty = fine).
+     *
+     *  STORE        seller is a platform seller (admin), driver_id set, category DRIVER, condition NEW, and
+     *               no other active store listing for the same driver (checked while this one is active)
+     *  MARKETPLACE  category KIT, COMPLETED_SPEAKER or USED_GEAR; USED_GEAR is never condition NEW;
+     *               driver_id and design_id are optional
+     *
+     * The keys are attribute names so forms can attach each message to its field. publishBlockers()
+     * includes these, validateChannelRules() throws them as a ValidationException.
+     *
+     * @return array<string, string>
+     */
+    public function channelRuleViolations(): array
+    {
+        $violations = [];
+
+        if ($this->isStore()) {
+            if (! $this->seller?->isPlatformSeller()) {
+                $violations['seller_id'] = 'Store listings are sold by the platform: the seller must be an admin.';
+            }
+
+            if (blank($this->driver_id)) {
+                $violations['driver_id'] = 'A store listing must be for a driver from the catalogue.';
+            }
+
+            if ($this->category !== ListingCategory::DRIVER) {
+                $violations['category'] = 'Store listings are in the Driver category.';
+            }
+
+            if ($this->condition !== ListingCondition::NEW) {
+                $violations['condition'] = 'Store listings are always new.';
+            }
+
+            if ($this->status === ListingStatus::ACTIVE && ($conflict = $this->activeStoreConflictMessage()) !== null) {
+                $violations['driver_id'] = $conflict;
+            }
+
+            return $violations;
+        }
+
+        if (! in_array($this->category, ListingCategory::marketplaceCases(), true)) {
+            $violations['category'] = 'Pick what you are selling: a kit, a completed speaker or used gear.';
+        } elseif ($this->category === ListingCategory::USED_GEAR && $this->condition === ListingCondition::NEW) {
+            $violations['condition'] = 'Used gear cannot be listed as new: pick a used condition, or list it as a kit or a completed speaker.';
+        }
+
+        return $violations;
+    }
+
+    /** Throws a ValidationException (messages keyed by field) when channelRuleViolations() is not empty. */
+    public function validateChannelRules(): static
+    {
+        if (($violations = $this->channelRuleViolations()) !== []) {
+            throw ValidationException::withMessages($violations);
+        }
+
+        return $this;
+    }
+
+    /** The other active store listing of this listing's driver, if there is one. */
+    public function conflictingStoreListing(): ?self
+    {
+        if (! $this->isStore() || blank($this->driver_id)) {
+            return null;
+        }
+
+        return static::query()->store()->active()
+            ->where('driver_id', $this->driver_id)
+            ->when($this->exists, fn (Builder $q) => $q->whereKeyNot($this->getKey()))
+            ->first();
+    }
+
+    private function activeStoreConflictMessage(): ?string
+    {
+        return $this->conflictingStoreListing() !== null
+            ? 'This driver already has an active store listing. Pause or remove it first.'
+            : null;
     }
 }

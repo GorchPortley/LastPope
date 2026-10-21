@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Console\Commands\ForumSeedDemo;
 use App\Console\Commands\ForumSetup;
 use App\Models\Design;
 use App\Models\Driver;
@@ -40,7 +41,7 @@ class ForumServiceProvider extends ServiceProvider
         }
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ForumSetup::class]);
+            $this->commands([ForumSetup::class, ForumSeedDemo::class]);
         }
     }
 }

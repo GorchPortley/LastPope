@@ -39,6 +39,10 @@ return [
     // Flarum user the key acts as for administrative calls (the first admin created by the installer).
     'admin_user_id' => (int) env('FLARUM_ADMIN_USER_ID', 1),
 
+    // Flarum lets a member start one discussion or post once every 10 seconds (HTTP 429). `forum:seed-demo`,
+    // which writes many posts in a row, waits this many seconds before it tries that member again.
+    'throttle_wait' => (int) env('FORUM_THROTTLE_WAIT', 11),
+
     // HTTP timeouts in seconds. Logins must never hang because the forum is slow.
     'connect_timeout' => 3,
     'timeout' => 8,

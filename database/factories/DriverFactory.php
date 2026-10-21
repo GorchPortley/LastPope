@@ -9,8 +9,9 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * Drivers' data packs are free and active by default. Useful states: free(), paid(), active(),
- * draft(), withSnapshot(), official(); pass ->for($user, 'creator') to choose the owner.
+ * Drivers are active by default. Useful states: active(), draft(), withSnapshot(), official();
+ * pass ->for($user, 'creator') to choose the owner. (New units are sold through a store Listing:
+ * Listing::factory()->inStore($driver).)
  *
  * @extends Factory<Driver>
  */
@@ -33,7 +34,6 @@ class DriverFactory extends Factory
             'size' => $this->faker->randomElement([1, 2, 3, 4, 5, 5.25, 5.5, 6, 6.5, 7, 8, 10, 12, 15, 18, 21]),
             'impedance' => $this->faker->randomElement([1, 2, 4, 6, 8]),
             'power' => $this->faker->numberBetween(20, 500),
-            'data_price_cents' => 0,
             'msrp_cents' => $this->faker->numberBetween(1500, 90000),
             'link' => $this->faker->url(),
             'summary' => $this->faker->paragraph(),
@@ -44,16 +44,6 @@ class DriverFactory extends Factory
             'other_files' => [],
             'official' => false,
         ];
-    }
-
-    public function free(): static
-    {
-        return $this->state(fn () => ['data_price_cents' => 0]);
-    }
-
-    public function paid(?int $cents = null): static
-    {
-        return $this->state(fn () => ['data_price_cents' => $cents ?? $this->faker->numberBetween(2, 20) * 100 - 1]);
     }
 
     public function active(): static

@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use App\Contracts\Purchasable;
 use App\Models\Concerns\HasStorageKey;
-use App\Models\Concerns\IsDigitalPurchasable;
 use Database\Factories\DriverFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,13 +11,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Scout\Searchable;
 
-class Driver extends Model implements Purchasable
+class Driver extends Model
 {
     /** @use HasFactory<DriverFactory> */
     use HasFactory;
     use Searchable;
     use HasStorageKey;
-    use IsDigitalPurchasable;
 
     public function toSearchableArray()
     {
@@ -43,7 +40,6 @@ class Driver extends Model implements Purchasable
         'size',
         'impedance',
         'power',
-        'data_price_cents',
         'msrp_cents',
         'link',
         'summary',
@@ -60,7 +56,6 @@ class Driver extends Model implements Purchasable
     protected $casts = [
         'active' => 'boolean',
         'official' => 'boolean',
-        'data_price_cents' => 'integer',
         'msrp_cents' => 'integer',
         'factory_specs' => 'array',
         'frequency_files' => 'array',
@@ -90,10 +85,20 @@ class Driver extends Model implements Purchasable
         return $this->hasMany(DriverSnapshot::class);
     }
 
-    /** Physical units of this driver for sale in the marketplace. */
+    /** Every listing of this driver: the store listing and the marketplace listings of used units. */
     public function listings(): HasMany
     {
         return $this->hasMany(Listing::class);
+    }
+
+    /**
+     * SDLabs' active store listing of this new driver, or null. At most one store listing per driver
+     * is active at a time (Listing::channelRuleViolations()). Whether it is in stock is up to the
+     * caller: check isAvailableForPurchase() or use the buy box.
+     */
+    public function storeListing(): ?Listing
+    {
+        return $this->listings()->store()->active()->orderByDesc('id')->first();
     }
 
     public function scopeActive(Builder $query): Builder
@@ -105,22 +110,5 @@ class Driver extends Model implements Purchasable
     public function fullName(): string
     {
         return trim($this->brand.' '.$this->model);
-    }
-
-    // --- Purchasable (the driver's measurement data pack) --------------------------------------
-
-    public function purchasableTitle(): string
-    {
-        return $this->fullName().' data pack';
-    }
-
-    public function purchasablePriceCents(): int
-    {
-        return (int) $this->data_price_cents;
-    }
-
-    public function getSeller(): ?User
-    {
-        return $this->creator;
     }
 }

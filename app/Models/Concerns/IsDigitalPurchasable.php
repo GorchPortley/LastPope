@@ -6,7 +6,7 @@ use App\Models\Entitlement;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
- * Digital products (Design, Driver data packs): delivered as snapshots, unlocked by entitlements.
+ * Digital products (designs): delivered as snapshots, unlocked by entitlements.
  * The using model provides the `snapshots()` relation.
  */
 trait IsDigitalPurchasable

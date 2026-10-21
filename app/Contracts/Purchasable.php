@@ -5,7 +5,7 @@ namespace App\Contracts;
 use App\Models\User;
 
 /**
- * Anything that can be put in a cart and bought: Design, Driver (data pack) and Listing.
+ * Anything that can be put in a cart and bought: Design (digital) and Listing (physical).
  */
 interface Purchasable
 {
@@ -13,7 +13,7 @@ interface Purchasable
 
     public function purchasablePriceCents(): int;
 
-    /** Design->designer, Driver->creator, Listing->seller. */
+    /** Design->designer, Listing->seller. */
     public function getSeller(): ?User;
 
     public function isDigital(): bool;

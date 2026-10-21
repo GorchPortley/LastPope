@@ -190,7 +190,7 @@ it('deletes the ZIP together with the snapshot row', function () {
     expect(Storage::disk('private')->exists($snapshot->download_path))->toBeFalse();
 });
 
-it('builds a driver data pack with frequency, impedance and other files', function () {
+it('builds a driver measurement snapshot with frequency, impedance and other files', function () {
     $driver = Driver::factory()->create(['brand' => 'Aurelia', 'model' => 'A16-W', 'storage_key' => 'bbbbbbbb-0000-4000-8000-000000000001']);
     $private = Storage::disk('private');
     $private->put('drivers/bbbbbbbb-0000-4000-8000-000000000001/Frequency/a.frd', "100 87 0\n");

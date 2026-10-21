@@ -7,7 +7,7 @@ use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Listing;
 use App\Services\Forum\ForumClient;
-use App\Services\Forum\ForumException;
+use App\Services\Forum\ForumTagSetup;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 
@@ -51,37 +51,9 @@ class ForumSetup extends Command
         $ok = $connection['reachable'] && $connection['authorized'];
 
         if ($ok) {
-            try {
-                $existing = $forum->tags();
-
-                foreach (config('forum.tags') as $kind => $tag) {
-                    $slug = trim((string) $tag['slug']);
-
-                    if ($slug === '') {
-                        $rows[] = ["Tag for {$kind}s", 'skipped', 'slug is empty: no automatic discussions for this kind'];
-
-                        continue;
-                    }
-
-                    if (isset($existing[$slug])) {
-                        if ($existing[$slug]['primary']) {
-                            $rows[] = ["Tag for {$kind}s ({$slug})", 'ok', 'exists (id '.$existing[$slug]['id'].')'];
-                        } else {
-                            $rows[] = ["Tag for {$kind}s ({$slug})", 'FAILED', 'exists but is a secondary tag; in the forum administration, Tags, drag it into the primary list'];
-                            $ok = false;
-                        }
-                    } elseif ($this->option('check')) {
-                        $rows[] = ["Tag for {$kind}s ({$slug})", 'MISSING', 'run forum:setup without --check to create it'];
-                        $ok = false;
-                    } else {
-                        $id = $forum->createTag($slug, $tag['name'], $tag['description'], $tag['color']);
-                        $rows[] = ["Tag for {$kind}s ({$slug})", 'created', 'id '.$id];
-                    }
-                }
-            } catch (ForumException $e) {
-                $rows[] = ['Tags', 'FAILED', $e->getMessage()];
-                $ok = false;
-            }
+            $tags = app(ForumTagSetup::class)->ensure($forum, ! $this->option('check'));
+            $rows = array_merge($rows, $tags['rows']);
+            $ok = $tags['ok'];
         } else {
             $rows[] = ['Tags', 'skipped', 'needs a working connection and API key'];
         }

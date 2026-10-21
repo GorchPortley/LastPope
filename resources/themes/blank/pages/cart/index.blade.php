@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Design;
-use App\Models\Driver;
 use App\Models\Listing;
 use App\Services\Marketplace\CartService;
 use function Laravel\Folio\{middleware, name};
@@ -82,10 +81,8 @@ new class extends Component
                                                 <h2 class="min-w-0 font-semibold text-gray-900 dark:text-white">
                                                     @if ($line->purchasable instanceof Design)
                                                         <a href="{{ route('design', ['id' => $line->purchasable->getKey()]) }}" class="hover:underline">{{ $line->title }}</a>
-                                                    @elseif ($line->purchasable instanceof Driver)
-                                                        <a href="{{ route('driver', ['id' => $line->purchasable->getKey()]) }}" class="hover:underline">{{ $line->title }}</a>
                                                     @elseif ($line->purchasable instanceof Listing)
-                                                        <a href="{{ route('listing', ['uuid' => $line->purchasable->uuid]) }}" class="hover:underline">{{ $line->title }}</a>
+                                                        <a href="{{ $line->purchasable->isStore() && $line->purchasable->driver_id ? route('driver', ['id' => $line->purchasable->driver_id]) : route('listing', ['uuid' => $line->purchasable->uuid]) }}" class="hover:underline">{{ $line->title }}</a>
                                                     @else
                                                         {{ $line->title }}
                                                     @endif
@@ -181,7 +178,7 @@ new class extends Component
             <div class="border border-dashed border-gray-300 bg-white py-16 text-center dark:border-zinc-600 dark:bg-zinc-800">
                 <x-phosphor-shopping-cart-duotone class="mx-auto h-14 w-14 text-gray-400" />
                 <p class="mt-3 text-lg font-medium text-gray-900 dark:text-white">Your cart is empty</p>
-                <p class="mt-1 text-sm text-gray-600 dark:text-zinc-400">Designs, driver data and gear you add will wait for you here.</p>
+                <p class="mt-1 text-sm text-gray-600 dark:text-zinc-400">Designs and gear you add will wait for you here.</p>
                 <div class="mt-5 flex flex-wrap justify-center gap-3">
                     <x-button tag="a" href="{{ route('marketplace') }}">Browse the marketplace</x-button>
                     <x-button tag="a" href="{{ route('designs') }}" color="gray">Browse designs</x-button>

@@ -66,9 +66,8 @@ it('has design and driver states', function () {
         ->and(Design::free()->whereKey($free->id)->exists())->toBeTrue()
         ->and(Design::paid()->whereKey($free->id)->exists())->toBeFalse();
 
-    $driver = Driver::factory()->paid(499)->draft()->withSnapshot()->create(['msrp_cents' => null]);
-    expect($driver->data_price_cents)->toBe(499)
-        ->and($driver->msrp_cents)->toBeNull()
+    $driver = Driver::factory()->draft()->withSnapshot()->create(['msrp_cents' => null]);
+    expect($driver->msrp_cents)->toBeNull()
         ->and($driver->active)->toBeFalse()
         ->and($driver->snapshots)->toHaveCount(1);
 });
@@ -295,18 +294,18 @@ it('keeps order items pointing at their products through the morph map', functio
 
 it('has entitlement states', function () {
     $design = Design::factory()->create();
-    $driver = Driver::factory()->create();
+    $freeDesign = Design::factory()->free()->create();
     $user = User::factory()->create();
 
     $purchase = Entitlement::factory()->forUser($user)->forProduct($design)->create();
-    $free = Entitlement::factory()->forProduct($driver)->free()->create();
+    $free = Entitlement::factory()->forProduct($freeDesign)->free()->create();
     $revoked = Entitlement::factory()->revoked()->create();
 
     expect($purchase->source)->toBe(EntitlementSource::PURCHASE)
         ->and($purchase->entitleable->is($design))->toBeTrue()
         ->and($purchase->entitleable_type)->toBe('design')
         ->and($free->source)->toBe(EntitlementSource::FREE)
-        ->and($free->entitleable->is($driver))->toBeTrue()
+        ->and($free->entitleable->is($freeDesign))->toBeTrue()
         ->and(Entitlement::factory()->owner()->create()->source)->toBe(EntitlementSource::OWNER)
         ->and(Entitlement::factory()->adminGrant()->create()->source)->toBe(EntitlementSource::ADMIN_GRANT)
         ->and($revoked->isActive())->toBeFalse()

@@ -12,8 +12,8 @@ use App\Models\User;
  *
  * Failure policy: the calls that run inside a web request (ensureUser, issueRememberToken) never
  * throw, they log and return null, so a forum outage can never block a login or registration.
- * createDiscussion, tags and createTag throw ForumException; the queued job retries, and
- * `forum:setup` reports the error.
+ * createDiscussion, createPost, replyCount, tags and createTag throw ForumException; the queued job
+ * retries, and `forum:setup` / `forum:seed-demo` report the error.
  */
 interface ForumClient
 {
@@ -41,6 +41,24 @@ interface ForumClient
      * @throws ForumException
      */
     public function createDiscussion(string $title, string $content, string $tagSlug, User $author): string;
+
+    /**
+     * Reply in a discussion as $author (same per-member credentials as createDiscussion()).
+     *
+     * @param  string  $discussion  the stored discussion slug "{id}-{title-slug}"; only the leading id is used
+     * @return int|null the new post's id, null when the forum is disabled
+     *
+     * @throws ForumException
+     */
+    public function createPost(string $discussion, string $content, User $author): ?int;
+
+    /**
+     * How many replies a discussion has (its posts after the opening one), or null when that cannot be
+     * told (forum disabled, discussion unknown). `forum:seed-demo` uses it to skip threads that have replies.
+     *
+     * @throws ForumException
+     */
+    public function replyCount(string $discussion): ?int;
 
     /** Public link to a discussion, e.g. https://example.com/forum/d/12-my-design. */
     public function discussionUrl(string $slug): string;

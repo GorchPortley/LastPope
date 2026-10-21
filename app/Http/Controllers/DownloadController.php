@@ -4,13 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\DesignSnapshot;
 use App\Models\DriverSnapshot;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Serves snapshot ZIPs from the private disk. Nothing under the private disk has a public URL;
- * access is decided by the `download` policy ability of the parent Design/Driver, which asks
- * User::hasAccessTo() (owner, admin, entitlement, or a free item).
+ * access is decided by the `download` policy ability of the parent Design/Driver.
+ *
+ *  - designs (logged in): User::hasAccessTo() - owner, admin, entitlement, or a free design
+ *  - drivers (no login): the measurement data is free, so anybody may download the snapshots of an
+ *    active driver; an inactive driver's files are only for its owner and admins (everybody else
+ *    gets a 404, as if it did not exist)
  */
 class DownloadController extends Controller
 {
@@ -23,7 +28,7 @@ class DownloadController extends Controller
 
     public function driverSnapshot(DriverSnapshot $snapshot): StreamedResponse
     {
-        $this->authorize('download', $snapshot->driver);
+        abort_unless(Gate::allows('download', $snapshot->driver), 404);
 
         return $this->stream($snapshot->download_path, $snapshot->snapshot_name);
     }

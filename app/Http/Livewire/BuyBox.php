@@ -6,7 +6,6 @@ use App\Contracts\Purchasable;
 use App\Enums\ListingStatus;
 use App\Models\CartItem;
 use App\Models\Design;
-use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\User;
 use App\Services\Marketplace\CartService;
@@ -14,10 +13,10 @@ use Illuminate\Database\Eloquent\Model;
 use Livewire\Component;
 
 /**
- * The buy box of every product page: a design, a driver's data pack or a physical listing.
+ * The buy box of every product page: a design or a physical listing (a store driver or a marketplace item).
  *
  *     <livewire:buy-box :purchasable="$design" />
- *     <livewire:buy-box :purchasable="$driver" label="Data pack" />
+ *     <livewire:buy-box :purchasable="$driver->storeListing()" label="Buy new from SDLabs" />
  *
  * It only reads (User::hasAccessTo(..., false) never grants anything) until the buyer presses the button;
  * every cart rule then lives in CartService. A free digital item goes straight to the library.
@@ -168,7 +167,7 @@ class BuyBox extends Component
     /** The newest snapshot, if there is one: the file the "Download" button gives. */
     private function downloadUrl(Model $p): ?string
     {
-        if (! $p instanceof Design && ! $p instanceof Driver) {
+        if (! $p instanceof Design) {
             return null;
         }
 
@@ -178,9 +177,7 @@ class BuyBox extends Component
             return null;
         }
 
-        return $p instanceof Design
-            ? route('design-snapshots.download', $snapshot)
-            : route('driver-snapshots.download', $snapshot);
+        return route('design-snapshots.download', $snapshot);
     }
 
     private function unavailableReason(Model $p, ?User $user): string

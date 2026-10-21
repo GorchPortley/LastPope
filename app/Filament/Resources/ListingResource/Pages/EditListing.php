@@ -18,6 +18,13 @@ class EditListing extends EditRecord
         ];
     }
 
+    protected function beforeSave(): void
+    {
+        if (! ListingResource::passesChannelRules($this->form->getState(), $this->record)) {
+            $this->halt();
+        }
+    }
+
     protected function afterSave(): void
     {
         ListingResource::warnAboutBlockers($this->record, $this->record->status->value);

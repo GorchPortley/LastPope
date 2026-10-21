@@ -232,6 +232,11 @@ DEMO_PASSWORD=pick-something-long   # every demo account gets this; the default 
 
 The demo admin is `admin@sdlabs.test`. Error pages still stay non-debug in demo mode.
 
+The demo content includes the forum: once the forum is up (section 8) run
+`docker compose exec app php artisan forum:setup && docker compose exec app php artisan forum:seed-demo` and every
+demo design, driver and listing gets a discussion with a few replies from the other demo users. (When the forum
+is already connected, `db:seed --force` does this for you at the end.)
+
 Then create your own admin account:
 
 ```bash
@@ -285,7 +290,30 @@ given their discussions in one go:
 docker compose exec app php artisan forum:setup --backfill
 ```
 
-Marketplace listings follow the same rule (a discussion in the `marketplace` tag once a listing is active).
+Marketplace listings follow the same rule (a discussion in the `marketplace` tag once a listing is active); this
+includes the store listings of new drivers.
+
+### Demo content for the forum
+
+A dev/demo site (`APP_ENV=local` or `demo`, see section 7) starts with an empty forum. To fill it:
+
+```bash
+docker compose exec app php artisan forum:setup        # tags, once the forum is up
+docker compose exec app php artisan forum:seed-demo
+```
+
+`forum:seed-demo` makes sure the tags exist, creates the discussion of every public design, driver and listing
+that has none (written by its owner, right away instead of through the queue), and then adds 2 to 4 replies to each
+thread from the other demo users: build and crossover questions on designs, measurement remarks on drivers,
+condition and shipping questions with the seller's answers on listings. Run it again whenever you like: threads that
+already have replies are left alone, so a second run adds nothing. It refuses to run when `APP_ENV` is not `local`
+or `demo`, and `db:seed` runs it for you when the forum is switched on and reachable (otherwise `db:seed` prints
+the command to run later).
+
+Flarum lets each member post once every 10 seconds, so the first run against a real forum takes a few minutes: the
+command takes turns between members and waits when the forum says "slow down" (`FORUM_THROTTLE_WAIT`). To make it
+instant on a throw-away demo forum, open the forum administration, **Permissions**, and give the *Member* group
+"Post without throttling".
 
 ### Forum tips
 

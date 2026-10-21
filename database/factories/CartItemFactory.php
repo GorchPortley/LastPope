@@ -25,7 +25,7 @@ class CartItemFactory extends Factory
         ];
     }
 
-    /** Make this line an existing Design, Driver or Listing, priced as it is now. */
+    /** Make this line an existing Design or Listing, priced as it is now. */
     public function forPurchasable(Purchasable $purchasable, int $quantity = 1): static
     {
         /** @var Model&Purchasable $purchasable */

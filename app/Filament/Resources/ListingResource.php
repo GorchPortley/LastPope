@@ -2,10 +2,13 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\ListingCategory;
+use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
 use App\Enums\ListingStatus;
 use App\Filament\Forms\MoneyInput;
 use App\Filament\Resources\ListingResource\Pages;
+use App\Models\Design;
 use App\Models\Listing;
 use App\Support\Countries;
 use Filament\Forms;
@@ -45,6 +48,19 @@ class ListingResource extends Resource
                             ->required()
                             ->default(ListingStatus::DRAFT->value)
                             ->helperText('Activating a listing whose seller cannot be paid is allowed for admins, with a warning.'),
+                        Forms\Components\Select::make('channel')
+                            ->options(ListingChannel::options())
+                            ->required()
+                            ->default(ListingChannel::MARKETPLACE->value)
+                            ->live()
+                            ->afterStateUpdated(fn (Forms\Set $set, ?string $state) => $set('category', $state === ListingChannel::STORE->value ? ListingCategory::DRIVER->value : null))
+                            ->helperText('Store: SDLabs sells a new catalogue driver from its driver page (seller must be an admin). Marketplace: kits, finished speakers and used gear.'),
+                        Forms\Components\Select::make('category')
+                            ->options(fn (Forms\Get $get): array => $get('channel') === ListingChannel::STORE->value
+                                ? [ListingCategory::DRIVER->value => ListingCategory::DRIVER->label()]
+                                : ListingCategory::marketplaceOptions())
+                            ->required()
+                            ->live(),
                         Forms\Components\TextInput::make('title')->required()->maxLength(160)->columnSpanFull(),
                         Forms\Components\Select::make('condition')
                             ->options(ListingCondition::options())
@@ -56,7 +72,15 @@ class ListingResource extends Resource
                             ->relationship('driver', 'model')
                             ->getOptionLabelFromRecordUsing(fn ($record): string => $record->fullName())
                             ->searchable(['brand', 'model'])
-                            ->preload(),
+                            ->preload()
+                            ->required(fn (Forms\Get $get): bool => $get('channel') === ListingChannel::STORE->value),
+                        Forms\Components\Select::make('design_id')
+                            ->label('Built from design')
+                            ->relationship('design', 'name')
+                            ->getOptionLabelFromRecordUsing(fn (Design $record): string => $record->name)
+                            ->searchable()
+                            ->preload()
+                            ->helperText('Optional: the site design a kit or completed speaker is built from.'),
                         Forms\Components\Textarea::make('description')->rows(6)->columnSpanFull(),
                         Forms\Components\FileUpload::make('photos')
                             ->image()
@@ -101,11 +125,15 @@ class ListingResource extends Resource
                     ->state(fn (Listing $record): ?string => $record->photos[0] ?? null)
                     ->disk('public')
                     ->square(),
+                Tables\Columns\TextColumn::make('channel')
+                    ->badge()
+                    ->formatStateUsing(fn ($state): string => ($state instanceof ListingChannel ? $state : ListingChannel::from((string) $state))->label())
+                    ->color(fn ($state): string => ($state instanceof ListingChannel ? $state : ListingChannel::from((string) $state))->color()),
                 Tables\Columns\TextColumn::make('title')
                     ->searchable()
                     ->sortable()
                     ->limit(50)
-                    ->description(fn (Listing $record): string => $record->condition->label()),
+                    ->description(fn (Listing $record): string => $record->category->label().' - '.$record->condition->label()),
                 Tables\Columns\TextColumn::make('seller.name')
                     ->label('Seller')
                     ->searchable()
@@ -124,6 +152,8 @@ class ListingResource extends Resource
             ->defaultSort('created_at', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options(ListingStatus::options()),
+                Tables\Filters\SelectFilter::make('channel')->options(ListingChannel::options()),
+                Tables\Filters\SelectFilter::make('category')->options(ListingCategory::options()),
                 Tables\Filters\SelectFilter::make('condition')->options(ListingCondition::options()),
                 Tables\Filters\SelectFilter::make('seller_id')->label('Seller')->relationship('seller', 'name')->searchable()->preload(),
                 Tables\Filters\TrashedFilter::make(),
@@ -161,6 +191,33 @@ class ListingResource extends Resource
             ->body(implode(' ', $blockers))
             ->persistent()
             ->send();
+    }
+
+    /**
+     * The store / marketplace rule violations of the form data (see Listing::channelRuleViolations()), as a
+     * list of messages. Empty = the listing may be saved.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<int, string>
+     */
+    public static function channelViolations(array $data, ?Listing $record = null): array
+    {
+        $probe = $record ? clone $record : new Listing;
+        $probe->fill(array_intersect_key($data, array_flip(['seller_id', 'channel', 'category', 'condition', 'driver_id', 'design_id', 'status'])));
+
+        return array_values($probe->channelRuleViolations());
+    }
+
+    /** Tells the admin why the data breaks the store / marketplace rules. Returns true when it is fine to save. */
+    public static function passesChannelRules(array $data, ?Listing $record = null): bool
+    {
+        if (($violations = static::channelViolations($data, $record)) === []) {
+            return true;
+        }
+
+        Notification::make()->danger()->title('This listing breaks a rule')->body(implode(' ', $violations))->persistent()->send();
+
+        return false;
     }
 
     public static function getEloquentQuery(): Builder

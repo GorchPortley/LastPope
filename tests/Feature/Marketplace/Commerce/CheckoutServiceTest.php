@@ -15,7 +15,7 @@ beforeEach(function () {
     $this->checkout = app(CheckoutService::class);
 });
 
-/** The multi-seller cart from the brief: design (A), driver pack (B), two used listings (C), platform design. */
+/** The multi-seller cart from the brief: design (A), a second design (B), two used listings (C), platform design. */
 function multiSellerCart(User $buyer): array
 {
     $admin = User::factory()->admin()->create();
@@ -25,7 +25,7 @@ function multiSellerCart(User $buyer): array
 
     $items = [
         'design' => paidDesign($sellerA, 2000),
-        'pack' => paidDriverPack($sellerB, 700),
+        'pack' => paidDesign($sellerB, 700),
         'woofer' => sellableListing($sellerC, 12000, [
             'title' => 'Used Peerless woofer', 'condition' => 'used_good', 'quantity' => 1,
             'shipping_domestic_cents' => 1500, 'shipping_international_cents' => 3000, 'additional_item_shipping_cents' => 0,
@@ -127,7 +127,7 @@ it('needs no address for a digital cart and stores none', function () {
 
     // and works without any
     $buyer2 = User::factory()->create();
-    fillCart($buyer2, [paidDriverPack(cents: 500)]);
+    fillCart($buyer2, [paidDesign(cents: 500)]);
     expect($this->checkout->start($buyer2)->order->total_cents)->toBe(500);
 });
 

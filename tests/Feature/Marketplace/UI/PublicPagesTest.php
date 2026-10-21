@@ -209,15 +209,14 @@ it('shows sold out listings as sold out instead of offering them', function () {
 
 // --- /sellers/{slug} -----------------------------------------------------------------------------
 
-it('shows a shop page with the bio, country, listings, designs and paid data packs', function () {
+it('shows a shop page with the bio, country, listings and designs', function () {
     $seller = onboardedSeller();
     $seller->sellerProfile->update(['shop_name' => 'Hale Shop', 'slug' => 'hale-shop', 'bio' => 'We build and sell speakers.', 'country' => 'GB']);
     sellableListing($seller, attributes: ['title' => 'Shop Listing']);
     Listing::factory()->forSeller($seller)->draft()->create(['title' => 'Draft Listing']);
     Design::factory()->for($seller, 'designer')->create(['name' => 'Shop Design']);
     Design::factory()->for($seller, 'designer')->draft()->create(['name' => 'Secret Design']);
-    paidDriverPack($seller, 700)->update(['brand' => 'Hale', 'model' => 'PaidPack']);
-    Driver::factory()->for($seller, 'creator')->free()->create(['brand' => 'Hale', 'model' => 'FreePack']);
+    Driver::factory()->for($seller, 'creator')->create(['brand' => 'Hale', 'model' => 'FreePack']);
 
     $this->get(route('seller', ['slug' => 'hale-shop']))
         ->assertOk()
@@ -226,8 +225,8 @@ it('shows a shop page with the bio, country, listings, designs and paid data pac
         ->assertSee('United Kingdom')
         ->assertSee('Shop Listing')->assertDontSee('Draft Listing')
         ->assertSee('Shop Design')->assertDontSee('Secret Design')
-        ->assertSee('Hale PaidPack')->assertDontSee('Hale FreePack')
-        ->assertSee('$7.00');
+        ->assertDontSee('Hale FreePack')
+        ->assertDontSee('data pack');
 
     $this->get(route('seller', ['slug' => 'no-such-shop']))->assertNotFound();
 });
@@ -245,8 +244,8 @@ it('puts the buy box on the design page and hides unpublished designs from every
     $this->actingAs($draft->designer)->get('/designs/design/'.$draft->id)->assertOk();
 });
 
-it('shows the manufacturer price and link next to the data pack buy box on the driver page', function () {
-    $driver = Driver::factory()->for(onboardedSeller(), 'creator')->paid(500)->withSnapshot()
+it('shows the manufacturer price and link next to the marketplace count on the driver page', function () {
+    $driver = Driver::factory()->for(onboardedSeller(), 'creator')->withSnapshot()
         ->create(['msrp_cents' => 21000, 'link' => 'https://maker.example/driver', 'brand' => 'Maker', 'model' => 'X1']);
     sellableListing(attributes: ['driver_id' => $driver->id, 'price_cents' => 9900]);
     $buyer = User::factory()->create();
@@ -257,11 +256,11 @@ it('shows the manufacturer price and link next to the data pack buy box on the d
         ->assertSee('https://maker.example/driver', false)->assertSee('Buy from the manufacturer')
         ->assertSee('1 listing in the marketplace')->assertSee('$99.00')
         ->assertSee(route('marketplace', ['driver' => $driver->id]), false)
-        ->assertSee('Measurement data pack')->assertSee('$5.00')->assertSee('Add to cart');
+        ->assertDontSee('data pack')->assertDontSee('data-buy-box', false); // no store listing, nothing to buy here
 });
 
-it('does not link a driver page to a javascript: manufacturer link and skips the data pack box when none is sold', function () {
-    $driver = Driver::factory()->free()->create(['link' => 'javascript:alert(1)', 'msrp_cents' => null]);
+it('does not link a driver page to a javascript: manufacturer link and shows no buy box without a store listing', function () {
+    $driver = Driver::factory()->create(['link' => 'javascript:alert(1)', 'msrp_cents' => null]);
 
     $this->get('/drivers/driver/'.$driver->id)->assertOk()
         ->assertDontSee('javascript:alert', false)->assertDontSee('data-driver-msrp', false)->assertDontSee('data-buy-box', false);

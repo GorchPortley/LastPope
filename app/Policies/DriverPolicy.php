@@ -43,9 +43,12 @@ class DriverPolicy
         return false;
     }
 
-    /** Download the driver's data-pack snapshots: owner, admin, entitled buyer, or anyone when the data is free. */
-    public function download(User $user, Driver $driver): bool
+    /**
+     * Download the driver's measurement snapshots. Driver data is free and public: anybody, logged in or not,
+     * may download the snapshots of an active driver. Inactive drivers: owner (and admins, see before()) only.
+     */
+    public function download(?User $user, Driver $driver): bool
     {
-        return $user->hasAccessTo($driver);
+        return $driver->active || ($user !== null && $driver->user_id === $user->id);
     }
 }

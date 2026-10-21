@@ -27,6 +27,7 @@
         </header>
         {{-- End Mobile Header --}}
         <main class="w-full h-full p-6 lg:p-7 lg:pl-72">
+            <x-marketplace.flash class="mb-6" />
             {{ $slot }}
         </main>
     </div>

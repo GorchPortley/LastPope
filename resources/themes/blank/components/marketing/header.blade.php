@@ -16,9 +16,9 @@
                             @mouseenter="isOpen = true"
                             @mouseleave="isOpen = false"
                             class="relative group">
-                            <div class="flex items-center h-full px-4 py-5 cursor-pointer text-white hover:text-amber-200 transition duration-150">
-                                <i class="ph ph-intersect-three mr-2 text-3xl"></i>
-                                <span class="font-bold">Design Database</span>
+                            <div class="flex items-center h-full px-3 xl:px-4 py-5 cursor-pointer text-white hover:text-amber-200 transition duration-150">
+                                <i class="ph ph-intersect-three mr-2 text-3xl hidden xl:inline-block"></i>
+                                <span class="font-bold text-sm xl:text-base">Design Database</span>
                             </div>
                             <div x-show="isOpen"
                                  x-transition
@@ -38,9 +38,9 @@
                             @mouseenter="isOpen = true"
                             @mouseleave="isOpen = false"
                             class="relative group">
-                            <div class="flex items-center h-full px-4 py-5 cursor-pointer text-white hover:text-amber-200 transition duration-150">
-                                <i class="ph ph-circles-three mr-2 text-4xl"></i>
-                                <span class="font-bold">Driver Database</span>
+                            <div class="flex items-center h-full px-3 xl:px-4 py-5 cursor-pointer text-white hover:text-amber-200 transition duration-150">
+                                <i class="ph ph-circles-three mr-2 text-4xl hidden xl:inline-block"></i>
+                                <span class="font-bold text-sm xl:text-base">Driver Database</span>
                             </div>
                             <div x-show="isOpen"
                                  x-transition
@@ -56,16 +56,23 @@
                         </li>
                         
                         <li class="group">
-                            <a href="{{ route('blog') }}" class="flex items-center h-full px-4 py-5 text-white hover:text-amber-200 transition duration-150">
-                                <i class="ph ph-megaphone-simple mr-2 text-3xl"></i>
-                                <span class="font-bold">Soap Box</span>
+                            <a href="{{ route('marketplace') }}" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-amber-200 transition duration-150">
+                                <x-phosphor-storefront class="mr-2 w-8 h-8 hidden xl:block" />
+                                <span class="font-bold text-sm xl:text-base">Marketplace</span>
+                            </a>
+                        </li>
+
+                        <li class="group">
+                            <a href="{{ route('blog') }}" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-amber-200 transition duration-150">
+                                <i class="ph ph-megaphone-simple mr-2 text-3xl hidden xl:inline-block"></i>
+                                <span class="font-bold text-sm xl:text-base">Soap Box</span>
                             </a>
                         </li>
                         
                         <li class="group">
-                            <a href="/forum" class="flex items-center h-full px-4 py-5 text-white hover:text-amber-200 transition duration-150">
-                                <i class="ph ph-user-sound mr-2 text-3xl"></i>
-                                <span class="font-bold">Forum</span>
+                            <a href="/forum" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-amber-200 transition duration-150">
+                                <i class="ph ph-user-sound mr-2 text-3xl hidden xl:inline-block"></i>
+                                <span class="font-bold text-sm xl:text-base">Forum</span>
                             </a>
                         </li>
                     </ul>
@@ -75,12 +82,15 @@
             <!-- Right side with search and user menu -->
             <div class="flex items-center flex-1 justify-end">
                 <!-- Search Bar - Takes all available space -->
-                <div class="hidden lg:block flex-grow px-4 max-w-xl">
+                <div class="hidden lg:block flex-grow px-3 max-w-[8rem] xl:max-w-[11rem] 2xl:max-w-xl">
                     @livewire('top-search-bar')
                 </div>
                 
                 <!-- User menu or login -->
                 <div class="flex items-center">
+                    @auth
+                        <livewire:cart-icon />
+                    @endauth
                     @if(auth()->guest())
                         <div class="hidden lg:block">
                             <a href="{{ route('login') }}" class="px-5 py-3 font-medium text-white hover:text-amber-200 transition duration-150" type="button">Sign In</a>
@@ -152,6 +162,7 @@
                                 <li><a href="{{ route('drivers', ["category" => "Other"]) }}" class="hover:text-purple-700">Others</a></li>
                             </ul>
                         </li>
+                        <li class="py-2"><a class="text-lg font-medium hover:text-purple-700" href="{{ route('marketplace') }}">Marketplace</a></li>
                         <li class="py-2"><a class="text-lg font-medium hover:text-purple-700" href="/blog">Soap Box</a></li>
                         <li class="py-2"><a class="text-lg font-medium hover:text-purple-700" href="/forum">Community Forum</a></li>
                     </ul>

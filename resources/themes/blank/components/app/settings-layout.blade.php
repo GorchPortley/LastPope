@@ -14,6 +14,7 @@
                 <div class="flex lg:flex-col items-stretch w-auto lg:w-full lg:space-y-1 items-center space-x-2 lg:space-x-0">
                     <x-settings-sidebar-link :href="route('settings.profile')" icon="phosphor-user-circle-duotone">Profile</x-settings-sidebar-link>
                     <x-settings-sidebar-link :href="route('settings.security')" icon="phosphor-lock-duotone">Security</x-settings-sidebar-link>
+                    <x-settings-sidebar-link :href="route('settings.addresses')" icon="phosphor-map-pin-duotone">Addresses</x-settings-sidebar-link>
                 </div>
             </nav>
         </aside>

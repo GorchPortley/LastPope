@@ -9,6 +9,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 
 /** To the buyer: a refund was issued. Mail + database, queued. */
 class OrderRefunded extends Notification implements ShouldQueue
@@ -42,9 +43,7 @@ class OrderRefunded extends Notification implements ShouldQueue
             ->line($this->amount($this->amountCents, $this->order)." was refunded for order {$this->order->number}.");
 
         if ($this->sellerOrder !== null) {
-            foreach ($this->itemLines($this->sellerOrder->items()->get(), $this->order) as $line) {
-                $mail->line($line);
-            }
+            $mail->line(new HtmlString($this->itemsTable($this->sellerOrder->items()->get(), $this->order)));
         }
 
         if (filled($this->note)) {
@@ -53,19 +52,22 @@ class OrderRefunded extends Notification implements ShouldQueue
 
         return $mail
             ->line('It usually appears on your statement within 5 to 10 business days. Refunded digital downloads are removed from your library.')
-            ->action('View your orders', url('/dashboard/orders'));
+            ->action('View your order', $this->buyerOrderUrl($this->order));
     }
 
     /** @return array<string, mixed> */
     public function toArray(object $notifiable): array
     {
-        return $this->sender() + [
-            'body' => $this->amount($this->amountCents, $this->order)." was refunded for order {$this->order->number}.".(filled($this->note) ? ' '.$this->note : ''),
-            'link' => url('/dashboard/orders'),
-            'kind' => 'order_refunded',
-            'order_id' => $this->order->getKey(),
-            'order_number' => $this->order->number,
-            'amount_cents' => $this->amountCents,
-        ];
+        return $this->payload(
+            'order_refunded',
+            'Refund issued',
+            $this->amount($this->amountCents, $this->order)." was refunded for order {$this->order->number}.".(filled($this->note) ? ' '.$this->note : ''),
+            $this->buyerOrderUrl($this->order),
+            [
+                'order_id' => $this->order->getKey(),
+                'order_number' => $this->order->number,
+                'amount_cents' => $this->amountCents,
+            ],
+        );
     }
 }

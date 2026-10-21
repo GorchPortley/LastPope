@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 
 /** To the seller: someone paid for their items. Mail + database, queued. */
 class NewSale extends Notification implements ShouldQueue
@@ -37,9 +38,7 @@ class NewSale extends Notification implements ShouldQueue
             ->greeting('You made a sale!')
             ->line("Order {$order->number} includes:");
 
-        foreach ($this->itemLines($items, $order) as $line) {
-            $mail->line($line);
-        }
+        $mail->line(new HtmlString($this->itemsTable($items, $order)));
 
         $mail->line('Items: '.$this->amount($sellerOrder->subtotal_cents, $order));
 
@@ -56,7 +55,7 @@ class NewSale extends Notification implements ShouldQueue
                 ->line('Add the carrier and tracking number in your seller dashboard once it is on its way'.(config('marketplace.physical_payout_trigger') === 'shipped' ? '; your payout is released then.' : '.'));
         }
 
-        return $mail->action('Open your sales', url('/dashboard/selling/orders'));
+        return $mail->action('Open your sales', route('selling.orders'));
     }
 
     /** @return array<string, mixed> */
@@ -64,13 +63,16 @@ class NewSale extends Notification implements ShouldQueue
     {
         $order = $this->sellerOrder->order;
 
-        return $this->sender() + [
-            'body' => "New sale on order {$order->number}: ".$this->amount($this->sellerOrder->subtotal_cents + $this->sellerOrder->shipping_cents, $order).'.',
-            'link' => url('/dashboard/selling/orders'),
-            'kind' => 'new_sale',
-            'order_id' => $order->getKey(),
-            'order_number' => $order->number,
-            'seller_order_id' => $this->sellerOrder->getKey(),
-        ];
+        return $this->payload(
+            'new_sale',
+            'New sale',
+            "New sale on order {$order->number}: ".$this->amount($this->sellerOrder->subtotal_cents + $this->sellerOrder->shipping_cents, $order).'.',
+            route('selling.orders'),
+            [
+                'order_id' => $order->getKey(),
+                'order_number' => $order->number,
+                'seller_order_id' => $this->sellerOrder->getKey(),
+            ],
+        );
     }
 }

@@ -118,7 +118,7 @@ it('only shows the order of the logged-in buyer: others get a 404', function () 
     $this->actingAs($this->buyer)->get(route('checkout.success'))->assertNotFound();
 });
 
-it('never fulfils from the success page: a pending order stays pending and refreshes itself', function () {
+it('never fulfils from the success page: a pending order stays pending and polls for its status', function () {
     $design = paidDesign(cents: 1500);
     $order = pendingOrder($this->buyer, [$design]);
     $gatewayCalls = count(fakeGateway()->calls);
@@ -126,18 +126,43 @@ it('never fulfils from the success page: a pending order stays pending and refre
     $this->actingAs($this->buyer)->get(route('checkout.success', ['session_id' => $order->stripe_checkout_session_id]))
         ->assertOk()
         ->assertSee('Confirming your payment')
-        ->assertSee('http-equiv="refresh"', false)
-        ->assertSee('attempt=1', false);
+        ->assertSee('wire:poll.3s="poll"', false)
+        ->assertDontSee('http-equiv="refresh"', false);
 
-    // after a while it stops refreshing and points to the orders page
-    $this->actingAs($this->buyer)->get(route('checkout.success', ['session_id' => $order->stripe_checkout_session_id, 'attempt' => 10]))
-        ->assertOk()
-        ->assertDontSee('http-equiv="refresh"', false)
-        ->assertSee('taking longer');
+    // after a while it stops polling and points to the orders page
+    $status = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\CheckoutStatus::class, ['order' => $order]);
+    $status->assertSee('This page updates by itself')->assertSeeHtml('wire:poll.3s="poll"');
+
+    foreach (range(1, App\Http\Livewire\CheckoutStatus::MAX_POLLS) as $ignored) {
+        $status->call('poll');
+    }
+    $status->assertSee('taking longer')->assertDontSeeHtml('wire:poll');
 
     expect($order->fresh()->status)->toBe(OrderStatus::PENDING)
         ->and($this->buyer->hasAccessTo($design, false))->toBeFalse()
         ->and(count(fakeGateway()->calls))->toBe($gatewayCalls);
+});
+
+it('switches the success page to the receipt by itself once the webhook has paid the order', function () {
+    $order = pendingOrder($this->buyer, [paidDesign(cents: 1500)]);
+    $status = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\CheckoutStatus::class, ['order' => $order]);
+    $status->assertSee('Confirming your payment')->assertDontSee('Thank you for your order');
+
+    payOrder($order);
+
+    $status->call('poll')
+        ->assertSee('Thank you for your order')
+        ->assertSee($order->number)
+        ->assertSee('$15.00')
+        ->assertSee('Open my library')
+        ->assertDontSeeHtml('wire:poll');
+});
+
+it('does not show the order of somebody else through the status component', function () {
+    $order = pendingOrder($this->buyer, [paidDesign(cents: 1500)]);
+
+    Livewire\Livewire::actingAs(User::factory()->create())->test(App\Http\Livewire\CheckoutStatus::class, ['order' => $order])
+        ->assertNotFound();
 });
 
 it('says so on the success page when the order was cancelled', function () {

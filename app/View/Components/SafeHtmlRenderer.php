@@ -3,45 +3,39 @@
 namespace App\View\Components;
 
 use Illuminate\View\Component;
-use Illuminate\Support\HtmlString;
 
+/**
+ * Renders rich text written by users (listing descriptions...). The content goes through the Tiptap
+ * schema first, so only the markup the editor itself can produce survives: scripts, event handlers,
+ * iframes and unknown attributes are dropped. Plain text (seed data, imports) is turned into paragraphs.
+ *
+ *     <x-safe-html-renderer :content="$listing->description" />
+ */
 class SafeHtmlRenderer extends Component
 {
-    public function __construct(
-        public string $content
-    ) {}
+    public function __construct(public string $content = '')
+    {
+    }
+
+    public function sanitized(): string
+    {
+        $content = trim($this->content);
+
+        if ($content === '') {
+            return '';
+        }
+
+        if ($content === strip_tags($content)) {
+            $content = collect(preg_split('/\R{2,}/', $content))
+                ->map(fn (string $paragraph) => '<p>'.nl2br(e(trim($paragraph))).'</p>')
+                ->implode('');
+        }
+
+        return trim((string) tiptap_converter()->asHtml($content));
+    }
 
     public function render()
     {
-        // Wrap content in a full HTML document if it's not already
-        $fullHtml = $this->content;
-        if (!str_contains($this->content, '<html')) {
-            $fullHtml = "
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <base target='_parent'>
-                    <style>
-                        body { margin: 0; }
-                        img { max-width: 100%; height: auto; }
-                    </style>
-                </head>
-                <body>
-                    {$this->content}
-                </body>
-                </html>
-            ";
-        }
-
-        // Create a sandboxed iframe with style permissions
-        $html = '<iframe
-            srcdoc="' . htmlspecialchars($fullHtml, ENT_QUOTES) . '"
-            sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
-            style="width: 100%; border: none; min-height: 100px; overflow: hidden;"
-            onload="this.style.height = this.contentDocument.documentElement.scrollHeight + \'px\';"
-            scrolling="no"
-        ></iframe>';
-
-        return new HtmlString($html);
+        return view('components.safe-html-renderer', ['html' => $this->sanitized()]);
     }
 }

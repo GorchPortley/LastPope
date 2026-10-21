@@ -207,3 +207,35 @@ function voltPage(Tests\TestCase $test, App\Models\User $user, string $url, stri
 
     throw new RuntimeException("No Volt component [{$voltName}] on {$url}.");
 }
+
+/*
+|--------------------------------------------------------------------------
+| UI helpers (marketplace pages, dashboard, admin)
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * A paid order with one physical listing from $seller (an onboarded one by default), shipped to a US address and
+ * awaiting shipment. Returns the order, the listing, the seller and the seller's part of the order.
+ *
+ * @return array{order: App\Models\Order, listing: App\Models\Listing, seller: App\Models\User, sellerOrder: App\Models\SellerOrder}
+ */
+function paidListingOrder(App\Models\User $buyer, ?App\Models\User $seller = null, int $cents = 6000, array $listing = []): array
+{
+    $seller ??= onboardedSeller();
+    $item = sellableListing($seller, $cents, array_merge(['quantity' => 3, 'shipping_domestic_cents' => 900], $listing));
+    $order = pendingOrder($buyer, [$item], addressFor($buyer));
+    payOrder($order, 'pi_'.Illuminate\Support\Str::random(10), 'ch_'.Illuminate\Support\Str::random(10));
+
+    return [
+        'order' => $order->fresh(),
+        'listing' => $item,
+        'seller' => $seller,
+        'sellerOrder' => $order->sellerOrders()->where('seller_id', $seller->getKey())->firstOrFail(),
+    ];
+}
+
+function adminUser(): App\Models\User
+{
+    return App\Models\User::factory()->admin()->create();
+}

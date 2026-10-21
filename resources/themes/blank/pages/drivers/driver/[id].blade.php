@@ -2,6 +2,7 @@
 
 use Livewire\WithPagination;
 use function Laravel\Folio\{name};
+use Illuminate\Support\Facades\Gate;
 use Livewire\Volt\Component;
 use App\Models\Driver;
 
@@ -19,6 +20,19 @@ new class extends Component {
             'snapshots',
             'designs.design'
         ])->findOrFail($id);
+
+        // Unpublished drivers are only visible to their creator (and admins).
+        abort_unless(Gate::allows('view', $this->driver), 404);
+    }
+
+    public function with(): array
+    {
+        $listings = $this->driver->listings()->forSale();
+
+        return [
+            'listingCount' => (clone $listings)->count(),
+            'listingFrom' => (clone $listings)->min('price_cents'),
+        ];
     }
 } ?>
 
@@ -119,50 +133,12 @@ new class extends Component {
             <div class="space-y-8">
                 <!-- Top Section: Image and Details -->
                 <div class="lg:grid lg:grid-cols-2 lg:gap-8">
-                    <!-- Left: Image Carousel -->
-                    <div class="relative mb-6 lg:mb-0">
-            <div id="indicators-carousel" class="relative w-full" data-carousel="static">
-                <!-- Carousel wrapper - adjusting height and overflow -->
-                <div class="relative overflow-hidden rounded-lg aspect-square">
-                    <!-- Items - using aspect-ratio instead of fixed height -->
-                    @foreach ($driver->card_image as $image)
-                    <div class="hidden duration-700 ease-in-out w-full h-full" data-carousel-item="{{ $loop->first ? 'active' : '' }}">
-                        <img src="{{ Storage::url($image) }}" 
-                             class="absolute block w-full h-full object-contain" 
-                             alt="Design image {{ $loop->iteration }}">
-                    </div>
-                    @endforeach
-                </div>
-                
-                <!-- Fixed carousel indicators - properly centered -->
-                <div class="absolute z-30 flex justify-center w-full space-x-3 bottom-5">
-                    @foreach ($driver->card_image as $image)
-                    <button type="button" class="w-3 h-3 invert rounded-full" 
-                            aria-current="{{ $loop->first ? 'true' : 'false' }}" 
-                            aria-label="Slide {{ $loop->iteration }}" 
-                            data-carousel-slide-to="{{ $loop->index }}"></button>
-                    @endforeach
-                </div>
-                
-                <!-- Slider controls -->
-                <button type="button" class="invert absolute top-0 start-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none" data-carousel-prev>
-                    <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/30 dark:bg-gray-800/30 group-hover:bg-white/50 dark:group-hover:bg-gray-800/60 group-focus:ring-4 group-focus:ring-white dark:group-focus:ring-gray-800/70 group-focus:outline-none">
-                        <svg class="w-4 h-4 text-white dark:text-gray-800 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
-                        </svg>
-                        <span class="sr-only">Previous</span>
-                    </span>
-                </button>
-                <button type="button" class="invert absolute top-0 end-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none" data-carousel-next>
-                    <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/30 dark:bg-gray-800/30 group-hover:bg-white/50 dark:group-hover:bg-gray-800/60 group-focus:ring-4 group-focus:ring-white dark:group-focus:ring-gray-800/70 group-focus:outline-none">
-                        <svg class="w-4 h-4 text-white dark:text-gray-800 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/>
-                        </svg>
-                        <span class="sr-only">Next</span>
-                    </span>
-                </button>
-            </div>
-        </div>
+                    <!-- Left: Image gallery -->
+                    <x-marketplace.gallery
+                        class="relative mb-6 lg:mb-0"
+                        :images="array_map(fn ($image) => Storage::url($image), (array) $driver->card_image)"
+                        :alt="$driver->fullName()"
+                    />
 
                     <!-- Right: Driver Info -->
                     <div class="space-y-6">
@@ -172,6 +148,36 @@ new class extends Component {
                                 - {{ $driver->model }}</h1>
                             @if($driver->tag)
                                 <p class="mt-2 text-lg text-gray-600 italic">{{ $driver->tag }}</p>
+                            @endif
+                        </div>
+
+                        <!-- Where to buy -->
+                        @php($buyLink = filled($driver->link) && \Illuminate\Support\Str::startsWith($driver->link, ['http://', 'https://']) ? $driver->link : null)
+                        <div class="space-y-4">
+                            @if ($driver->msrp_cents || $buyLink)
+                                <div class="w-full border border-gray-200 bg-white p-5" data-driver-msrp>
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">New from the manufacturer</p>
+                                    @if ($driver->msrp_cents)
+                                        <p class="mt-1 text-3xl font-bold text-gray-900">{{ money($driver->msrp_cents) }} <span class="text-sm font-normal text-gray-500">MSRP</span></p>
+                                    @endif
+                                    @if ($buyLink)
+                                        <x-button tag="a" href="{{ $buyLink }}" target="_blank" rel="noopener nofollow" color="gray" class="mt-3 w-full">Buy from the manufacturer &rarr;</x-button>
+                                    @endif
+                                </div>
+                            @endif
+
+                            @if ($listingCount > 0)
+                                <a href="{{ route('marketplace', ['driver' => $driver->id]) }}" class="flex items-center justify-between gap-3 border border-gray-200 bg-white p-4 hover:border-purple-950" data-driver-listings>
+                                    <span>
+                                        <span class="block font-semibold text-gray-900">{{ $listingCount }} {{ \Illuminate\Support\Str::plural('listing', $listingCount) }} in the marketplace</span>
+                                        <span class="block text-sm text-gray-500">New and used, from {{ money((int) $listingFrom) }}</span>
+                                    </span>
+                                    <x-phosphor-storefront class="h-8 w-8 flex-shrink-0 text-purple-950" />
+                                </a>
+                            @endif
+
+                            @if ($driver->data_price_cents > 0 || $driver->snapshots->isNotEmpty())
+                                <livewire:buy-box :purchasable="$driver" label="Measurement data pack" />
                             @endif
                         </div>
 
@@ -195,26 +201,6 @@ new class extends Component {
                                     <dt class="text-sm text-gray-500">Category</dt>
                                     <dd class="mt-1 text-lg font-medium text-gray-900">{{ $driver->category }}</dd>
                                 </div>
-                                @if($driver->msrp_cents)
-                                    <div>
-                                        <dt class="text-sm text-gray-500">MSRP</dt>
-                                        <dd class="mt-1 text-lg font-medium text-gray-900">
-                                            {{ money($driver->msrp_cents) }}</dd>
-                                    </div>
-                                @endif
-                                <div>
-                                    <dt class="text-sm text-gray-500">Data Pack</dt>
-                                    <dd class="mt-1 text-lg font-medium text-gray-900">
-                                        {{ $driver->data_price_cents > 0 ? money($driver->data_price_cents) : 'Free' }}</dd>
-                                </div>
-                                @if($driver->link)
-                                    <div class="mt-4">
-                                        <x-button  tag="a" href="{{ $driver->link }}"
-                                           class="hover:bg-blue-800">
-                                            View Manufacturer Page →
-                                        </x-button>
-                                    </div>
-                                @endif
                             </dl>
                         </div>
                     </div>

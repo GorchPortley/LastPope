@@ -31,6 +31,20 @@ trait DescribesOrders
         return $items->map(fn (OrderItem $item) => $this->itemLine($item, $order))->all();
     }
 
+    /**
+     * The items as one GitHub-flavoured Markdown table (the mail template renders it as an HTML table).
+     *
+     * @param  Collection<int, OrderItem>  $items
+     */
+    protected function itemsTable(Collection $items, Order $order): string
+    {
+        $cell = fn (string $text): string => str_replace(['|', "\n"], ['\\|', ' '], $text);
+
+        $rows = $items->map(fn (OrderItem $item) => '| '.$cell($item->title).' | '.$item->quantity.' | '.$this->amount($item->line_total_cents, $order).' |');
+
+        return "| Item | Qty | Price |\n|:-----|:---:|------:|\n".$rows->implode("\n");
+    }
+
     /** The snapshot address as lines of text. */
     protected function addressLines(?array $address): array
     {
@@ -56,5 +70,29 @@ trait DescribesOrders
             'icon' => '/storage/demo/default.png',
             'user' => ['name' => config('app.name')],
         ];
+    }
+
+    /**
+     * The database payload the /notifications page renders: a title, a body and the url to open. `link` is the same
+     * url under the older key. Extra keys (ids, amounts) go in $extra.
+     *
+     * @param  array<string, mixed>  $extra
+     * @return array<string, mixed>
+     */
+    protected function payload(string $kind, string $title, string $body, string $url, array $extra = []): array
+    {
+        return $this->sender() + [
+            'title' => $title,
+            'body' => $body,
+            'url' => $url,
+            'link' => $url,
+            'kind' => $kind,
+        ] + $extra;
+    }
+
+    /** The buyer's page for an order. */
+    protected function buyerOrderUrl(Order $order): string
+    {
+        return route('dashboard.orders.show', ['order' => $order->number]);
     }
 }

@@ -261,21 +261,21 @@ it('flags listings the seller will not ship to the chosen country', function () 
         ->and($de->issues()[0]->type)->toBe(CartIssueType::NOT_SHIPPABLE);
 });
 
-it('backs the AddToCart button on the design page with the same rules', function () {
+it('backs the buy box on the design page with the same rules', function () {
     $seller = onboardedSeller();
     $design = paidDesign($seller, 1500);
     $free = Design::factory()->free()->withSnapshot()->create();
 
-    $mine = Livewire\Livewire::actingAs($seller)->test(App\Http\Livewire\AddToCartButton::class, ['design' => $design, 'isInCart' => false]);
-    $mine->call('addToCart');
+    $mine = Livewire\Livewire::actingAs($seller)->test(App\Http\Livewire\BuyBox::class, ['purchasable' => $design]);
+    $mine->call('add');
     expect($this->carts->count($seller))->toBe(0);
 
-    $button = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\AddToCartButton::class, ['design' => $design, 'isInCart' => false]);
-    $button->call('addToCart')->assertSet('isInCart', true)->assertDispatched('cart-updated');
+    $box = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\BuyBox::class, ['purchasable' => $design]);
+    $box->call('add')->assertDispatched('cart-updated')->assertSee('In your cart');
     expect($this->carts->count($this->buyer))->toBe(1);
 
-    $freeButton = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\AddToCartButton::class, ['design' => $free, 'isInCart' => false]);
-    $freeButton->call('addToCart')->assertSet('isOwned', true);
+    $freeBox = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\BuyBox::class, ['purchasable' => $free]);
+    $freeBox->call('add')->assertSee('In your library');
     expect($this->buyer->entitlementFor($free)?->isActive())->toBeTrue()
         ->and($this->carts->count($this->buyer))->toBe(1);
 });

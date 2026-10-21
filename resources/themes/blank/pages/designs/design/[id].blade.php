@@ -1,6 +1,7 @@
 <?php
 
 use function Laravel\Folio\{name};
+use Illuminate\Support\Facades\Gate;
 use Livewire\Volt\Component;
 use App\Models\Design;
 
@@ -17,6 +18,9 @@ new class extends Component {
             'components.driver',
             'snapshots',
         ])->findOrFail($id);
+
+        // Unpublished designs are only visible to their designer (and admins).
+        abort_unless(Gate::allows('view', $this->design), 404);
     }
 
     public function with(): array
@@ -28,7 +32,7 @@ new class extends Component {
 
 <x-layouts.marketing>
     @volt('design')
-    <div class=" h-dvh dark:text-white">
+    <div class="min-h-dvh dark:text-white">
         <main class="mx-auto overflow-auto flex-grow bg-white max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
             <!-- Breadcrumb -->
             <nav class="mb-6" aria-label="Breadcrumb">
@@ -43,51 +47,13 @@ new class extends Component {
             <div class="space-y-8">
     <!-- Top Section: Image and Details -->
     <div class="lg:grid lg:grid-cols-2 lg:gap-8">
-        <!-- Left: Image Carousel with improved sizing -->
-        <div class="relative mb-6 lg:mb-0">
-            <div id="indicators-carousel" class="relative w-full" data-carousel="static">
-                <!-- Carousel wrapper - adjusting height and overflow -->
-                <div class="relative overflow-hidden rounded-lg aspect-square">
-                    <!-- Items - using aspect-ratio instead of fixed height -->
-                    @foreach ($design->card_image as $image)
-                    <div class="hidden duration-700 ease-in-out w-full h-full" data-carousel-item="{{ $loop->first ? 'active' : '' }}">
-                        <img src="{{ Storage::url($image) }}" 
-                             class="absolute block w-full h-full object-contain" 
-                             alt="Design image {{ $loop->iteration }}">
-                    </div>
-                    @endforeach
-                </div>
-                
-                <!-- Fixed carousel indicators - properly centered -->
-                <div class="absolute z-30 flex justify-center w-full space-x-3 bottom-5">
-                    @foreach ($design->card_image as $image)
-                    <button type="button" class="w-3 h-3 invert rounded-full" 
-                            aria-current="{{ $loop->first ? 'true' : 'false' }}" 
-                            aria-label="Slide {{ $loop->iteration }}" 
-                            data-carousel-slide-to="{{ $loop->index }}"></button>
-                    @endforeach
-                </div>
-                
-                <!-- Slider controls -->
-                <button type="button" class="invert absolute top-0 start-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none" data-carousel-prev>
-                    <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/30 dark:bg-gray-800/30 group-hover:bg-white/50 dark:group-hover:bg-gray-800/60 group-focus:ring-4 group-focus:ring-white dark:group-focus:ring-gray-800/70 group-focus:outline-none">
-                        <svg class="w-4 h-4 text-white dark:text-gray-800 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
-                        </svg>
-                        <span class="sr-only">Previous</span>
-                    </span>
-                </button>
-                <button type="button" class="invert absolute top-0 end-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none" data-carousel-next>
-                    <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/30 dark:bg-gray-800/30 group-hover:bg-white/50 dark:group-hover:bg-gray-800/60 group-focus:ring-4 group-focus:ring-white dark:group-focus:ring-gray-800/70 group-focus:outline-none">
-                        <svg class="w-4 h-4 text-white dark:text-gray-800 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/>
-                        </svg>
-                        <span class="sr-only">Next</span>
-                    </span>
-                </button>
-            </div>
-        </div>
-        
+        <!-- Left: Image gallery -->
+        <x-marketplace.gallery
+            class="relative mb-6 lg:mb-0"
+            :images="array_map(fn ($image) => Storage::url($image), (array) $design->card_image)"
+            :alt="$design->name"
+        />
+
         <!-- Right: Design Info -->
         <div class="space-y-6">
             <!-- Title and Tag -->
@@ -105,6 +71,9 @@ new class extends Component {
                     <p class="text-lg font-medium text-gray-900 hover:text-blue-400">{{ $design->designer->name ?? 'Speaker Designer' }}</p>
                 </a>
             </div>
+
+            <!-- Buy box -->
+            <livewire:buy-box :purchasable="$design" />
 
             <!-- Specifications -->
             <div class="border-t border-gray-200 pt-6">

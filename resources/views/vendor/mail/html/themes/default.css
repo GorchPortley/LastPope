@@ -197,6 +197,29 @@ img {
     padding: 35px;
 }
 
+/* Plain Markdown tables (order items in the marketplace mails) */
+
+.content-cell > table:not(.action):not(.panel):not(.subcopy) {
+    margin: 20px 0;
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.content-cell > table:not(.action):not(.panel):not(.subcopy) th {
+    border-bottom: 1px solid #EDEFF2;
+    color: #3D4852;
+    font-size: 13px;
+    padding: 6px 4px;
+    text-transform: uppercase;
+}
+
+.content-cell > table:not(.action):not(.panel):not(.subcopy) td {
+    border-bottom: 1px solid #EDEFF2;
+    color: #3D4852;
+    font-size: 15px;
+    padding: 8px 4px;
+}
+
 /* Buttons */
 
 .action {

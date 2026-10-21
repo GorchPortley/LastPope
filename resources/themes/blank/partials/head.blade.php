@@ -6,7 +6,7 @@
 @if(isset($seo->title))
     <title>{{ $seo->title }}</title>
 @else
-    <title>{{ setting('site.title', 'SDLabs.cc') . ' - ' . setting('site.description', 'The Speaker Design Marketplace') }}</title>
+    <title>{{ setting('site.title', config('app.name')) . ' - ' . setting('site.description', 'The Speaker Design Marketplace') }}</title>
 @endif
 
 <meta charset="utf-8">
@@ -24,7 +24,7 @@
     <meta property="og:image" content="{{ $seo->image }}">
     <meta property="og:type" content="@if(isset($seo->type)){{ $seo->type }}@else{{ 'article' }}@endif">
     <meta property="og:description" content="{{ $seo->description }}">
-    <meta property="og:site_name" content="{{ setting('site.title') }}">
+    <meta property="og:site_name" content="{{ setting('site.title', config('app.name')) }}">
 
     <meta itemprop="name" content="{{ $seo->title }}">
     <meta itemprop="description" content="{{ $seo->description }}">

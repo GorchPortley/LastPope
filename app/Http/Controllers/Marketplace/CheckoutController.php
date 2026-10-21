@@ -61,7 +61,8 @@ class CheckoutController extends Controller
 
     /**
      * Shows the order's state. It never fulfils anything: the Stripe webhook does, usually within a
-     * second or two, so a still-pending order shows a "confirming" message that refreshes a few times.
+     * second or two, so a still-pending order shows a "confirming" message that the CheckoutStatus
+     * Livewire component polls until the order is paid.
      */
     public function success(Request $request): View
     {
@@ -78,7 +79,6 @@ class CheckoutController extends Controller
         return view('checkout.success', [
             'order' => $order,
             'sessionId' => $sessionId,
-            'attempt' => max(0, (int) $request->query('attempt', 0)),
         ]);
     }
 

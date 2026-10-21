@@ -15,6 +15,14 @@
                     <x-app.sidebar-link href="{{route('dashboard.designs')}}">My Designs</x-app.sidebar-link>
                     <x-app.sidebar-link href="{{route('dashboard.drivers')}}">My Drivers</x-app.sidebar-link>
                 </x-app.sidebar-dropdown>
+                <x-app.sidebar-dropdown text="Marketplace" icon="phosphor-storefront" id="marketplace_dropdown" :active="false" :open="true">
+                    <x-app.sidebar-link href="{{ route('dashboard.library') }}" :active="request()->routeIs('dashboard.library')">My Library</x-app.sidebar-link>
+                    <x-app.sidebar-link href="{{ route('dashboard.orders') }}" :active="request()->routeIs('dashboard.orders*')">My Orders</x-app.sidebar-link>
+                    <x-app.sidebar-link href="{{ route('dashboard.listings') }}" :active="request()->routeIs('dashboard.listings')">My Listings</x-app.sidebar-link>
+                    <x-app.sidebar-link href="{{ route('selling.orders') }}" :active="request()->routeIs('selling.orders')">Sales</x-app.sidebar-link>
+                    <x-app.sidebar-link href="{{ route('selling.dashboard') }}" :active="request()->routeIs('selling.dashboard')">Selling &amp; Payouts</x-app.sidebar-link>
+                </x-app.sidebar-dropdown>
+                <x-app.sidebar-link href="{{ route('marketplace') }}">Browse Marketplace</x-app.sidebar-link>
                 {{--<x-app.sidebar-dropdown text="My Library" icon="phosphor-stack" id="library_dropdown" :active="false" :open="true">
                 <x-app.sidebar-link href="{{route('dashboard.library')}}">Designs</x-app.sidebar-link>
                 <x-app.sidebar-link href="#" class="text-gray-600">Drivers(Coming Soon)</x-app.sidebar-link>

@@ -1,48 +1,43 @@
-<footer class="pt-16 pb-6 bg-white">
-    <div class="px-5 mx-auto max-w-6xl xl:max-w-6xl">
-        <ul class="grid gap-y-10 pb-10 text-sm font-medium sm:pb-20 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
-            <li class="row-span-2 space-y-5">
-                <h2 class="text-xs font-bold tracking-wide text-gray-900 uppercase">Product</h2>
-                <ul class="space-y-2 sm:space-y-4 text-md">
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                </ul>
-            </li>
-            <li class="row-span-2 space-y-5">
-                <h2 class="text-xs font-bold tracking-wide text-gray-900 uppercase">About</h2>
-                <ul class="space-y-2 sm:space-y-4">
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                </ul>
-            </li>
-            <li class="row-span-2 space-y-5">
-                <h2 class="text-xs font-bold tracking-wide text-gray-900 uppercase">Resources</h2>
-                <ul class="space-y-2 sm:space-y-4">
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                </ul>
-            </li>
-            <li class="space-y-5">
-                <h2 class="text-xs font-bold tracking-wide text-gray-900 uppercase">Social</h2>
-                <ul class="space-y-2 sm:space-y-4">
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                    <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                </ul>
-            </li>
-        </ul>
-        <div class="flex flex-col-reverse justify-between pt-10 pb-4 bg-top border-t border-gray-900 sm:pt-8 lg:flex-row">
-            <ul class="flex flex-col space-y-1 lg:mb-0 sm:space-y-0 sm:space-x-5 sm:flex-row">
-                <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-                <li><a class="text-xl transition-colors duration-200 hover:text-gray-900 sm:text-2xl" href="/">Demo</a></li>
-            </ul>
-            <ul class="flex flex-col mb-3 space-y-2 lg:mb-0 sm:space-y-0 sm:space-x-5 sm:flex-row"><a href="/" class="font-semibold tracking-tight text-black transition-colors duration-300 text-md hover:text-deep-purple-accent-400">© {{ date('Y') }} Wave.</a></ul>
+<footer class="mt-16 bg-purple-950 text-purple-100">
+    <div class="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
+        <div>
+            <div class="text-lg font-bold text-white">{{ config('app.name') }}</div>
+            <div class="mt-2 text-sm text-purple-200">{{ setting('site.description', 'The Speaker Design Marketplace') }}</div>
         </div>
+        <div>
+            <h2 class="text-xs font-bold uppercase tracking-wide text-white">Explore</h2>
+            <ul class="mt-3 space-y-2 text-sm">
+                <li><a class="hover:text-amber-200" href="{{ route('designs') }}">Design Database</a></li>
+                <li><a class="hover:text-amber-200" href="{{ route('drivers') }}">Driver Database</a></li>
+                <li><a class="hover:text-amber-200" href="{{ route('marketplace') }}">Marketplace</a></li>
+                <li><a class="hover:text-amber-200" href="{{ route('blog') }}">Soap Box</a></li>
+                <li><a class="hover:text-amber-200" href="/forum">Forum</a></li>
+            </ul>
+        </div>
+        <div>
+            <h2 class="text-xs font-bold uppercase tracking-wide text-white">Sell</h2>
+            <ul class="mt-3 space-y-2 text-sm">
+                <li><a class="hover:text-amber-200" href="{{ route('selling.dashboard') }}">Start selling</a></li>
+                <li><a class="hover:text-amber-200" href="{{ route('dashboard.listings') }}">My listings</a></li>
+                <li><a class="hover:text-amber-200" href="{{ route('dashboard.designs') }}">My designs</a></li>
+            </ul>
+        </div>
+        <div>
+            <h2 class="text-xs font-bold uppercase tracking-wide text-white">Account</h2>
+            <ul class="mt-3 space-y-2 text-sm">
+                @auth
+                    <li><a class="hover:text-amber-200" href="{{ route('dashboard') }}">Dashboard</a></li>
+                    <li><a class="hover:text-amber-200" href="{{ route('dashboard.orders') }}">My orders</a></li>
+                    <li><a class="hover:text-amber-200" href="{{ route('dashboard.library') }}">My library</a></li>
+                    <li><a class="hover:text-amber-200" href="{{ route('cart') }}">Cart</a></li>
+                @else
+                    <li><a class="hover:text-amber-200" href="{{ route('login') }}">Sign in</a></li>
+                    <li><a class="hover:text-amber-200" href="{{ route('register') }}">Register</a></li>
+                @endauth
+            </ul>
+        </div>
+    </div>
+    <div class="border-t border-purple-900">
+        <div class="mx-auto max-w-7xl px-4 py-4 text-sm text-purple-300 sm:px-6 lg:px-8">&copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.</div>
     </div>
 </footer>

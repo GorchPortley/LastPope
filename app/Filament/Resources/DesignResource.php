@@ -7,6 +7,7 @@ use App\Filament\Resources\DesignResource\RelationManagers;
 use App\Models\Design;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -35,7 +36,19 @@ class DesignResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\ToggleColumn::make('active')
-                ->searchable(),
+                    ->afterStateUpdated(function (Design $record, $state): void {
+                        // Admins may publish anything, but they are told when it could not be sold as it is
+                        // (paid without a snapshot, seller without a payout account).
+                        if ($state && ($blockers = $record->publishBlockers()) !== []) {
+                            Notification::make()
+                                ->warning()
+                                ->title('Published despite open issues')
+                                ->body(implode(' ', $blockers))
+                                ->persistent()
+                                ->send();
+                        }
+                    })
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('id')
                 ->searchable(),
                 Tables\Columns\TextColumn::make('designer.id')

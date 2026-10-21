@@ -4,7 +4,7 @@
         <x-marketing.heading
             level="h2"
             title="Testimonials from Happy Customers"
-            description="Explore the success stories of companies that have thrived using Wave." 
+            :description="'Explore the success stories of companies that have thrived using '.config('app.name').'.'" 
         />
     </div>
 

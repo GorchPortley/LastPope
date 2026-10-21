@@ -48,16 +48,24 @@
 						@endif
 						<div class="relative space-y-5">
 							@foreach ($unreadNotifications as $index => $notification)
-								@php $notification_data = (object)$notification->data; @endphp	
+								@php
+									$notification_data = (object) $notification->data;
+									// Marketplace notifications carry a title and a url; older ones only a body and a link.
+									$notification_url = $notification_data->url ?? $notification_data->link ?? null;
+									$notification_sender = is_array($notification_data->user ?? null) ? ($notification_data->user['name'] ?? config('app.name')) : config('app.name');
+								@endphp
 								<div id="notification-li-{{ $index + 1 }}" class="flex flex-col pb-5 border border-black hover:bg-gray-100">
-									<a href="{{ @$notification_data->link }}" class="flex items-start p-5 pb-2">
+									<a href="{{ $notification_url ?: '#' }}" class="flex items-start p-5 pb-2">
 										<div class="flex-shrink-0 pt-1">
-											<img class="w-10 h-10 rounded-full" src="{{ @$notification_data->icon }}" alt="">
+											<img class="w-10 h-10 rounded-full" src="{{ $notification_data->icon ?? '/storage/demo/default.png' }}" alt="">
 										</div>
 										<div class="flex flex-col flex-1 items-start ml-3 w-0">
+											@if (filled($notification_data->title ?? null))
+												<p class="text-sm font-semibold leading-5 text-zinc-900">{{ $notification_data->title }}</p>
+											@endif
 											<p class="text-sm leading-5 text-zinc-600">
-												<strong>{{ @$notification_data->user['name'] }} · </strong>
-												{{ @$notification_data->body }}
+												<strong>{{ $notification_sender }} · </strong>
+												{{ $notification_data->body ?? '' }}
 											</p>
 											<p class="mt-2 text-sm font-medium leading-5 text-zinc-500">
 												<span class="notification-datetime">{{ \Carbon\Carbon::parse(@$notification->created_at)->format('F, jS h:i A') }}</span>
@@ -65,7 +73,7 @@
 										</div>
 									</a>
 									<span wire:click="delete('{{ $notification->id }}')" data-id="{{ $notification->id }}" data-listid="{{ $index+1 }}" class="flex justify-start py-1 pl-16 ml-1 w-full text-xs cursor-pointer text-zinc-500 k hover:text-zinc-700 mark-as-read hover:underline">
-										<x-phosphor-checks class="mr-1 w-4 h-4"></x-phosphor-check>
+										<x-phosphor-checks class="mr-1 w-4 h-4" />
 										Mark as Read
 									</span>
 								</div>

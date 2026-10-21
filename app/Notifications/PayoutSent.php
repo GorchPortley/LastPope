@@ -35,7 +35,7 @@ class PayoutSent extends Notification implements ShouldQueue
             ->line($this->amount($this->sellerOrder->payout_cents, $order)." was transferred to your Stripe account for order {$order->number}.")
             ->line('Items '.$this->amount($this->sellerOrder->subtotal_cents, $order).' + shipping '.$this->amount($this->sellerOrder->shipping_cents, $order).' - platform fee '.$this->amount($this->sellerOrder->platform_fee_cents, $order).'.')
             ->line('Stripe pays it out to your bank on your payout schedule.')
-            ->action('Open your sales', url('/dashboard/selling/orders'));
+            ->action('Open your sales', route('selling.orders'));
     }
 
     /** @return array<string, mixed> */
@@ -43,14 +43,17 @@ class PayoutSent extends Notification implements ShouldQueue
     {
         $order = $this->sellerOrder->order;
 
-        return $this->sender() + [
-            'body' => 'Payout of '.$this->amount($this->sellerOrder->payout_cents, $order)." sent for order {$order->number}.",
-            'link' => url('/dashboard/selling/orders'),
-            'kind' => 'payout_sent',
-            'order_id' => $order->getKey(),
-            'order_number' => $order->number,
-            'seller_order_id' => $this->sellerOrder->getKey(),
-            'payout_cents' => $this->sellerOrder->payout_cents,
-        ];
+        return $this->payload(
+            'payout_sent',
+            'Payout sent',
+            'Payout of '.$this->amount($this->sellerOrder->payout_cents, $order)." sent for order {$order->number}.",
+            route('selling.orders'),
+            [
+                'order_id' => $order->getKey(),
+                'order_number' => $order->number,
+                'seller_order_id' => $this->sellerOrder->getKey(),
+                'payout_cents' => $this->sellerOrder->payout_cents,
+            ],
+        );
     }
 }

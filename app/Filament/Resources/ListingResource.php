@@ -1,0 +1,179 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Enums\ListingCondition;
+use App\Enums\ListingStatus;
+use App\Filament\Forms\MoneyInput;
+use App\Filament\Resources\ListingResource\Pages;
+use App\Models\Listing;
+use App\Support\Countries;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Notifications\Notification;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+
+class ListingResource extends Resource
+{
+    protected static ?string $model = Listing::class;
+
+    protected static ?string $navigationIcon = 'phosphor-tag-duotone';
+
+    protected static ?string $navigationGroup = 'Marketplace';
+
+    protected static ?int $navigationSort = 2;
+
+    public static function form(Form $form): Form
+    {
+        return $form
+            ->schema([
+                Forms\Components\Section::make('Listing')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Select::make('seller_id')
+                            ->label('Seller')
+                            ->relationship('seller', 'name')
+                            ->searchable()
+                            ->preload()
+                            ->required(),
+                        Forms\Components\Select::make('status')
+                            ->options(ListingStatus::options())
+                            ->required()
+                            ->default(ListingStatus::DRAFT->value)
+                            ->helperText('Activating a listing whose seller cannot be paid is allowed for admins, with a warning.'),
+                        Forms\Components\TextInput::make('title')->required()->maxLength(160)->columnSpanFull(),
+                        Forms\Components\Select::make('condition')
+                            ->options(ListingCondition::options())
+                            ->in(array_keys(ListingCondition::options()))
+                            ->required()
+                            ->default(ListingCondition::NEW->value),
+                        Forms\Components\Select::make('driver_id')
+                            ->label('Catalogue driver')
+                            ->relationship('driver', 'model')
+                            ->getOptionLabelFromRecordUsing(fn ($record): string => $record->fullName())
+                            ->searchable(['brand', 'model'])
+                            ->preload(),
+                        Forms\Components\Textarea::make('description')->rows(6)->columnSpanFull(),
+                        Forms\Components\FileUpload::make('photos')
+                            ->image()
+                            ->multiple()
+                            ->maxFiles(8)
+                            ->reorderable()
+                            ->disk('public')
+                            ->visibility('public')
+                            ->directory(fn (Forms\Get $get): string => 'listings/'.($get('uuid') ?: 'unassigned').'/photos')
+                            ->columnSpanFull(),
+                        // The photo folder is listings/{uuid}: the uuid exists before the first upload.
+                        Forms\Components\Hidden::make('uuid')->default(fn (): string => (string) \Illuminate\Support\Str::uuid())->visibleOn('create'),
+                        Forms\Components\TextInput::make('uuid')->disabled()->dehydrated(false)->visibleOn('edit'),
+                    ]),
+                Forms\Components\Section::make('Price and stock')
+                    ->columns(3)
+                    ->schema([
+                        MoneyInput::make('price_cents')->label('Price')->required(),
+                        Forms\Components\TextInput::make('quantity')->numeric()->integer()->minValue(0)->required()->default(1),
+                        Forms\Components\TextInput::make('units_per_lot')->numeric()->integer()->minValue(1)->required()->default(1),
+                    ]),
+                Forms\Components\Section::make('Shipping and returns')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Select::make('ships_from_country')->options(Countries::all())->in(array_keys(Countries::all()))->searchable()->required(),
+                        Forms\Components\TextInput::make('handling_days')->numeric()->integer()->minValue(0)->required()->default(3),
+                        MoneyInput::make('shipping_domestic_cents')->label('Domestic shipping')->required(),
+                        MoneyInput::make('shipping_international_cents')->label('International shipping')->nullable(),
+                        MoneyInput::make('additional_item_shipping_cents')->label('Each additional item')->required(),
+                        Forms\Components\Toggle::make('returns_accepted')->live(),
+                        Forms\Components\Textarea::make('return_policy')->rows(3)->visible(fn (Forms\Get $get): bool => (bool) $get('returns_accepted'))->columnSpanFull(),
+                    ]),
+            ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\ImageColumn::make('cover')
+                    ->label('')
+                    ->state(fn (Listing $record): ?string => $record->photos[0] ?? null)
+                    ->disk('public')
+                    ->square(),
+                Tables\Columns\TextColumn::make('title')
+                    ->searchable()
+                    ->sortable()
+                    ->limit(50)
+                    ->description(fn (Listing $record): string => $record->condition->label()),
+                Tables\Columns\TextColumn::make('seller.name')
+                    ->label('Seller')
+                    ->searchable()
+                    ->description(fn (Listing $record): ?string => $record->seller?->sellerProfile?->shop_name),
+                Tables\Columns\SelectColumn::make('status')
+                    ->options(ListingStatus::options())
+                    ->selectablePlaceholder(false)
+                    ->afterStateUpdated(fn (Listing $record, $state) => static::warnAboutBlockers($record, (string) $state)),
+                Tables\Columns\TextColumn::make('price_cents')
+                    ->label('Price')
+                    ->formatStateUsing(fn ($state): string => money((int) $state))
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('quantity')->label('Stock')->sortable(),
+                Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->defaultSort('created_at', 'desc')
+            ->filters([
+                Tables\Filters\SelectFilter::make('status')->options(ListingStatus::options()),
+                Tables\Filters\SelectFilter::make('condition')->options(ListingCondition::options()),
+                Tables\Filters\SelectFilter::make('seller_id')->label('Seller')->relationship('seller', 'name')->searchable()->preload(),
+                Tables\Filters\TrashedFilter::make(),
+            ])
+            ->actions([
+                Tables\Actions\Action::make('view')
+                    ->label('Public page')
+                    ->icon('heroicon-m-arrow-top-right-on-square')
+                    ->url(fn (Listing $record): string => route('listing', ['uuid' => $record->uuid]))
+                    ->openUrlInNewTab(),
+                Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\RestoreAction::make(),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                ]),
+            ]);
+    }
+
+    /**
+     * Admins may switch a listing on whatever its publishBlockers() say, but they are told what is wrong
+     * (a seller without payouts, no stock, no price).
+     */
+    public static function warnAboutBlockers(Listing $listing, string $status): void
+    {
+        if ($status !== ListingStatus::ACTIVE->value || ($blockers = $listing->publishBlockers()) === []) {
+            return;
+        }
+
+        Notification::make()
+            ->warning()
+            ->title('Activated despite open issues')
+            ->body(implode(' ', $blockers))
+            ->persistent()
+            ->send();
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListListings::route('/'),
+            'create' => Pages\CreateListing::route('/create'),
+            'edit' => Pages\EditListing::route('/{record}/edit'),
+        ];
+    }
+}

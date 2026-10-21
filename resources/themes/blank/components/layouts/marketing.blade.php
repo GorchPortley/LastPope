@@ -15,11 +15,13 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     @stack('head')
 </head>
-<body class="min-h-screen">
+<body class="flex min-h-screen flex-col bg-white dark:bg-zinc-900">
 <x-marketing.header />
-<main>
+<main class="flex-1">
+    <x-marketplace.flash class="mx-auto mt-4 max-w-7xl px-4 sm:px-6 lg:px-8" />
     {!! $slot !!}
 </main>
+<x-marketing.footer />
 {{ $javascript ?? '' }}
 @livewire('notifications')
 @filamentScripts

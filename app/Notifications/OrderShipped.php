@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 
 /** To the buyer: a seller shipped their part of the order. Mail + database, queued. */
 class OrderShipped extends Notification implements ShouldQueue
@@ -35,9 +36,7 @@ class OrderShipped extends Notification implements ShouldQueue
             ->greeting('Good news!')
             ->line("The seller shipped your items from order {$order->number}.");
 
-        foreach ($this->itemLines($sellerOrder->items()->where('is_digital', false)->get(), $order) as $line) {
-            $mail->line($line);
-        }
+        $mail->line(new HtmlString($this->itemsTable($sellerOrder->items()->where('is_digital', false)->get(), $order)));
 
         $mail->line('Carrier: '.$sellerOrder->carrier)
             ->line('Tracking number: '.$sellerOrder->tracking_number)
@@ -46,7 +45,7 @@ class OrderShipped extends Notification implements ShouldQueue
         if (filled($sellerOrder->tracking_url)) {
             $mail->action('Track your parcel', $sellerOrder->tracking_url);
         } else {
-            $mail->action('View your order', url('/dashboard/orders'));
+            $mail->action('View your order', $this->buyerOrderUrl($order));
         }
 
         return $mail;
@@ -57,14 +56,17 @@ class OrderShipped extends Notification implements ShouldQueue
     {
         $order = $this->sellerOrder->order;
 
-        return $this->sender() + [
-            'body' => "Your order {$order->number} has shipped with {$this->sellerOrder->carrier} (tracking {$this->sellerOrder->tracking_number}).",
-            'link' => url('/dashboard/orders'),
-            'kind' => 'order_shipped',
-            'order_id' => $order->getKey(),
-            'order_number' => $order->number,
-            'seller_order_id' => $this->sellerOrder->getKey(),
-            'tracking_url' => $this->sellerOrder->tracking_url,
-        ];
+        return $this->payload(
+            'order_shipped',
+            'Your order has shipped',
+            "Your order {$order->number} has shipped with {$this->sellerOrder->carrier} (tracking {$this->sellerOrder->tracking_number}).",
+            $this->buyerOrderUrl($order),
+            [
+                'order_id' => $order->getKey(),
+                'order_number' => $order->number,
+                'seller_order_id' => $this->sellerOrder->getKey(),
+                'tracking_url' => $this->sellerOrder->tracking_url,
+            ],
+        );
     }
 }

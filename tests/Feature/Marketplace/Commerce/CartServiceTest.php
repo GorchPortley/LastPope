@@ -260,3 +260,22 @@ it('flags listings the seller will not ship to the chosen country', function () 
         ->and($de->canCheckout())->toBeFalse()
         ->and($de->issues()[0]->type)->toBe(CartIssueType::NOT_SHIPPABLE);
 });
+
+it('backs the AddToCart button on the design page with the same rules', function () {
+    $seller = onboardedSeller();
+    $design = paidDesign($seller, 1500);
+    $free = Design::factory()->free()->withSnapshot()->create();
+
+    $mine = Livewire\Livewire::actingAs($seller)->test(App\Http\Livewire\AddToCartButton::class, ['design' => $design, 'isInCart' => false]);
+    $mine->call('addToCart');
+    expect($this->carts->count($seller))->toBe(0);
+
+    $button = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\AddToCartButton::class, ['design' => $design, 'isInCart' => false]);
+    $button->call('addToCart')->assertSet('isInCart', true)->assertDispatched('cart-updated');
+    expect($this->carts->count($this->buyer))->toBe(1);
+
+    $freeButton = Livewire\Livewire::actingAs($this->buyer)->test(App\Http\Livewire\AddToCartButton::class, ['design' => $free, 'isInCart' => false]);
+    $freeButton->call('addToCart')->assertSet('isOwned', true);
+    expect($this->buyer->entitlementFor($free)?->isActive())->toBeTrue()
+        ->and($this->carts->count($this->buyer))->toBe(1);
+});

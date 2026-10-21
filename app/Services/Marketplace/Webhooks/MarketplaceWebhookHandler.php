@@ -67,7 +67,9 @@ class MarketplaceWebhookHandler
             return self::IGNORED;
         }
 
-        $chargeId = $this->gateway->findChargeId((string) $paymentIntent)
+        // A redelivered event (or the async twin of completed) already knows the charge: no call needed.
+        $chargeId = $order->stripe_charge_id
+            ?: $this->gateway->findChargeId((string) $paymentIntent)
             ?? throw new RuntimeException("Payment {$paymentIntent} has no charge yet.");
 
         if ($order->status === OrderStatus::PENDING) {

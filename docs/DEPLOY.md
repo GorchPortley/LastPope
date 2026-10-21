@@ -300,7 +300,14 @@ STRIPE_SECRET_KEY=sk_test_...
 - Copy this endpoint's own signing secret into `.env` as `STRIPE_CONNECT_WEBHOOK_SECRET`.
 
 The two endpoints have **different** signing secrets. The older `STRIPE_WEBHOOK_SECRET` belongs to the
-template's subscription billing and is separate from both.
+template's subscription billing and is separate from both. While a secret is empty its endpoint answers `503`
+and ignores everything, so a mistyped URL or secret never fulfils an order; Stripe retries failed deliveries
+for days, and duplicates are harmless.
+
+`STRIPE_PUBLISHABLE_KEY` and `STRIPE_SECRET_KEY` are the same names the template's subscriptions use, so one
+set of keys serves both. Order e-mails go through the `queue` container and the daily `marketplace:auto-complete`
+job (completes parcels that were shipped more than `MARKETPLACE_AUTO_COMPLETE_DAYS` ago and retries failed
+payouts) through the `scheduler` container, so keep both running.
 
 **10.5 Apply and test**
 

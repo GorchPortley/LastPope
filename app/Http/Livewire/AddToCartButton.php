@@ -2,8 +2,9 @@
 
 namespace App\Http\Livewire;
 
-use App\Enums\EntitlementSource;
 use App\Models\Design;
+use App\Services\Marketplace\CartService;
+use App\Services\Marketplace\Data\CartOutcome;
 use Livewire\Component;
 
 class AddToCartButton extends Component
@@ -34,39 +35,20 @@ class AddToCartButton extends Component
 
     public function addToCart()
     {
-        $user = auth()->user();
-
-        if (! $this->design->isAvailableForPurchase()) {
-            session()->flash('message', 'This design is not available right now.');
-            return;
+        if (! auth()->check()) {
+            return redirect()->route('login');
         }
 
-        if ($this->design->price_cents <= 0) {
-            if ($this->isOwned) {
-                session()->flash('message', 'You already own this design!');
-                return;
-            }
+        // All cart rules (own items, already owned, free items, availability) live in CartService.
+        $result = app(CartService::class)->add(auth()->user(), $this->design);
 
-            $user->grantEntitlement($this->design, EntitlementSource::FREE);
+        $this->isOwned = $this->ownsDesign();
+        $this->isInCart = $this->isInCart || in_array($result->outcome, [CartOutcome::ADDED, CartOutcome::ALREADY_IN_CART], true);
 
-            $this->isOwned = true;
-            session()->flash('message', 'Free design added to your library!');
-            return;
+        session()->flash('message', $result->message());
+
+        if ($result->ok()) {
+            $this->dispatch('cart-updated');
         }
-
-        if ($this->isInCart || $this->isOwned) {
-            session()->flash('message', $this->isOwned ? 'You already own this design!' : 'Design already in cart!');
-            return;
-        }
-
-        $cart = $user->cart()->firstOrCreate();
-        $cart->items()->firstOrCreate(
-            ['purchasable_type' => $this->design->getMorphClass(), 'purchasable_id' => $this->design->id],
-            ['quantity' => 1, 'unit_price_cents' => $this->design->price_cents],
-        );
-
-        $this->isInCart = true;
-        session()->flash('message', 'Added to cart!');
-        $this->dispatch('cart-updated');
     }
-}?>
+}

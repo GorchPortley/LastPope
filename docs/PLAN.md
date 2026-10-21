@@ -168,6 +168,9 @@ Interface `App\Services\Payments\PaymentGateway`, implementations `StripeGateway
 - `createTransfer(int $amountCents, string $destination, string $transferGroup, ?string $sourceCharge, array $meta): string`
 - `refund(string $paymentIntentId, ?int $amountCents): string`, `reverseTransfer(string $transferId, ?int $amountCents): string`
 - `constructWebhookEvent(string $payload, string $signature, string $secret): object`
+- (added in P2a-2) `findChargeId(string $paymentIntentId): ?string` — `checkout.session.completed` only carries the
+  PaymentIntent, and `markPaid` / `source_transaction` need the charge; `refund()` and `reverseTransfer()` take an
+  optional last `array $meta = []` (idempotency key + metadata).
 
 Flow:
 1. **Checkout** — `CheckoutService::start(User, ?Address)`: re-validate cart (availability, price, stock, shipping),

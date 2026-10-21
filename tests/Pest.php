@@ -182,3 +182,28 @@ function checkoutSessionObject(App\Models\Order $order, string $paymentStatus = 
         'metadata' => ['order_id' => (string) $order->getKey(), 'order_number' => $order->number],
     ], $extra);
 }
+
+/**
+ * Open a Folio page that contains `@volt('<name>')` as $user and return that Volt component's Livewire
+ * test (unlike dashboardPage(), it skips the header components of the marketing layout).
+ */
+function voltPage(Tests\TestCase $test, App\Models\User $user, string $url, string $voltName): Livewire\Features\SupportTesting\Testable
+{
+    $html = $test->actingAs($user)->get($url)->assertOk()->getContent();
+    preg_match_all('/wire:snapshot="([^"]+)"/', $html, $matches);
+
+    foreach ($matches[1] as $encoded) {
+        $snapshot = json_decode(html_entity_decode($encoded), true);
+        $name = $snapshot['memo']['name'] ?? '';
+
+        if (str_starts_with($name, 'volt-anonymous-fragment-')) {
+            $meta = json_decode((string) base64_decode(substr($name, strlen('volt-anonymous-fragment-'))), true);
+
+            if (($meta['name'] ?? null) === $voltName) {
+                return Livewire\Livewire::test($name);
+            }
+        }
+    }
+
+    throw new RuntimeException("No Volt component [{$voltName}] on {$url}.");
+}

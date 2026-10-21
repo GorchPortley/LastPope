@@ -1,0 +1,22 @@
+# Caddy behind another web server on the same machine (nginx, Apache, Webmin's nginx...).
+#
+# That server owns ports 80/443, handles HTTPS for the domain and forwards plain HTTP to
+# Caddy, which compose publishes on 127.0.0.1 only (CADDY_HTTP_BIND, e.g. 127.0.0.1:8880),
+# so the internet cannot reach Caddy directly. The front server must send
+# X-Forwarded-Proto: https, otherwise the site builds http:// links and insecure cookies.
+# Example nginx config: "Behind an existing web server" in docs/DEPLOY.md.
+{
+	# No certificates here: the front server terminates HTTPS.
+	auto_https off
+
+	servers {
+		# The front server reaches Caddy through Docker's port mapping, i.e. from a private
+		# address. Trust the X-Forwarded-* headers it sends (client IP, https) and pass them on.
+		trusted_proxies static private_ranges
+		client_ip_headers X-Forwarded-For X-Real-IP
+	}
+}
+
+:80 {
+	import /etc/caddy/site.caddy
+}

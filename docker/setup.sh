@@ -26,13 +26,20 @@ EXAMPLE_FILE=".env.example"
 DOMAIN_ARG=""
 EMAIL_ARG=""
 NON_INTERACTIVE=0
+PROXY_ARG=""
+PROXY_PORT_ARG=""
 
 usage() {
   cat <<'EOF'
-Usage: docker/setup.sh [-d DOMAIN] [-e EMAIL] [--non-interactive] [-h]
+Usage: docker/setup.sh [-d DOMAIN] [-e EMAIL] [--behind-proxy [--proxy-port PORT] | --direct]
+                       [--non-interactive] [-h]
 
   -d, --domain DOMAIN   public domain name, e.g. shop.example.com (use "localhost" for a local test)
   -e, --email  EMAIL    contact address for Let's Encrypt
+  --behind-proxy        nginx/Apache/Webmin already uses ports 80/443 on this machine: it handles HTTPS
+                        and forwards the domain to the stack on 127.0.0.1:PORT (default 8880)
+  --proxy-port PORT     local port for --behind-proxy
+  --direct              the stack's own Caddy answers on 80/443 and gets certificates (default)
   -n, --non-interactive never ask; take domain and e-mail from the options or from .env (for CI, scripts)
   -h, --help            show this help
 
@@ -44,6 +51,9 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -d | --domain) DOMAIN_ARG="${2:-}"; shift 2 ;;
     -e | --email) EMAIL_ARG="${2:-}"; shift 2 ;;
+    --behind-proxy) PROXY_ARG=yes; shift ;;
+    --direct) PROXY_ARG=no; shift ;;
+    --proxy-port) PROXY_PORT_ARG="${2:-}"; shift 2 ;;
     -n | --non-interactive) NON_INTERACTIVE=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -217,6 +227,45 @@ domain="$(printf '%s' "$domain" | tr '[:upper:]' '[:lower:]')"
 [ -n "$domain" ] && valid_domain "$domain" || die "No valid domain given. Run again with: docker/setup.sh -d shop.example.com -e you@example.com"
 [ -n "$email" ] && valid_email "$email" || die "No valid e-mail given. Run again with: docker/setup.sh -d $domain -e you@example.com"
 
+# --- 2b. who answers on ports 80/443 -----------------------------------------
+
+behind="$PROXY_ARG"
+[ -z "$behind" ] && [ "$(env_get CADDY_CONFIG)" = "Caddyfile.behind-proxy" ] && behind=yes
+proxy_port="${PROXY_PORT_ARG:-$(env_get CADDY_HTTP_BIND)}"
+proxy_port="${proxy_port##*:}"
+[[ "$proxy_port" =~ ^[0-9]+$ ]] && [ "$proxy_port" != 80 ] || proxy_port=8880
+
+if [ "$INTERACTIVE" = 1 ] && [ -z "$PROXY_ARG" ] && [ "$domain" != "localhost" ]; then
+  echo
+  info "${BOLD}Does another web server already use ports 80/443 on this machine?${RESET}"
+  info "Answer y if nginx, Apache or Webmin/Virtualmin already serve websites here. That server then keeps"
+  info "handling HTTPS and forwards $domain to this stack. Answer n if this machine is only for this site."
+  while true; do
+    yn="$(ask "Existing web server (y/n)" "$([ "$behind" = yes ] && echo y || echo n)")"
+    case "$yn" in
+      y | Y | yes) behind=yes; break ;;
+      n | N | no) behind=no; break ;;
+    esac
+  done
+  if [ "$behind" = yes ]; then
+    while true; do
+      proxy_port="$(ask "Local port your web server should forward to" "$proxy_port")"
+      [[ "$proxy_port" =~ ^[0-9]+$ ]] && [ "$proxy_port" -ge 1024 ] && [ "$proxy_port" -le 65534 ] && break
+      warn "use a free port between 1024 and 65534"
+    done
+  fi
+fi
+
+if [ "$behind" = yes ]; then
+  env_set CADDY_CONFIG "Caddyfile.behind-proxy"
+  env_set CADDY_HTTP_BIND "127.0.0.1:$proxy_port"
+  env_set CADDY_HTTPS_BIND "127.0.0.1:$((proxy_port + 1))"
+else
+  env_set CADDY_CONFIG "Caddyfile"
+  env_set CADDY_HTTP_BIND "80"
+  env_set CADDY_HTTPS_BIND "443"
+fi
+
 env_set APP_DOMAIN "$domain"
 env_set ACME_EMAIL "$email"
 env_set APP_URL "https://$domain"
@@ -255,6 +304,11 @@ ok "domain ............ $domain"
 ok "contact e-mail .... $email"
 ok "site URL .......... https://$domain"
 ok "forum URL ......... https://$domain/forum"
+if [ "$behind" = yes ]; then
+  ok "web server ........ your existing one forwards $domain to http://127.0.0.1:$proxy_port"
+else
+  ok "web server ........ Caddy in Docker, ports 80 and 443"
+fi
 if [ "${#GENERATED[@]}" -gt 0 ]; then
   ok "generated ......... ${GENERATED[*]}"
 else
@@ -263,7 +317,7 @@ fi
 
 if command -v getent >/dev/null 2>&1 && [ "$domain" != "localhost" ]; then
   if ! getent hosts "$domain" >/dev/null 2>&1; then
-    warn "'$domain' does not resolve yet. Create the DNS A record before starting, otherwise Let's Encrypt cannot issue the certificate."
+    warn "'$domain' does not resolve yet. Create the DNS A record before starting, otherwise no HTTPS certificate can be issued."
   fi
 fi
 
@@ -288,6 +342,8 @@ ${BOLD}Next steps${RESET}
   1. Back up the file  ${BOLD}$ROOT/$ENV_FILE${RESET}  somewhere safe (password manager). It holds every secret;
      lose it and you cannot read your own database. It is git-ignored: never commit it.
   2. Fill in the optional parts in $ENV_FILE when you are ready: Stripe keys, SMTP mail settings.
+$( [ "$behind" = yes ] && printf '%s\n' "  2b. Configure your existing web server to forward https://$domain to http://127.0.0.1:$proxy_port" \
+      "      (nginx example + HTTPS certificate: section 'Behind an existing web server' in docs/DEPLOY.md)." )
   3. Start everything:
          docker compose up -d --build
      The first start takes a few minutes (building the image, creating the databases, installing the forum).

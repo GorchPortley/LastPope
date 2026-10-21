@@ -153,6 +153,61 @@ docker compose ps               # every service should end up "running" / "healt
 When `app` and `flarum` are `healthy`, open **https://shop.example.com**. The very first request
 may take a few seconds while Caddy obtains the certificate.
 
+### Behind an existing web server (nginx, Apache, Webmin)
+
+If this machine already runs a web server for other sites, it owns ports 80 and 443 and the
+stack's Caddy cannot have them. Answer **y** to "Does another web server already use ports
+80/443?" in `docker/setup.sh` (or run `docker/setup.sh --behind-proxy`). That sets in `.env`:
+
+```dotenv
+CADDY_CONFIG=Caddyfile.behind-proxy
+CADDY_HTTP_BIND=127.0.0.1:8880
+CADDY_HTTPS_BIND=127.0.0.1:8881
+```
+
+The stack then listens on `127.0.0.1:8880` only (not reachable from the internet), and your
+web server forwards the domain to it and handles HTTPS. For nginx, create
+`/etc/nginx/sites-available/shop.example.com` (Debian/Ubuntu; on other systems put it in
+`/etc/nginx/conf.d/shop.example.com.conf`), or paste it via Webmin → Servers → Nginx Webserver:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name shop.example.com;
+
+    # Large design / driver uploads (keep >= UPLOAD_MAX_SIZE in .env).
+    client_max_body_size 1024m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8880;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+```
+
+Enable it and get the certificate (certbot adds the HTTPS `server` block and the http → https
+redirect to this file for you, and renews automatically):
+
+```bash
+sudo ln -s /etc/nginx/sites-available/shop.example.com /etc/nginx/sites-enabled/   # Debian/Ubuntu only
+sudo nginx -t && sudo systemctl reload nginx
+sudo apt install certbot python3-certbot-nginx      # once
+sudo certbot --nginx -d shop.example.com
+```
+
+`X-Forwarded-Proto $scheme` matters: after certbot it sends `https`, which is how the site knows
+to build `https://` links and secure cookies. If pages load without styles or log you out
+straight away, this header is missing.
+
 ## 7. First run: base data and the first admin user
 
 A new database is empty. The site needs its base data (user roles, settings, the theme) before it can show

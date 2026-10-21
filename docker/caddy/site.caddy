@@ -1,0 +1,67 @@
+# Routing shared by both Caddy front-ends (imported inside their site block):
+#
+#   /forum*  ->  flarum:8000   (the forum, served under the /forum sub-path)
+#   /*       ->  app:8080      (the Laravel app)
+#
+# Caddyfile               - Caddy is the public web server and gets HTTPS certificates itself.
+# Caddyfile.behind-proxy  - another web server on the host (nginx, Apache, Webmin) handles HTTPS
+#                           and forwards plain HTTP to Caddy on a local port.
+
+encode zstd gzip
+
+# Design / driver uploads can be big. nginx + PHP (UPLOAD_MAX_SIZE in .env) enforce the
+# real per-file limit; this is just a ceiling so nothing absurd is streamed to the app.
+request_body {
+	max_size 1GB
+}
+
+log {
+	output stdout
+}
+
+# HSTS only for real domains: a browser remembers it per host name (any port), which would
+# force https on every other project you run at http://localhost:<port>.
+@public not host localhost
+header @public {
+	defer
+	Strict-Transport-Security "max-age=31536000"
+}
+
+header {
+	# `defer` makes these win over the same headers sent by the upstream containers.
+	defer
+	X-Content-Type-Options "nosniff"
+	# Same-origin framing only: the design/driver pages embed /forum/embed/... in an iframe.
+	X-Frame-Options "SAMEORIGIN"
+	Referrer-Policy "strict-origin-when-cross-origin"
+	-Server
+	-X-Powered-By
+}
+
+# --- Flarum, served under /forum --------------------------------------
+# Flarum is configured with its public URL https://{$APP_DOMAIN}/forum and expects to see
+# the full /forum/... path on every request, so the prefix is NOT stripped, except for
+# /forum/assets/* (compiled JS/CSS, avatars): those are plain files that live in the
+# document root of the Flarum container, i.e. at /assets/..., not /forum/assets/...
+handle /forum/assets/* {
+	uri strip_prefix /forum
+	reverse_proxy flarum:8000 {
+		lb_try_duration 5s
+	}
+}
+
+@forum path /forum /forum/*
+handle @forum {
+	reverse_proxy flarum:8000 {
+		lb_try_duration 5s
+	}
+}
+
+# --- Everything else: the Laravel app -----------------------------------
+handle {
+	reverse_proxy app:8080 {
+		# Ride out container restarts during `docker compose up -d` instead of showing a 502.
+		lb_try_duration 10s
+		lb_try_interval 250ms
+	}
+}

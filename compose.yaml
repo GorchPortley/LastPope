@@ -74,15 +74,19 @@ services:
   caddy:
     image: caddy:2.11.7
     restart: unless-stopped
+    # Caddyfile (default): Caddy is the public web server on 80/443 and gets certificates itself.
+    # Caddyfile.behind-proxy: an existing nginx/Apache on the host owns 80/443 and forwards to
+    # CADDY_HTTP_BIND (e.g. 127.0.0.1:8880). docker/setup.sh sets these three for you.
+    command: ["caddy", "run", "--config", "/etc/caddy/${CADDY_CONFIG:-Caddyfile}", "--adapter", "caddyfile"]
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp" # HTTP/3
+      - "${CADDY_HTTP_BIND:-80}:80"
+      - "${CADDY_HTTPS_BIND:-443}:443"
+      - "${CADDY_HTTPS_BIND:-443}:443/udp" # HTTP/3
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is empty - run docker/setup.sh first}
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is empty - run docker/setup.sh first}
     volumes:
-      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./docker/caddy:/etc/caddy:ro
       - caddy-data:/data # certificates: do not lose this volume
       - caddy-config:/config
     depends_on:

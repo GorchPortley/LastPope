@@ -1,5 +1,6 @@
+@php($season = app(\App\Support\SeasonalTheme::class)->forRequest(request()))
 <!DOCTYPE html>
-<html lang="{{ app()->getLocale() }}" class="">
+<html lang="{{ app()->getLocale() }}" class=""@if ($season !== \App\Support\SeasonalTheme::DEFAULT) data-season="{{ $season }}"@endif>
 <head>
    
 <!-- Google tag (gtag.js) -->
@@ -10,12 +11,11 @@
   gtag('js', new Date());
   gtag('config', 'G-D6528Z9ZYR');
 </script>
-<script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
     @include('theme::partials.head', ['seo' => ($seo ?? null) ])
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     @stack('head')
 </head>
 <body class="flex min-h-screen flex-col bg-white dark:bg-zinc-900">
+<x-seasonal.decor />
 <x-marketing.header />
 <main class="flex-1">
     <x-marketplace.flash class="mx-auto mt-4 max-w-7xl px-4 sm:px-6 lg:px-8" />

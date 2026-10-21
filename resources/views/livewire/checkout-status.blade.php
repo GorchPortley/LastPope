@@ -13,7 +13,7 @@
     @elseif ($pending)
         <div class="text-center">
             @if ($polling)
-                <svg class="mx-auto h-12 w-12 animate-spin text-purple-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                <svg class="mx-auto h-12 w-12 animate-spin text-brand-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
@@ -27,7 +27,7 @@
                     This page updates by itself.
                 @else
                     This is taking longer than usual. You will get an e-mail when it is confirmed; you can also check
-                    <a class="text-purple-700 underline" href="{{ route('dashboard.orders') }}">your orders</a>.
+                    <a class="text-brand-700 underline" href="{{ route('dashboard.orders') }}">your orders</a>.
                 @endif
             </p>
         </div>
@@ -71,10 +71,10 @@
 
         <div class="mt-6 space-y-2 text-sm text-gray-600">
             @if ($hasDigital)
-                <p>Your digital downloads are in <a class="font-medium text-purple-700 underline" href="{{ route('dashboard.library') }}">your library</a>.</p>
+                <p>Your digital downloads are in <a class="font-medium text-brand-700 underline" href="{{ route('dashboard.library') }}">your library</a>.</p>
             @endif
             @if ($hasPhysical)
-                <p>The sellers will ship your items; you will get an e-mail with the tracking details. Follow them in <a class="font-medium text-purple-700 underline" href="{{ route('dashboard.orders') }}">your orders</a>.</p>
+                <p>The sellers will ship your items; you will get an e-mail with the tracking details. Follow them in <a class="font-medium text-brand-700 underline" href="{{ route('dashboard.orders') }}">your orders</a>.</p>
             @endif
         </div>
 

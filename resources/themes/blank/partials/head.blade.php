@@ -45,4 +45,14 @@
 @filamentStyles
 @vite(['resources/themes/blank/assets/css/app.css', 'resources/themes/blank/assets/js/app.js'])
 @livewireStyles
-<link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
+{{-- Flowbite's stylesheet, copied untouched into the build by vite.config.js (loaded after app.css, as the CDN link was) --}}
+@php($flowbiteCss = public_path('build/assets/flowbite.min.css'))
+@if (is_file($flowbiteCss))
+    <link href="{{ asset('build/assets/flowbite.min.css') }}?v={{ filemtime($flowbiteCss) }}" rel="stylesheet" />
+@endif
+{{-- Seasonal theme (config/seasons.php): colour overrides for <html data-season="..."> plus the decor stylesheet --}}
+@php($seasonTheme = app(\App\Support\SeasonalTheme::class))
+@if (($seasonKey = $seasonTheme->forRequest(request())) !== \App\Support\SeasonalTheme::DEFAULT)
+    <style>{!! $seasonTheme->css($seasonKey) !!}</style>
+    @vite('resources/themes/blank/assets/css/seasons.css')
+@endif

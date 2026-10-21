@@ -6,16 +6,19 @@
     "build": "vite build"
   },
   "devDependencies": {
+    "@alpinejs/focus": "3.15.12",
+    "@phosphor-icons/web": "2.1.2",
     "@tailwindcss/forms": "^0.5.7",
     "@tailwindcss/typography": "^0.5.12",
     "alpinejs": "^3.4.2",
     "autoprefixer": "^10.4.19",
     "axios": "^1.8.2",
+    "chart.js": "4.4.8",
+    "flowbite": "3.1.2",
     "laravel-vite-plugin": "^1.0",
     "postcss": "^8.4.38",
     "postcss-nesting": "^12.1.1",
     "tailwindcss": "^3.4.3",
-    "chart.js": "^4.4.7",
     "vite": "^6.2"
   }
 }

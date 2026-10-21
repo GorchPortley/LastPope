@@ -71,7 +71,7 @@ new class extends Component {
             <div>
                 <p class="text-sm text-gray-500">Designed by</p>
                 <a href="{{ url('profile/'.$design->designer->username) }}">
-                    <p class="text-lg font-medium text-gray-900 hover:text-blue-400">{{ $design->designer->name ?? 'Speaker Designer' }}</p>
+                    <p class="text-lg font-medium text-gray-900 hover:text-link-400">{{ $design->designer->name ?? 'Speaker Designer' }}</p>
                 </a>
             </div>
 

@@ -52,7 +52,7 @@
                 @if ($state['downloadUrl'])
                     <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full">Download</x-button>
                 @endif
-                <a href="{{ route('dashboard.library') }}" class="block text-center text-sm text-purple-700 underline hover:text-purple-900">Open my library</a>
+                <a href="{{ route('dashboard.library') }}" class="block text-center text-sm text-brand-700 underline hover:text-brand-900">Open my library</a>
                 @break
 
             @case('revoked')
@@ -98,7 +98,7 @@
                 @if ($state['inCart'] > 0)
                     <p class="text-sm text-gray-600">
                         {{ $state['inCart'] }} already in your cart.
-                        <a href="{{ route('cart') }}" class="text-purple-700 underline hover:text-purple-900">View cart</a>
+                        <a href="{{ route('cart') }}" class="text-brand-700 underline hover:text-brand-900">View cart</a>
                     </p>
                 @endif
         @endswitch

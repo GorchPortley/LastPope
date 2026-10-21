@@ -161,7 +161,7 @@ new class extends Component
                             @if (filled($address->phone))<br>{{ $address->phone }}@endif
                         </address>
                         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-3">
-                            <button type="button" wire:click="edit({{ $address->id }})" class="font-medium text-gray-950 hover:text-purple-700">Edit</button>
+                            <button type="button" wire:click="edit({{ $address->id }})" class="font-medium text-gray-950 hover:text-brand-700">Edit</button>
                             @unless ($address->is_default)
                                 <button type="button" wire:click="makeDefault({{ $address->id }})" class="font-medium text-gray-700 hover:text-gray-950">Make default</button>
                             @endunless

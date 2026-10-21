@@ -6,7 +6,7 @@
         'warning' => 'bg-amber-50 text-amber-800 ring-amber-600/20',
         'danger' => 'bg-red-50 text-red-700 ring-red-600/20',
         'info' => 'bg-blue-50 text-blue-700 ring-blue-600/20',
-        'primary' => 'bg-purple-50 text-purple-800 ring-purple-600/20',
+        'primary' => 'bg-brand-50 text-brand-800 ring-brand-600/20',
         default => 'bg-gray-50 text-gray-700 ring-gray-500/20',
     };
 @endphp

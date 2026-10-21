@@ -41,7 +41,7 @@
 	@if (filter_var($badge, FILTER_VALIDATE_BOOLEAN) && ($size == 'sm' || $size == 'xs') && !empty($badgeText))
 		<x-filament::badge
 			@class([
-				"absolute size-6 !rounded-full bg-purple-600 border-white border-2 right-0 !p-0 text-white",
+				"absolute size-6 !rounded-full bg-brand-600 border-white border-2 right-0 !p-0 text-white",
 				"translate-x-1/2 -translate-y-1/2" => $size == 'xs',
 				"translate-x-1/3 -translate-y-1/3" => $size == 'sm',
 			])

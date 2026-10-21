@@ -15,7 +15,7 @@
             type="search"
             placeholder="Search Everything"
             aria-label="Top Searchbar"
-            class="w-full py-2 px-4 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            class="w-full py-2 px-4 border border-gray-300 focus:ring-2 focus:ring-link-500 focus:border-link-500 transition-all"
         >
     </form>
    
@@ -93,8 +93,8 @@
                     <!-- Empty state when search field is empty -->
                     <p>Start typing to search for designs, drivers, or users</p>
                     <div class="mt-3 flex justify-center space-x-4 text-sm">
-                        <a href="{{ route('designs') }}" class="text-purple-950 hover:underline">Browse Designs</a>
-                        <a href="{{ route('drivers') }}" class="text-purple-950 hover:underline">Browse Drivers</a>
+                        <a href="{{ route('designs') }}" class="text-brand-950 hover:underline">Browse Designs</a>
+                        <a href="{{ route('drivers') }}" class="text-brand-950 hover:underline">Browse Drivers</a>
                     </div>
                 @endif
             </div>

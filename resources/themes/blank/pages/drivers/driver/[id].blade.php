@@ -193,12 +193,12 @@ new class extends Component {
                             @endif
 
                             @if ($usedCount > 0)
-                                <a href="{{ route('marketplace', ['type' => 'used_gear', 'driver' => $driver->id]) }}" class="flex items-center justify-between gap-3 rounded-lg border-2 border-gray-100 bg-white p-4 shadow-sm hover:border-purple-950" data-driver-listings>
+                                <a href="{{ route('marketplace', ['type' => 'used_gear', 'driver' => $driver->id]) }}" class="flex items-center justify-between gap-3 rounded-lg border-2 border-gray-100 bg-white p-4 shadow-sm hover:border-brand-950" data-driver-listings>
                                     <span>
                                         <span class="block font-semibold text-gray-900">Used ones on the marketplace ({{ $usedCount }})</span>
                                         <span class="block text-sm text-gray-500">From {{ money((int) $usedFrom) }}</span>
                                     </span>
-                                    <x-phosphor-storefront class="h-8 w-8 flex-shrink-0 text-purple-950" />
+                                    <x-phosphor-storefront class="h-8 w-8 flex-shrink-0 text-brand-950" />
                                 </a>
                             @endif
                         </div>
@@ -249,7 +249,7 @@ new class extends Component {
                                             <div class="flex-1">
                                                 <h4 class="text-lg font-medium text-gray-900">
                                                     <a href="/designs/design/{{$design->design->id}}"
-                                                       class="hover:text-blue-600">
+                                                       class="hover:text-link-600">
                                                         {{ $design->design->name }}
                                                     </a>
                                                 </h4>
@@ -338,6 +338,5 @@ new class extends Component {
             </div>
         </main>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
     @endvolt
 </x-layouts.marketing>

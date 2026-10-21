@@ -64,7 +64,7 @@ new class extends Component
                                     <span class="text-gray-600">
                                         Sold by
                                         @if ($group->seller?->sellerProfile)
-                                            <a href="{{ route('seller', ['slug' => $group->seller->sellerProfile->slug]) }}" class="font-semibold text-gray-900 hover:text-blue-400">{{ $group->displayName }}</a>
+                                            <a href="{{ route('seller', ['slug' => $group->seller->sellerProfile->slug]) }}" class="font-semibold text-gray-900 hover:text-link-400">{{ $group->displayName }}</a>
                                         @else
                                             <span class="font-semibold text-gray-900">{{ $group->displayName }}</span>
                                         @endif
@@ -81,9 +81,9 @@ new class extends Component
                                                 <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
                                                     <h2 class="min-w-0 text-lg font-semibold text-gray-900">
                                                         @if ($line->purchasable instanceof Design)
-                                                            <a href="{{ route('design', ['id' => $line->purchasable->getKey()]) }}" class="hover:text-blue-400">{{ $line->title }}</a>
+                                                            <a href="{{ route('design', ['id' => $line->purchasable->getKey()]) }}" class="hover:text-link-400">{{ $line->title }}</a>
                                                         @elseif ($line->purchasable instanceof Listing)
-                                                            <a href="{{ $line->purchasable->isStore() && $line->purchasable->driver_id ? route('driver', ['id' => $line->purchasable->driver_id]) : route('listing', ['uuid' => $line->purchasable->uuid]) }}" class="hover:text-blue-400">{{ $line->title }}</a>
+                                                            <a href="{{ $line->purchasable->isStore() && $line->purchasable->driver_id ? route('driver', ['id' => $line->purchasable->driver_id]) : route('listing', ['uuid' => $line->purchasable->uuid]) }}" class="hover:text-link-400">{{ $line->title }}</a>
                                                         @else
                                                             {{ $line->title }}
                                                         @endif

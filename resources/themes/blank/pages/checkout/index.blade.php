@@ -90,10 +90,10 @@ new class extends Component
                                         @php($selected = $saved->id === $addressId && ! $adding)
                                         <label wire:key="address-{{ $saved->id }}" @class([
                                             'relative block cursor-pointer rounded-lg border-2 p-4 text-sm text-gray-800',
-                                            'border-purple-950 bg-purple-50' => $selected,
+                                            'border-brand-950 bg-brand-50' => $selected,
                                             'border-gray-100 hover:border-gray-300' => ! $selected,
                                         ])>
-                                            <input type="radio" name="address" value="{{ $saved->id }}" wire:click="selectAddress({{ $saved->id }})" @checked($selected) class="absolute right-3 top-3 text-purple-800 focus:ring-purple-700">
+                                            <input type="radio" name="address" value="{{ $saved->id }}" wire:click="selectAddress({{ $saved->id }})" @checked($selected) class="absolute right-3 top-3 text-brand-800 focus:ring-brand-700">
                                             <span class="block pr-6 font-semibold">{{ $saved->name }}</span>
                                             <span class="mt-1 block text-gray-600">
                                                 {{ $saved->line1 }}{{ $saved->line2 ? ', '.$saved->line2 : '' }}<br>

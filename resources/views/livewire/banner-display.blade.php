@@ -27,7 +27,7 @@
                         @click="goToSlide({{ $index }})"
                         class="w-3 h-3 rounded-full"
                         :class="{
-                            'bg-blue-500': currentIndex === {{ $index }},
+                            'bg-link-500': currentIndex === {{ $index }},
                             'bg-gray-300': currentIndex !== {{ $index }}
                         }"
                     ></button>

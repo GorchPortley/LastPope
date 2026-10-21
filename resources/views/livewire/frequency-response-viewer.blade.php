@@ -1,7 +1,5 @@
 <div>
-    @push('head')
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    @endpush
+    {{-- Chart.js is bundled in the theme's app.js (window.Chart). --}}
 
         <div x-data="{
     selectedTab: 'amplitude',

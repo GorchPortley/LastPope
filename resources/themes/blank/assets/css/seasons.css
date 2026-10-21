@@ -1,0 +1,139 @@
+/*
+ * Seasonal decorations (config/seasons.php). Loaded by the public layouts only while a season is active.
+ *
+ * The season's colours are NOT here: SeasonalTheme::css() prints them as CSS variable overrides on
+ * <html data-season="..."> (the defaults are in app.css). This file holds the layout and animation of the
+ * decor rendered by components/seasonal/decor.blade.php, which are the same for every season. A season that needs
+ * its own rules can add them under `html[data-season="<key>"]`.
+ */
+
+/* ---- Header garnish: a strip of inline SVG along the bottom edge of the marketing header ---- */
+
+.season-decor {
+  /* the marketing header is 4.5rem tall, 6rem from the lg breakpoint (see components/marketing/header.blade.php) */
+  --season-header-h: 4.5rem;
+}
+
+@media (min-width: 1024px) {
+  .season-decor {
+    --season-header-h: 6rem;
+  }
+}
+
+.season-garnish {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--season-header-h);
+  z-index: 1; /* above the header background, below its dropdowns (z-50) */
+  pointer-events: none;
+}
+
+/* the strip sits on the header's bottom edge: 10px inside it, 14px hanging below */
+.season-garnish__edge {
+  position: absolute;
+  left: 0;
+  bottom: -14px;
+  width: 100%;
+  height: 24px;
+  display: block;
+  pointer-events: none;
+}
+
+.season-garnish__sun {
+  position: absolute;
+  left: 54%;
+  bottom: -16px;
+  width: 44px;
+  height: 44px;
+  display: block;
+  pointer-events: none;
+}
+
+@media (max-width: 1023.98px) {
+  .season-garnish__sun {
+    left: 46%;
+  }
+}
+
+/* ---- Snow: a CSS-only falling snow layer ---- */
+
+/*
+ * Two pseudo-element layers of flakes (tiled radial gradients) fall at different speeds. The layer is taller than
+ * the screen by one tile, so moving it down by exactly one tile height loops without a jump. It is fixed, ignores the
+ * pointer and sits above page content but below dropdowns, drawers and modals (z-50 and up), so it never blocks
+ * anything. Hidden when the visitor asks for reduced motion.
+ */
+.season-snow {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.season-snow::before,
+.season-snow::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 100%;
+  background-repeat: repeat;
+  will-change: transform;
+}
+
+/* near flakes: bigger, faster. Each flake is white with a pale blue halo so it shows on white pages and dark headers. */
+.season-snow::before {
+  top: -400px;
+  height: calc(100% + 400px);
+  background-size: 400px 400px;
+  background-image:
+    radial-gradient(circle at 40px 60px, #fff 0 2px, rgb(147 197 253 / 0.7) 3px, transparent 4.5px),
+    radial-gradient(circle at 150px 20px, #fff 0 1.5px, rgb(147 197 253 / 0.7) 2.5px, transparent 4px),
+    radial-gradient(circle at 280px 110px, #fff 0 2.5px, rgb(147 197 253 / 0.7) 3.5px, transparent 5px),
+    radial-gradient(circle at 90px 190px, #fff 0 1.5px, rgb(147 197 253 / 0.7) 2.5px, transparent 4px),
+    radial-gradient(circle at 340px 250px, #fff 0 2px, rgb(147 197 253 / 0.7) 3px, transparent 4.5px),
+    radial-gradient(circle at 200px 300px, #fff 0 2.5px, rgb(147 197 253 / 0.7) 3.5px, transparent 5px),
+    radial-gradient(circle at 30px 360px, #fff 0 1.5px, rgb(147 197 253 / 0.7) 2.5px, transparent 4px);
+  animation: season-snowfall-near 18s linear infinite;
+}
+
+/* far flakes: smaller, slower */
+.season-snow::after {
+  top: -300px;
+  height: calc(100% + 300px);
+  background-size: 300px 300px;
+  background-image:
+    radial-gradient(circle at 70px 40px, #fff 0 1px, rgb(147 197 253 / 0.6) 2px, transparent 3px),
+    radial-gradient(circle at 210px 90px, #fff 0 1.5px, rgb(147 197 253 / 0.6) 2.5px, transparent 3.5px),
+    radial-gradient(circle at 20px 150px, #fff 0 1px, rgb(147 197 253 / 0.6) 2px, transparent 3px),
+    radial-gradient(circle at 150px 200px, #fff 0 1.5px, rgb(147 197 253 / 0.6) 2.5px, transparent 3.5px),
+    radial-gradient(circle at 260px 260px, #fff 0 1px, rgb(147 197 253 / 0.6) 2px, transparent 3px);
+  animation: season-snowfall-far 28s linear infinite;
+}
+
+@keyframes season-snowfall-near {
+  to {
+    transform: translate3d(0, 400px, 0);
+  }
+}
+
+@keyframes season-snowfall-far {
+  to {
+    transform: translate3d(0, 300px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .season-snow {
+    display: none;
+  }
+}
+
+@media print {
+  .season-decor,
+  .season-preview {
+    display: none;
+  }
+}

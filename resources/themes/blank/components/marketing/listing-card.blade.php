@@ -21,7 +21,7 @@
 <div x-data="{ showSpecs: false }" {{ $attributes->class(['relative flex flex-col bg-white rounded-lg border-2 border-gray-100 hover:shadow-lg shadow-sm overflow-hidden h-full']) }} data-listing-card="{{ $listing->uuid }}">
     <!-- Listing image section -->
     <div class="relative pt-4 px-4">
-        <div class="absolute left-6 top-6 max-w-[60%] truncate bg-purple-950 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">{{ $listing->category->label() }}</div>
+        <div class="absolute left-6 top-6 max-w-[60%] truncate bg-brand-950 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">{{ $listing->category->label() }}</div>
         @if ($listing->isLot())
             <div class="absolute right-6 top-6 bg-yellow-400 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">{{ $soldAs }}</div>
         @endif

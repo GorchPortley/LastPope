@@ -3,6 +3,54 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Site colours. Each value is a set of RGB channels so Tailwind can apply opacity
+ * (`bg-brand-950/50` -> rgb(var(--brand-950) / .5)). Tailwind classes: brand-*, accent-*, link-*, header, footer.
+ * A season (config/seasons.php, resources/themes/blank/components/seasonal) overrides these on <html data-season="...">.
+ * The values below are the default look (Tailwind purple / amber / blue).
+ */
+:root {
+  /* brand: purple */
+  --brand-50: 250 245 255;
+  --brand-100: 243 232 255;
+  --brand-200: 233 213 255;
+  --brand-300: 216 180 254;
+  --brand-400: 192 132 252;
+  --brand-500: 168 85 247;
+  --brand-600: 147 51 234;
+  --brand-700: 126 34 206;
+  --brand-800: 107 33 168;
+  --brand-900: 88 28 135;
+  --brand-950: 59 7 100;
+  /* accent: amber */
+  --accent-50: 255 251 235;
+  --accent-100: 254 243 199;
+  --accent-200: 253 230 138;
+  --accent-300: 252 211 77;
+  --accent-400: 251 191 36;
+  --accent-500: 245 158 11;
+  --accent-600: 217 119 6;
+  --accent-700: 180 83 9;
+  --accent-800: 146 64 14;
+  --accent-900: 120 53 15;
+  --accent-950: 69 26 3;
+  /* link: blue (link hover, focus rings, carousel dots) */
+  --link-50: 239 246 255;
+  --link-100: 219 234 254;
+  --link-200: 191 219 254;
+  --link-300: 147 197 253;
+  --link-400: 96 165 250;
+  --link-500: 59 130 246;
+  --link-600: 37 99 235;
+  --link-700: 29 78 216;
+  --link-800: 30 64 175;
+  --link-900: 30 58 138;
+  --link-950: 23 37 84;
+  /* header and footer backgrounds (default: the darkest brand shade) */
+  --header-bg: var(--brand-950);
+  --footer-bg: var(--brand-950);
+}
+
 [x-cloak]{
   display:none;
 }
@@ -55,7 +103,7 @@ svg {
 /****** Form Input CLASSES **********/
 
 .form-input, .form-textarea, .form-select {
-    @apply px-3 py-2 text-base leading-normal transition duration-150 ease-in-out bg-white border rounded-md appearance-none border-zinc-400 focus:outline-none focus:ring focus:ring-opacity-30 focus:ring-blue-500 focus:border-blue-400;
+    @apply px-3 py-2 text-base leading-normal transition duration-150 ease-in-out bg-white border rounded-md appearance-none border-zinc-400 focus:outline-none focus:ring focus:ring-opacity-30 focus:ring-link-500 focus:border-link-400;
 }
 
 .form-select{

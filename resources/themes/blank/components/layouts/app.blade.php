@@ -1,5 +1,6 @@
+@php($season = app(\App\Support\SeasonalTheme::class)->forRequest(request()))
 <!DOCTYPE html>
-<html lang="{{ app()->getLocale() }}">
+<html lang="{{ app()->getLocale() }}"@if ($season !== \App\Support\SeasonalTheme::DEFAULT) data-season="{{ $season }}"@endif>
 <head>
     
 <!-- Google tag (gtag.js) -->
@@ -16,6 +17,8 @@
 </head>
 <body x-data class="flex min-h-screen overflow-x-hidden  bg-gray-100 min-h-sreen @if($bodyClass ?? false){{ $bodyClass }}@endif">
 
+    {{-- the dashboard has no coloured header, so only the season's effect (snow) is shown here --}}
+    <x-seasonal.decor :garnish="false" />
     <x-app.sidebar />
     <div class="relative z-20 flex flex-col w-full h-full">
         {{-- Mobile Header --}}
@@ -39,5 +42,4 @@
     {{ $javascript ?? '' }}
 
 </body>
-    <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
 </html>

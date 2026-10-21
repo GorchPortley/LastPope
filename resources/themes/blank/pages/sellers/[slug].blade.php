@@ -33,7 +33,7 @@ render(function (View $view, string $slug) {
         <div class="space-y-8">
             <!-- Shop header -->
             <div class="flex flex-col gap-6 sm:flex-row sm:items-center">
-                <div class="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-purple-950 text-3xl font-bold text-white">{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($profile->shop_name, 0, 1)) }}</div>
+                <div class="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-brand-950 text-3xl font-bold text-white">{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($profile->shop_name, 0, 1)) }}</div>
                 <div class="min-w-0 flex-1">
                     <h1 class="text-3xl font-bold text-gray-900">{{ $profile->shop_name }}</h1>
                     <p class="mt-2 text-lg text-gray-600 italic">

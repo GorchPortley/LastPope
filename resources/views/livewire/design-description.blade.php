@@ -1,4 +1,4 @@
-@push('head') <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.x.x/dist/cdn.min.js"></script>
+@push('head')
 <style>
     .tiptap-content table {
         width: 100%;
@@ -232,7 +232,7 @@
                         @else
                             onclick="window.location.href='{{ route('login') }}'"
                         @endif
-                        class="px-4 py-2 bg-purple-950 hover:bg-purple-600 text-white transition-colors">
+                        class="px-4 py-2 bg-brand-950 hover:bg-brand-600 text-white transition-colors">
                         Write a Review
                     </button>
                 </div>
@@ -287,7 +287,7 @@
                 <form wire:submit.prevent="submitReview">
                     <div class="mb-4">
                         <label for="reviewTitle" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Review Title</label>
-                        <input wire:model.defer="reviewTitle" type="text" id="reviewTitle" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Summarize your experience" required>
+                        <input wire:model.defer="reviewTitle" type="text" id="reviewTitle" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm focus:ring-link-500 focus:border-link-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Summarize your experience" required>
                         @error('reviewTitle') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
                     </div>
 
@@ -311,11 +311,11 @@
 
                     <div class="mb-4">
                         <label for="reviewContent" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Review Content</label>
-                        <textarea wire:model.defer="reviewContent" id="reviewContent" rows="4" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Share your experience with this design" required></textarea>
+                        <textarea wire:model.defer="reviewContent" id="reviewContent" rows="4" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm focus:ring-link-500 focus:border-link-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Share your experience with this design" required></textarea>
                         @error('reviewContent') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
                     </div>
 
-                    <button type="submit" class="text-white bg-purple-950 hover:bg-purple-600 focus:ring-4 focus:ring-blue-300 font-medium text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                    <button type="submit" class="text-white bg-brand-950 hover:bg-brand-600 focus:ring-4 focus:ring-link-300 font-medium text-sm px-5 py-2.5 text-center dark:bg-link-600 dark:hover:bg-link-700 dark:focus:ring-link-800">
                         Submit Review
                     </button>
                 </form>
@@ -323,7 +323,7 @@
             @else
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 text-center">
                 <p class="mb-4 text-gray-700 dark:text-gray-300">You need to be logged in to write a review.</p>
-                <a href="{{ route('login') }}" class="text-white bg-purple-950 hover:bg-purple-600 focus:ring-4 focus:ring-blue-300 font-medium text-sm px-5 py-2.5 inline-block dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                <a href="{{ route('login') }}" class="text-white bg-brand-950 hover:bg-brand-600 focus:ring-4 focus:ring-link-300 font-medium text-sm px-5 py-2.5 inline-block dark:bg-link-600 dark:hover:bg-link-700 dark:focus:ring-link-800">
                     Log in to write a review
                 </a>
             </div>
@@ -332,4 +332,3 @@
     </div>
 </div>
 </div>
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.x.x/dist/cdn.min.js"></script>

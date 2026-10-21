@@ -92,7 +92,7 @@ render(function (View $view, string $uuid) {
                     <div>
                         <p class="text-sm text-gray-500">Sold by</p>
                         @if ($shopUrl)
-                            <a href="{{ $shopUrl }}"><p class="text-lg font-medium text-gray-900 hover:text-blue-400">{{ $shopName }}</p></a>
+                            <a href="{{ $shopUrl }}"><p class="text-lg font-medium text-gray-900 hover:text-link-400">{{ $shopName }}</p></a>
                         @else
                             <p class="text-lg font-medium text-gray-900">{{ $shopName }}</p>
                         @endif
@@ -200,9 +200,9 @@ render(function (View $view, string $uuid) {
             <!-- Seller -->
             <x-marketplace.section title="Seller">
                 <div class="flex flex-wrap items-center gap-4">
-                    <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-md bg-purple-950 text-xl font-bold text-white">{{ Str::upper(Str::substr((string) $shopName, 0, 1)) }}</div>
+                    <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-md bg-brand-950 text-xl font-bold text-white">{{ Str::upper(Str::substr((string) $shopName, 0, 1)) }}</div>
                     <div class="min-w-0 flex-1">
-                        @if ($shopUrl)<a href="{{ $shopUrl }}" class="block truncate text-lg font-medium text-gray-900 hover:text-blue-400">{{ $shopName }}</a>@else<span class="block truncate text-lg font-medium text-gray-900">{{ $shopName }}</span>@endif
+                        @if ($shopUrl)<a href="{{ $shopUrl }}" class="block truncate text-lg font-medium text-gray-900 hover:text-link-400">{{ $shopName }}</a>@else<span class="block truncate text-lg font-medium text-gray-900">{{ $shopName }}</span>@endif
                         @if ($shop?->country)
                             <p class="text-sm text-gray-500">{{ Countries::name($shop->country) }}</p>
                         @endif

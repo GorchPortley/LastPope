@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Support\SeasonalTheme;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
+use Wave\Setting;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -15,7 +17,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
-
+        // One per request (and per Octane request): it memoises the active season.
+        $this->app->scoped(SeasonalTheme::class);
     }
 
     /**
@@ -30,6 +33,11 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->setSchemaDefaultLength();
+
+        // Wave forgets its cached settings when one is saved or deleted; drop the memoised season with it.
+        $forgetSeason = fn () => $this->app->make(SeasonalTheme::class)->flush();
+        Setting::saved($forgetSeason);
+        Setting::deleted($forgetSeason);
 
         Validator::extend('base64image', function ($attribute, $value, $parameters, $validator) {
             $explode = explode(',', $value);

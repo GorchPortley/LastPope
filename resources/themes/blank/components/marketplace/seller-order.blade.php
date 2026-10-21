@@ -70,7 +70,7 @@
                 tracking <span class="font-mono">{{ $so->tracking_number }}</span>
             </p>
             @if (filled($so->tracking_url))
-                <a href="{{ $so->tracking_url }}" target="_blank" rel="noopener nofollow" class="font-medium text-purple-700 underline hover:text-purple-900">Track parcel</a>
+                <a href="{{ $so->tracking_url }}" target="_blank" rel="noopener nofollow" class="font-medium text-brand-700 underline hover:text-brand-900">Track parcel</a>
             @endif
         </div>
     @elseif ($so->status === \App\Enums\SellerOrderStatus::REFUNDED)

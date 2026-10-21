@@ -1,4 +1,4 @@
-<section x-data="{ mobileNavOpen: false }" class="bg-purple-950">
+<section x-data="{ mobileNavOpen: false }" class="bg-header">
     <div class="container mx-auto">
         <div class="flex items-center justify-between bg-transparent">
             <!-- Left side with logo and navigation -->
@@ -16,13 +16,13 @@
                             @mouseenter="isOpen = true"
                             @mouseleave="isOpen = false"
                             class="relative group">
-                            <div class="flex items-center h-full px-3 xl:px-4 py-5 cursor-pointer text-white hover:text-amber-200 transition duration-150">
+                            <div class="flex items-center h-full px-3 xl:px-4 py-5 cursor-pointer text-white hover:text-accent-200 transition duration-150">
                                 <i class="ph ph-intersect-three mr-2 text-3xl hidden xl:inline-block"></i>
                                 <span class="font-bold text-sm xl:text-base">Design Database</span>
                             </div>
                             <div x-show="isOpen"
                                  x-transition
-                                 class="absolute top-full left-0 mt-0 w-48 bg-white text-black shadow-lg border-t-2 border-amber-200 z-50">
+                                 class="absolute top-full left-0 mt-0 w-48 bg-white text-black shadow-lg border-t-2 border-accent-200 z-50">
                                 <a href="{{ route('designs') }}" class="block px-4 py-2 hover:bg-gray-100">All Designs</a>
                                 <a href="{{ route('designs', ["category" => "Subwoofer"]) }}" class="block px-4 py-2 hover:bg-gray-100">Subwoofer</a>
                                 <a href="{{ route('designs', ["category" => "Full-Range"]) }}" class="block px-4 py-2 hover:bg-gray-100">Full-Range</a>
@@ -38,13 +38,13 @@
                             @mouseenter="isOpen = true"
                             @mouseleave="isOpen = false"
                             class="relative group">
-                            <div class="flex items-center h-full px-3 xl:px-4 py-5 cursor-pointer text-white hover:text-amber-200 transition duration-150">
+                            <div class="flex items-center h-full px-3 xl:px-4 py-5 cursor-pointer text-white hover:text-accent-200 transition duration-150">
                                 <i class="ph ph-circles-three mr-2 text-4xl hidden xl:inline-block"></i>
                                 <span class="font-bold text-sm xl:text-base">Driver Database</span>
                             </div>
                             <div x-show="isOpen"
                                  x-transition
-                                 class="absolute top-full left-0 mt-0 w-48 bg-white text-black shadow-lg border-t-2 border-amber-200 z-50">
+                                 class="absolute top-full left-0 mt-0 w-48 bg-white text-black shadow-lg border-t-2 border-accent-200 z-50">
                                 <a href="{{ route('drivers') }}" class="block px-4 py-2 hover:bg-gray-100">All Drivers</a>
                                 <a href="{{ route('drivers', ["category" => "Subwoofer"]) }}" class="block px-4 py-2 hover:bg-gray-100">Subwoofers</a>
                                 <a href="{{ route('drivers', ["category" => "Woofer"]) }}" class="block px-4 py-2 hover:bg-gray-100">Woofers</a>
@@ -56,21 +56,21 @@
                         </li>
                         
                         <li class="group">
-                            <a href="{{ route('marketplace') }}" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-amber-200 transition duration-150">
+                            <a href="{{ route('marketplace') }}" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-accent-200 transition duration-150">
                                 <x-phosphor-storefront class="mr-2 w-8 h-8 hidden xl:block" />
                                 <span class="font-bold text-sm xl:text-base">Marketplace</span>
                             </a>
                         </li>
 
                         <li class="group">
-                            <a href="{{ route('blog') }}" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-amber-200 transition duration-150">
+                            <a href="{{ route('blog') }}" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-accent-200 transition duration-150">
                                 <i class="ph ph-megaphone-simple mr-2 text-3xl hidden xl:inline-block"></i>
                                 <span class="font-bold text-sm xl:text-base">Soap Box</span>
                             </a>
                         </li>
                         
                         <li class="group">
-                            <a href="/forum" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-amber-200 transition duration-150">
+                            <a href="/forum" class="flex items-center h-full px-3 xl:px-4 py-5 text-white hover:text-accent-200 transition duration-150">
                                 <i class="ph ph-user-sound mr-2 text-3xl hidden xl:inline-block"></i>
                                 <span class="font-bold text-sm xl:text-base">Forum</span>
                             </a>
@@ -93,8 +93,8 @@
                     @endauth
                     @if(auth()->guest())
                         <div class="hidden lg:block">
-                            <a href="{{ route('login') }}" class="px-5 py-3 font-medium text-white hover:text-amber-200 transition duration-150" type="button">Sign In</a>
-                            <a href="{{ route('register') }}" class="px-5 py-3 ml-2 font-medium text-white bg-purple-800 hover:bg-purple-700 transition duration-150" type="button">Register</a>
+                            <a href="{{ route('login') }}" class="px-5 py-3 font-medium text-white hover:text-accent-200 transition duration-150" type="button">Sign In</a>
+                            <a href="{{ route('register') }}" class="px-5 py-3 ml-2 font-medium text-white bg-brand-800 hover:bg-brand-700 transition duration-150" type="button">Register</a>
                         </div>
                     @else
                         <div class="hidden lg:block mr-6">
@@ -104,7 +104,7 @@
                     
                     <!-- Mobile menu toggle -->
                     <div class="lg:hidden px-5">
-                        <button x-on:click="mobileNavOpen = !mobileNavOpen" class="p-2 text-white  hover:bg-purple-900">
+                        <button x-on:click="mobileNavOpen = !mobileNavOpen" class="p-2 text-white  hover:bg-brand-900">
                             <x-phosphor-list class="w-6 h-6" />
                         </button>
                     </div>
@@ -139,32 +139,32 @@
                 <div class="flex-grow py-6">
                     <ul class="px-4 space-y-6">
                         <li class="py-2">
-                            <a class="text-lg font-medium hover:text-purple-700" href="{{route('designs')}}">Design Database</a>
+                            <a class="text-lg font-medium hover:text-brand-700" href="{{route('designs')}}">Design Database</a>
                             <ul class="pl-4 mt-2 space-y-2 text-gray-600">
-                                <li><a href="{{ route('designs', ["category" => "Subwoofer"]) }}" class="hover:text-purple-700">Subwoofers</a></li>
-                                <li><a href="{{ route('designs', ["category" => "Full-Range"]) }}" class="hover:text-purple-700">Full-Range</a></li>
-                                <li><a href="{{ route('designs', ["category" => "Two-Way"]) }}" class="hover:text-purple-700">Two-Way</a></li>
-                                <li><a href="{{ route('designs', ["category" => "Three-Way"]) }}" class="hover:text-purple-700">Three-Way</a></li>
-                                <li><a href="{{ route('designs', ["category" => "Four-Way+"]) }}" class="hover:text-purple-700">Four-Way +</a></li>
-                                <li><a href="{{ route('designs', ["category" => "Portable"]) }}" class="hover:text-purple-700">Portable</a></li>
-                                <li><a href="{{ route('designs', ["category" => "Esoteric"]) }}" class="hover:text-purple-700">Esoteric</a></li>
+                                <li><a href="{{ route('designs', ["category" => "Subwoofer"]) }}" class="hover:text-brand-700">Subwoofers</a></li>
+                                <li><a href="{{ route('designs', ["category" => "Full-Range"]) }}" class="hover:text-brand-700">Full-Range</a></li>
+                                <li><a href="{{ route('designs', ["category" => "Two-Way"]) }}" class="hover:text-brand-700">Two-Way</a></li>
+                                <li><a href="{{ route('designs', ["category" => "Three-Way"]) }}" class="hover:text-brand-700">Three-Way</a></li>
+                                <li><a href="{{ route('designs', ["category" => "Four-Way+"]) }}" class="hover:text-brand-700">Four-Way +</a></li>
+                                <li><a href="{{ route('designs', ["category" => "Portable"]) }}" class="hover:text-brand-700">Portable</a></li>
+                                <li><a href="{{ route('designs', ["category" => "Esoteric"]) }}" class="hover:text-brand-700">Esoteric</a></li>
                             </ul>
                         </li>
                         <li class="py-2">
-                            <a class="text-lg font-medium hover:text-purple-700" href="{{route('drivers')}}">Driver Database</a>
+                            <a class="text-lg font-medium hover:text-brand-700" href="{{route('drivers')}}">Driver Database</a>
                             <ul class="pl-4 mt-2 space-y-2 text-gray-600">
-                                <li><a href="{{ route('drivers') }}" class="hover:text-purple-700">All Drivers</a></li>
-                                <li><a href="{{ route('drivers', ["category" => "Subwoofer"]) }}" class="hover:text-purple-700">Subwoofers</a></li>
-                                <li><a href="{{ route('drivers', ["category" => "Woofer"]) }}" class="hover:text-purple-700">Woofers</a></li>
-                                <li><a href="{{ route('drivers', ["category" => "Tweeter"]) }}" class="hover:text-purple-700">Tweeters</a></li>
-                                <li><a href="{{ route('drivers', ["category" => "Compression Driver"]) }}" class="hover:text-purple-700">Compression Drivers</a></li>
-                                <li><a href="{{ route('drivers', ["category" => "Exciter"]) }}" class="hover:text-purple-700">Exciters</a></li>
-                                <li><a href="{{ route('drivers', ["category" => "Other"]) }}" class="hover:text-purple-700">Others</a></li>
+                                <li><a href="{{ route('drivers') }}" class="hover:text-brand-700">All Drivers</a></li>
+                                <li><a href="{{ route('drivers', ["category" => "Subwoofer"]) }}" class="hover:text-brand-700">Subwoofers</a></li>
+                                <li><a href="{{ route('drivers', ["category" => "Woofer"]) }}" class="hover:text-brand-700">Woofers</a></li>
+                                <li><a href="{{ route('drivers', ["category" => "Tweeter"]) }}" class="hover:text-brand-700">Tweeters</a></li>
+                                <li><a href="{{ route('drivers', ["category" => "Compression Driver"]) }}" class="hover:text-brand-700">Compression Drivers</a></li>
+                                <li><a href="{{ route('drivers', ["category" => "Exciter"]) }}" class="hover:text-brand-700">Exciters</a></li>
+                                <li><a href="{{ route('drivers', ["category" => "Other"]) }}" class="hover:text-brand-700">Others</a></li>
                             </ul>
                         </li>
-                        <li class="py-2"><a class="text-lg font-medium hover:text-purple-700" href="{{ route('marketplace') }}">Marketplace</a></li>
-                        <li class="py-2"><a class="text-lg font-medium hover:text-purple-700" href="/blog">Soap Box</a></li>
-                        <li class="py-2"><a class="text-lg font-medium hover:text-purple-700" href="/forum">Community Forum</a></li>
+                        <li class="py-2"><a class="text-lg font-medium hover:text-brand-700" href="{{ route('marketplace') }}">Marketplace</a></li>
+                        <li class="py-2"><a class="text-lg font-medium hover:text-brand-700" href="/blog">Soap Box</a></li>
+                        <li class="py-2"><a class="text-lg font-medium hover:text-brand-700" href="/forum">Community Forum</a></li>
                     </ul>
                 </div>
                 
@@ -173,7 +173,7 @@
                     @if(auth()->guest())
                         <div class="space-y-3">
                             <a href="{{ route('login') }}" class="block w-full px-5 py-3 font-medium text-center bg-gray-100 hover:bg-gray-200 transition duration-150" type="button">Sign In</a>
-                            <a href="{{ route('register') }}" class="block w-full px-5 py-3 font-medium text-center text-white bg-purple-900 hover:bg-purple-800 transition duration-150">Register</a>
+                            <a href="{{ route('register') }}" class="block w-full px-5 py-3 font-medium text-center text-white bg-brand-900 hover:bg-brand-800 transition duration-150">Register</a>
                         </div>
                     @else
                         <x-app.user-menu position="bottom" class="border-black" />

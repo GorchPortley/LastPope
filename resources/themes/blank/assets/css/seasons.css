@@ -9,32 +9,21 @@
 
 /* ---- Header garnish: a strip of inline SVG along the bottom edge of the marketing header ---- */
 
-.season-decor {
-  /* the marketing header is 4.5rem tall, 6rem from the lg breakpoint (see components/marketing/header.blade.php) */
-  --season-header-h: 4.5rem;
-}
-
-@media (min-width: 1024px) {
-  .season-decor {
-    --season-header-h: 6rem;
-  }
-}
-
+/*
+ * The layout renders the decor right after the header, so this zero-height box sits exactly on the header's bottom
+ * edge whatever the header's height is; the artwork is positioned relative to it (10px up into the header, 14px down).
+ */
 .season-garnish {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--season-header-h);
+  position: relative;
+  height: 0;
   z-index: 1; /* above the header background, below its dropdowns (z-50) */
   pointer-events: none;
 }
 
-/* the strip sits on the header's bottom edge: 10px inside it, 14px hanging below */
 .season-garnish__edge {
   position: absolute;
   left: 0;
-  bottom: -14px;
+  top: -10px;
   width: 100%;
   height: 24px;
   display: block;
@@ -44,7 +33,7 @@
 .season-garnish__sun {
   position: absolute;
   left: 54%;
-  bottom: -16px;
+  top: -28px;
   width: 44px;
   height: 44px;
   display: block;

@@ -122,7 +122,9 @@ class SeasonalTheme
     /** URL of $path (the home page by default) that previews $key; only admins see it take effect. */
     public function previewUrl(string $key, string $path = '/'): string
     {
-        return url($path).'?'.http_build_query([(string) config('seasons.preview_param', 'preview_season') => $key]);
+        $base = $path === '/' ? url('/').'/' : url($path);
+
+        return $base.'?'.http_build_query([(string) config('seasons.preview_param', 'preview_season') => $key]);
     }
 
     /**

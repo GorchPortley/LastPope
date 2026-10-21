@@ -15,8 +15,8 @@
     @stack('head')
 </head>
 <body class="flex min-h-screen flex-col bg-white dark:bg-zinc-900">
-<x-seasonal.decor />
 <x-marketing.header />
+<x-seasonal.decor />
 <main class="flex-1">
     <x-marketplace.flash class="mx-auto mt-4 max-w-7xl px-4 sm:px-6 lg:px-8" />
     {!! $slot !!}

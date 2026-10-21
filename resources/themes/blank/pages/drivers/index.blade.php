@@ -18,9 +18,10 @@ new class extends Component {
             ->with('designs')       // Eager load designs
             ->with('activeStoreListing'); // SDLabs' store listing, for the "In stock at SDLabs" line on the cards
 
-        // Filter by brand
-        if ($request->brand) {
-            $query->where('brand', $request->brand);
+        // Filter by manufacturer (the filter form submits `manufacturer`; `brand` still works for old links)
+        $manufacturer = $request->input('manufacturer', $request->input('brand'));
+        if (is_string($manufacturer) && $manufacturer !== '') {
+            $query->where('brand', $manufacturer);
         }
 
         // Filter by category

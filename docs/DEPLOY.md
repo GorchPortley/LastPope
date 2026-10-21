@@ -18,6 +18,7 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 - [13. Logs and troubleshooting](#13-logs-and-troubleshooting)
 - [14. Local development](#14-local-development)
 - [15. Reference](#15-reference)
+- [16. Seasonal themes](#16-seasonal-themes)
 
 ---
 
@@ -619,3 +620,49 @@ The Stripe CLI forwards `/stripe/marketplace/webhook` and `/stripe/connect/webho
 | `MAIL_*` | outgoing mail |
 | `STRIPE_*` | Stripe keys and webhook secrets |
 | `DEV_UID`, `DEV_GID`, `COMPOSE_FILE` | development only |
+
+## 16. Seasonal themes
+
+The public site (not the admin panel) can wear a seasonal look: re-coloured header, footer, buttons, badges
+and links, plus a small decoration along the header and, for winter, gently falling snow. **An admin switches it
+by hand; nothing changes by date.**
+
+**Switching a season**: log in as admin, open **Admin > Settings > Appearance**, click a season (each card shows
+its colours), press **Save**. It is live on the next page load for everybody. **Preview** (the button at the top,
+or the link on a card) opens the home page in the selected season for you only: the same works on any public page
+by adding `?preview_season=halloween` to the address, and is ignored for everybody who is not an admin.
+Choose **Default** to go back to the normal purple look. The choice is stored in the Wave setting `site.season`
+(Admin > Settings), so it survives updates and is part of the database backup.
+
+**How the colours work**: the theme never hard-codes the purple. Tailwind classes `brand-50 ... brand-950` (main
+colour: header, footer, buttons, badges, links), `accent-*` (hover highlight on the dark header and footer, cart
+badge), `link-*` (link hover, focus rings, carousel dots), `bg-header` and `bg-footer` read CSS variables holding
+RGB channels (`--brand-600: 147 51 234`). The defaults are the `:root` block in
+`resources/themes/blank/assets/css/app.css`; a season only overrides some of them on
+`<html data-season="halloween">`. The layouts print those overrides in a small `<style>` block, so a new season
+needs no rebuild of the CSS.
+
+**Adding a season** (for example Easter):
+
+1. Add one entry to `config/seasons.php`: a `label`, a `description`, the `colors` (hex values for the shades of
+   `brand`, optionally `accent` and `link`, and optionally `header-bg` / `footer-bg`; anything left out keeps
+   the default), a `garnish` name (or `null`) and an `effect` (`snow` or `none`). Re-use one of the palettes at the top of
+   the file or add one.
+2. Only if it has a header decoration: create `resources/themes/blank/components/seasonal/garnish/<name>.blade.php`
+   with an inline SVG (copy one of the existing six; no external images). Only if it needs a new effect or special
+   styling: add the CSS to `resources/themes/blank/assets/css/seasons.css` (rules for one season go under
+   `html[data-season="<key>"]`).
+3. Run `npm run build` when you touched `seasons.css` (or the Tailwind classes of a garnish); a config-only season needs
+   nothing.
+4. Run `php artisan test tests/Feature/Seasons`. It checks every season in the config automatically: valid hex
+   colours, the garnish view exists, and WCAG AA contrast (4.5:1) for white text on the brand shades, header and
+   footer, and for the footer and badge text. If a contrast check fails the message names the pair; pick a darker shade.
+
+The snow layer ignores the pointer, sits below dropdowns and dialogs, and is hidden for visitors whose system asks for
+reduced motion.
+
+**Front-end libraries are bundled.** Chart.js, Flowbite (JS and CSS), the Phosphor icon font and the Alpine focus
+plugin are installed from npm with pinned versions (`package.json`) and built by `npm run build`; the pages no
+longer load them from a CDN, so the charts and icons also work offline or behind a strict firewall. (Paddle, Stripe,
+and the profile page's cropper still use their own hosts.) After changing a version, run `npm install` and
+`npm run build`.

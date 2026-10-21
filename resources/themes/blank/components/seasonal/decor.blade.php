@@ -2,7 +2,8 @@
     Seasonal decoration, rendered by the public layouts (marketing and app). Nothing is output for the default look.
 
     - garnish: a small inline SVG along the bottom edge of the marketing header (components/seasonal/garnish/{name}),
-      positioned by seasons.css. Pass :garnish="false" in layouts that have no header at the top (the dashboard).
+      positioned by seasons.css. Render this component right after the header so the garnish lands on its bottom edge,
+      or pass :garnish="false" in layouts that have no header at the top (the dashboard).
     - effect:  `snow` is a CSS-only falling snow layer (seasons.css); it ignores the pointer, sits below dropdowns and
       modals, and is hidden under prefers-reduced-motion.
     - preview: when an admin looks at ?preview_season=..., a small notice says so (and how to leave the preview).

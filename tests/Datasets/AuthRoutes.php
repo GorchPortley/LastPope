@@ -35,5 +35,6 @@ dataset('adminroutes', function () {
         '/admin/designs',
         '/admin/drivers',
         '/admin/forms',
+        '/admin/appearance',
     ];
 });

@@ -13,6 +13,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\SellerOrder;
 use App\Models\User;
+use App\Services\Marketplace\Data\CartIssue;
 use App\Services\Marketplace\Data\CartIssueType;
 use App\Services\Marketplace\Data\CartLine;
 use App\Services\Marketplace\Data\CartSummary;
@@ -108,13 +109,52 @@ class CheckoutService
 
         $issues = $summary->issues();
         if ($issues !== []) {
-            $onlyShipping = collect($issues)->every(fn ($issue) => $issue->type === CartIssueType::NOT_SHIPPABLE);
+            $only = fn (CartIssueType $type) => collect($issues)->every(fn ($issue) => $issue->type === $type);
 
-            throw new CheckoutException(
-                $onlyShipping ? CheckoutError::NOT_SHIPPABLE : CheckoutError::UNAVAILABLE_ITEMS,
-                $issues,
-                $onlyShipping ? 'A seller does not ship an item in your cart to that address.' : null,
-            );
+            throw match (true) {
+                $only(CartIssueType::NOT_SHIPPABLE) => new CheckoutException(CheckoutError::NOT_SHIPPABLE, $issues, 'A seller does not ship an item in your cart to that address.'),
+                $only(CartIssueType::INSUFFICIENT_STOCK) => new CheckoutException(CheckoutError::INSUFFICIENT_STOCK, $issues),
+                default => new CheckoutException(CheckoutError::UNAVAILABLE_ITEMS, $issues),
+            };
+        }
+    }
+
+    /**
+     * Inside the order transaction: lock the listing rows (in id order, to avoid deadlocks) and check that
+     * each line still fits in the stock that is not held by other buyers' pending orders.
+     *
+     * @throws CheckoutException
+     */
+    private function assertStockAvailable(User $user, CartSummary $summary): void
+    {
+        $lines = collect($summary->lines)->filter(fn (CartLine $line) => $line->purchasable instanceof Listing);
+
+        if ($lines->isEmpty()) {
+            return;
+        }
+
+        $listings = Listing::query()
+            ->whereIn('id', $lines->map(fn (CartLine $line) => $line->purchasable->getKey())->all())
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        $issues = [];
+
+        foreach ($lines as $line) {
+            $listing = $listings->get($line->purchasable->getKey());
+            $available = $listing?->availableQuantity($user) ?? 0;
+
+            if ($listing === null || ! $listing->isAvailableForPurchase($user)) {
+                $issues[] = new CartIssue(CartIssueType::INSUFFICIENT_STOCK, "{$line->title} is sold out or on hold for another buyer.", $line->id(), 0);
+            } elseif ($line->quantity > $available) {
+                $issues[] = new CartIssue(CartIssueType::INSUFFICIENT_STOCK, "Only {$available} available of {$line->title}.", $line->id(), $available);
+            }
+        }
+
+        if ($issues !== []) {
+            throw new CheckoutException(CheckoutError::INSUFFICIENT_STOCK, $issues);
         }
     }
 
@@ -124,6 +164,9 @@ class CheckoutService
     private function createOrder(User $user, CartSummary $summary, ?Address $address): array
     {
         return DB::transaction(function () use ($user, $summary, $address) {
+            // Lock the listings first so two buyers cannot both claim the last unit, then hold the stock.
+            $this->assertStockAvailable($user, $summary);
+
             $order = Order::create([
                 'user_id' => $user->getKey(),
                 'status' => OrderStatus::PENDING,
@@ -134,6 +177,8 @@ class CheckoutService
                 'total_cents' => $summary->totalCents(),
                 'platform_fee_cents' => $summary->feeCents,
                 'shipping_address' => $summary->needsAddress ? $address?->toSnapshot() : null,
+                // The stock in this order is held for the buyer, and the Checkout Session lives, until then.
+                'reserved_until' => now()->addMinutes(Order::reservationMinutes()),
             ]);
 
             $lineItems = [];

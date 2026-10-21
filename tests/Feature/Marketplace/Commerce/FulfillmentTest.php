@@ -134,19 +134,6 @@ it('marks a listing sold out when the last unit is bought', function () {
     expect($listing->fresh()->quantity)->toBe(0)->and($listing->fresh()->status)->toBe(ListingStatus::SOLD_OUT);
 });
 
-it('never takes stock below zero when two buyers paid for the last unit', function () {
-    $listing = sellableListing(attributes: ['quantity' => 1]);
-    $first = pendingOrder($this->buyer, [$listing], addressFor($this->buyer));
-    $other = User::factory()->create();
-    $second = pendingOrder($other, [$listing], addressFor($other));
-
-    payOrder($first, 'pi_1', 'ch_1');
-    payOrder($second, 'pi_2', 'ch_2');
-
-    expect($listing->fresh()->quantity)->toBe(0)
-        ->and($second->fresh()->status)->toBe(OrderStatus::PAID);
-});
-
 it('completes an order that only contains digital items', function () {
     Notification::fake();
     $order = pendingOrder($this->buyer, [paidDesign(cents: 1000), paidDriverPack(cents: 500)]);

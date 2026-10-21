@@ -26,8 +26,10 @@ use Illuminate\Support\Facades\Log;
  * refunded and recomputes the order (refunded, or partially_refunded when other sellers' parts stay).
  * Stock is not restored: the seller relists if the goods are back.
  *
- * Both entry points authorize through the `refund` policy ability (admins only). Gateway failures
- * propagate as PaymentGatewayException before anything is changed locally.
+ * refundOrder() and refundSellerOrder() authorize through the `refund` policy ability (admins only).
+ * refundSellerOrderAutomatically() is the system path (no user, no authorization) used when the goods
+ * could not be delivered. Gateway failures propagate as PaymentGatewayException before anything is
+ * changed locally.
  */
 class RefundService
 {
@@ -51,6 +53,16 @@ class RefundService
         Gate::forUser($actor)->authorize('refund', $sellerOrder);
 
         return $this->process($sellerOrder->order, $sellerOrder->getKey(), $reason, $actor);
+    }
+
+    /**
+     * Refund a seller order on the system's behalf, e.g. when the goods ran out between checkout and
+     * payment (OrderFulfillment). There is no acting user, so no authorization: never call this from a
+     * request that a user controls. $reason is shown to the buyer.
+     */
+    public function refundSellerOrderAutomatically(SellerOrder $sellerOrder, string $reason): RefundResult
+    {
+        return $this->process($sellerOrder->order, $sellerOrder->getKey(), $reason, null, $reason);
     }
 
     /** Try again to take the payout back from a seller after RefundResult::$reversalFailed. */
@@ -131,7 +143,7 @@ class RefundService
     /**
      * @param  int|null  $onlySellerOrderId  null = every open seller order of the order
      */
-    private function process(Order $order, ?int $onlySellerOrderId, ?string $reason, User $actor): RefundResult
+    private function process(Order $order, ?int $onlySellerOrderId, ?string $reason, ?User $actor, ?string $buyerNote = null): RefundResult
     {
         $result = DB::transaction(function () use ($order, $onlySellerOrderId, $reason, $actor) {
             /** @var Order $locked */
@@ -165,7 +177,7 @@ class RefundService
                 'order_number' => $locked->number,
                 'seller_order_ids' => $targets->pluck('id')->implode(','),
                 'reason' => $reason,
-                'refunded_by' => $actor->getKey(),
+                'refunded_by' => $actor?->getKey() ?? 'system',
                 'idempotency_key' => $key,
             ]);
 
@@ -181,7 +193,7 @@ class RefundService
             return new RefundResult($locked->refresh(), $targets->values()->all(), $reported, $refundId, $failed);
         });
 
-        $this->notifyBuyer($result->order, $result->amountCents, $onlySellerOrderId !== null ? $result->sellerOrders[0] : null);
+        $this->notifyBuyer($result->order, $result->amountCents, $onlySellerOrderId !== null ? $result->sellerOrders[0] : null, $buyerNote);
 
         return $result;
     }
@@ -233,10 +245,10 @@ class RefundService
         return $reversed;
     }
 
-    private function notifyBuyer(Order $order, int $amountCents, ?SellerOrder $sellerOrder): void
+    private function notifyBuyer(Order $order, int $amountCents, ?SellerOrder $sellerOrder, ?string $note = null): void
     {
         try {
-            $order->user->notify(new OrderRefunded($order, $amountCents, $sellerOrder));
+            $order->user->notify(new OrderRefunded($order, $amountCents, $sellerOrder, $note));
         } catch (\Throwable $e) {
             report($e);
         }

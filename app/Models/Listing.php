@@ -193,12 +193,35 @@ class Listing extends Model implements Purchasable
         return false;
     }
 
-    public function isAvailableForPurchase(): bool
+    /**
+     * Whether $buyer (or anybody, without one) can buy at least one unit now: active, priced, seller
+     * payable, and stock left after other buyers' running checkouts (see availableQuantity()).
+     */
+    public function isAvailableForPurchase(?User $buyer = null): bool
     {
         return $this->status === ListingStatus::ACTIVE
-            && $this->quantity > 0
             && $this->price_cents > 0
+            && $this->availableQuantity($buyer) > 0
             && $this->sellerCanBePaid();
+    }
+
+    /**
+     * Units that can still be bought: the stock minus the units held by pending orders whose
+     * reservation (orders.reserved_until) has not expired. Pass the buyer to ignore their own
+     * pending orders, so going back from Stripe to the cart never blocks them.
+     * CheckoutService locks the listing row before calling this, which makes the check race-free.
+     */
+    public function availableQuantity(?User $buyer = null): int
+    {
+        $held = OrderItem::query()
+            ->where('purchasable_type', $this->getMorphClass())
+            ->where('purchasable_id', $this->getKey())
+            ->whereHas('order', function (Builder $orders) use ($buyer) {
+                $orders->holdingStock()->when($buyer, fn (Builder $q) => $q->where('user_id', '!=', $buyer->getKey()));
+            })
+            ->sum('quantity');
+
+        return max(0, (int) $this->quantity - (int) $held);
     }
 
     /**

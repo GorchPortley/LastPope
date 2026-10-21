@@ -14,6 +14,8 @@ enum CheckoutError: string
     case NOT_SHIPPABLE = 'not_shippable';
     /** Unavailable, sold out, own or already-owned items: see CheckoutException::$issues. */
     case UNAVAILABLE_ITEMS = 'unavailable_items';
+    /** Sold out, or the units are held by other buyers' running checkouts; see CheckoutException::$issues. */
+    case INSUFFICIENT_STOCK = 'insufficient_stock';
     /** The total differs from the one the buyer saw ($expectedTotalCents). */
     case PRICE_CHANGED = 'price_changed';
     /** Stripe could not create the payment page. */
@@ -27,6 +29,7 @@ enum CheckoutError: string
             self::ADDRESS_INVALID => 'That shipping address cannot be used. Check it and try again.',
             self::NOT_SHIPPABLE => 'A seller in your cart does not ship to that address.',
             self::UNAVAILABLE_ITEMS => 'Some items in your cart are no longer available.',
+            self::INSUFFICIENT_STOCK => 'Some items are sold out or on hold for another buyer who is paying right now. Try again in a few minutes.',
             self::PRICE_CHANGED => 'Prices changed while you were checking out. Review your cart and try again.',
             self::GATEWAY_ERROR => 'We could not start the payment. Please try again in a moment.',
         };

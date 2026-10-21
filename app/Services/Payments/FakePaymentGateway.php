@@ -73,6 +73,7 @@ class FakePaymentGateway implements PaymentGateway
             'lineItems' => $lineItems,
             'successUrl' => $successUrl,
             'cancelUrl' => $cancelUrl,
+            'reservedUntil' => $order->reserved_until?->getTimestamp(),
         ]);
 
         $id = $this->nextId('cs');

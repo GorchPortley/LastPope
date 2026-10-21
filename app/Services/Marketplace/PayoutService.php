@@ -35,8 +35,8 @@ class PayoutService
             return false;
         }
 
+        // Not PAID: that marks a paid seller order whose goods could not be delivered (awaiting its automatic refund).
         if (! in_array($sellerOrder->status, [
-            SellerOrderStatus::PAID,
             SellerOrderStatus::AWAITING_SHIPMENT,
             SellerOrderStatus::SHIPPED,
             SellerOrderStatus::DELIVERED,
@@ -137,7 +137,6 @@ class PayoutService
             ->whereNull('transferred_at')
             ->where('payout_cents', '>', 0)
             ->whereIn('status', [
-                SellerOrderStatus::PAID->value,
                 SellerOrderStatus::AWAITING_SHIPMENT->value,
                 SellerOrderStatus::SHIPPED->value,
                 SellerOrderStatus::DELIVERED->value,

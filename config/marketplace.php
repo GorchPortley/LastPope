@@ -47,6 +47,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Stock reservation
+    |--------------------------------------------------------------------------
+    |
+    | Starting a checkout holds the listing stock in the order for this many minutes (also the
+    | Stripe Checkout Session's lifetime). Other buyers cannot take those units meanwhile.
+    | Stripe accepts 30 minutes to 24 hours, so the value is clamped to 30..1440.
+    |
+    */
+
+    'reservation_minutes' => (int) env('MARKETPLACE_RESERVATION_MINUTES', 30),
+
+    /*
+    |--------------------------------------------------------------------------
     | Stripe
     |--------------------------------------------------------------------------
     |

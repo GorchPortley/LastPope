@@ -31,6 +31,7 @@ class Order extends Model
         'stripe_payment_intent_id',
         'stripe_charge_id',
         'paid_at',
+        'reserved_until',
     ];
 
     protected $attributes = [
@@ -46,6 +47,7 @@ class Order extends Model
         'platform_fee_cents' => 'integer',
         'shipping_address' => 'array',
         'paid_at' => 'datetime',
+        'reserved_until' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -107,6 +109,24 @@ class Order extends Model
     public function scopeStatus(Builder $query, OrderStatus ...$statuses): Builder
     {
         return $query->whereIn('status', array_map(fn (OrderStatus $s) => $s->value, $statuses));
+    }
+
+    /**
+     * Pending orders whose stock hold is still running. These are the orders that reserve listing
+     * stock (Listing::availableQuantity()); a cancelled, paid or expired order no longer does.
+     */
+    public function scopeHoldingStock(Builder $query): Builder
+    {
+        return $query->where('status', OrderStatus::PENDING->value)->where('reserved_until', '>', now());
+    }
+
+    /**
+     * How long checkout holds the stock, in minutes: marketplace.reservation_minutes clamped to what
+     * Stripe accepts for a Checkout Session's expires_at (30 minutes to 24 hours).
+     */
+    public static function reservationMinutes(): int
+    {
+        return min(24 * 60, max(30, (int) config('marketplace.reservation_minutes', 30)));
     }
 
     public function isPaid(): bool

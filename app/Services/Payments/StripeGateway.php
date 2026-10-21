@@ -122,6 +122,15 @@ class StripeGateway implements PaymentGateway
             ], fn ($v) => filled($v));
         }
 
+        // The session lives as long as the stock hold of the order (orders.reserved_until). Stripe only accepts
+        // 30 minutes to 24 hours after creation, and the clock keeps running while this request is on its way.
+        if ($order->reserved_until !== null) {
+            $params['expires_at'] = min(
+                max($order->reserved_until->getTimestamp(), time() + 1800 + 60),
+                time() + 86400 - 60,
+            );
+        }
+
         if (config('marketplace.stripe_tax')) {
             $params['automatic_tax'] = ['enabled' => true];
             $params['billing_address_collection'] = 'required';

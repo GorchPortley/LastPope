@@ -20,6 +20,9 @@ class Kernel extends ConsoleKernel
 
         // Complete shipped orders after marketplace.auto_complete_days and retry any payout that failed.
         $schedule->command('marketplace:auto-complete')->daily()->withoutOverlapping();
+
+        // Cancel abandoned pending orders and retry failed automatic refunds.
+        $schedule->command('marketplace:cleanup-orders')->hourly()->withoutOverlapping();
     }
 
     /**

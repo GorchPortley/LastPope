@@ -11,8 +11,12 @@ use App\Models\Listing;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\SellerOrder;
+use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Notifications\NewSale;
 use App\Notifications\OrderReceipt;
+use App\Notifications\SaleCancelled;
+use App\Services\Payments\Exceptions\PaymentGatewayException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -25,6 +29,7 @@ class OrderFulfillment
     public function __construct(
         private readonly PayoutService $payouts,
         private readonly OrderStatusSynchronizer $statuses,
+        private readonly RefundService $refunds,
     ) {
     }
 
@@ -34,7 +39,10 @@ class OrderFulfillment
      * async_payment_succeeded). Returns true when this call did the fulfilment.
      *
      *  - digital items: entitlement for the buyer (source: purchase)
-     *  - listings: stock decremented, the listing becomes sold_out at zero
+     *  - listings: stock decremented, the listing becomes sold_out at zero. If a listing can no longer cover a
+     *    paid line (the seller lowered the stock, or another buyer got the last unit after this reservation
+     *    expired), that seller order is not fulfilled: it is refunded automatically and the seller and buyer
+     *    are told, while the rest of the order is fulfilled as usual
      *  - seller orders: digital-only -> completed, with physical items -> awaiting_shipment
      *  - buyer's cart: the ordered items are removed
      *  - payouts: due seller orders are transferred (digital now; physical on shipment unless the
@@ -63,10 +71,19 @@ class OrderFulfillment
             ])->save();
 
             $locked->load(['user', 'sellerOrders.items']);
+            $listings = $this->lockListings($locked);
 
             foreach ($locked->sellerOrders as $sellerOrder) {
+                if ($this->outOfStock($sellerOrder, $listings)) {
+                    // Paid, but the goods are gone: PAID marks it for refundUnfulfillable() right after this transaction.
+                    $sellerOrder->forceFill(['status' => SellerOrderStatus::PAID])->save();
+                    Log::warning('Paid seller order cannot be fulfilled: out of stock.', ['order' => $locked->number, 'seller_order_id' => $sellerOrder->getKey()]);
+
+                    continue;
+                }
+
                 foreach ($sellerOrder->items as $item) {
-                    $this->fulfilItem($locked, $item);
+                    $this->fulfilItem($locked, $item, $listings);
                 }
 
                 $sellerOrder->forceFill([
@@ -88,7 +105,8 @@ class OrderFulfillment
             $this->notify($order);
         }
 
-        // Also on a redelivered event: picks up payouts that failed the first time.
+        // Also on a redelivered event: retries refunds and payouts that failed the first time.
+        $this->refundUnfulfillable($order);
         $this->payouts->releaseDueFor($order);
 
         return $fulfilled;
@@ -116,7 +134,126 @@ class OrderFulfillment
         });
     }
 
-    private function fulfilItem(Order $order, OrderItem $item): void
+    /**
+     * Refund the seller orders of this paid order that could not be fulfilled (status PAID, see markPaid()),
+     * and tell the seller. Safe to repeat; a refund that fails stays PAID and is retried later.
+     *
+     * @return int seller orders refunded now
+     */
+    public function refundUnfulfillable(Order $order): int
+    {
+        $refunded = 0;
+
+        $stuck = $order->sellerOrders()->where('status', SellerOrderStatus::PAID->value)->with(['order', 'seller'])->get();
+
+        foreach ($stuck as $sellerOrder) {
+            $reason = 'one of the items is no longer in stock';
+
+            try {
+                $this->refunds->refundSellerOrderAutomatically($sellerOrder, ucfirst($reason).', so this part of your order was refunded automatically.');
+            } catch (PaymentGatewayException|InvalidOrderStateException $e) {
+                report($e);
+                Log::critical('Automatic refund of an unfulfillable seller order failed; it will be retried.', ['seller_order_id' => $sellerOrder->getKey()]);
+
+                continue;
+            }
+
+            $refunded++;
+
+            try {
+                $sellerOrder->seller?->notify(new SaleCancelled($sellerOrder->fresh(['order', 'items']), $reason));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $refunded;
+    }
+
+    /** Retry every pending automatic refund (scheduled). @return int seller orders refunded now */
+    public function retryUnfulfillableRefunds(): int
+    {
+        $refunded = 0;
+
+        Order::query()
+            ->whereIn('id', SellerOrder::query()->where('status', SellerOrderStatus::PAID->value)->select('order_id'))
+            ->whereNotNull('paid_at')
+            ->get()
+            ->each(function (Order $order) use (&$refunded) {
+                $refunded += $this->refundUnfulfillable($order);
+            });
+
+        return $refunded;
+    }
+
+    /**
+     * Cancel pending orders whose stock hold ended more than $hours ago, in case the
+     * checkout.session.expired webhook never came (the hold itself ends by the clock, without this).
+     *
+     * @return int orders cancelled
+     */
+    public function cancelStalePending(int $hours = 2): int
+    {
+        $cancelled = 0;
+
+        Order::query()
+            ->where('status', OrderStatus::PENDING->value)
+            ->where('reserved_until', '<', now()->subHours($hours))
+            ->orderBy('id')
+            ->chunkById(100, function ($orders) use (&$cancelled) {
+                foreach ($orders as $order) {
+                    if ($this->cancelPending($order)) {
+                        $cancelled++;
+                    }
+                }
+            });
+
+        return $cancelled;
+    }
+
+    /**
+     * Lock the listings of the order's physical lines (in id order, against deadlocks).
+     *
+     * @return Collection<int, Listing>
+     */
+    private function lockListings(Order $order): Collection
+    {
+        $ids = $order->sellerOrders
+            ->flatMap(fn (SellerOrder $sellerOrder) => $sellerOrder->items)
+            ->reject(fn (OrderItem $item) => $item->is_digital)
+            ->pluck('purchasable_id')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return collect();
+        }
+
+        return Listing::withTrashed()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+    }
+
+    /** @param  Collection<int, Listing>  $listings */
+    private function outOfStock(SellerOrder $sellerOrder, Collection $listings): bool
+    {
+        foreach ($sellerOrder->items as $item) {
+            if ($item->is_digital) {
+                continue;
+            }
+
+            $listing = $listings->get($item->purchasable_id);
+
+            if ($listing === null || $listing->quantity < $item->quantity) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param  Collection<int, Listing>  $listings */
+    private function fulfilItem(Order $order, OrderItem $item, Collection $listings): void
     {
         if ($item->is_digital) {
             $purchasable = $item->purchasable;
@@ -132,18 +269,8 @@ class OrderFulfillment
             return;
         }
 
-        $listing = Listing::withTrashed()->whereKey($item->purchasable_id)->lockForUpdate()->first();
-
-        if ($listing === null) {
-            Log::error('Paid listing is gone; stock not decremented.', ['order_item_id' => $item->getKey()]);
-
-            return;
-        }
-
-        if ($listing->quantity < $item->quantity) {
-            // Two buyers paid for the last unit at the same time. Fulfil, flag it for the admin.
-            Log::warning('Listing oversold.', ['listing_id' => $listing->getKey(), 'stock' => $listing->quantity, 'ordered' => $item->quantity, 'order' => $order->number]);
-        }
+        // outOfStock() already checked that the listing exists and covers this line.
+        $listing = $listings->get($item->purchasable_id);
 
         $listing->quantity = max(0, $listing->quantity - $item->quantity);
         if ($listing->quantity === 0 && $listing->status === ListingStatus::ACTIVE) {
@@ -181,6 +308,10 @@ class OrderFulfillment
         }
 
         foreach ($order->sellerOrders as $sellerOrder) {
+            if ($sellerOrder->status === SellerOrderStatus::PAID) {
+                continue; // not fulfilled: the seller hears about the cancellation instead
+            }
+
             try {
                 $sellerOrder->seller?->notify(new NewSale($sellerOrder));
             } catch (\Throwable $e) {

@@ -16,11 +16,15 @@ class OrderRefunded extends Notification implements ShouldQueue
     use DescribesOrders;
     use Queueable;
 
-    /** @param  SellerOrder|null  $sellerOrder  set for a partial refund of one seller's part */
+    /**
+     * @param  SellerOrder|null  $sellerOrder  set for a partial refund of one seller's part
+     * @param  string|null  $note  buyer-facing reason, e.g. when the system refunded an item that ran out of stock
+     */
     public function __construct(
         public Order $order,
         public int $amountCents,
         public ?SellerOrder $sellerOrder = null,
+        public ?string $note = null,
     ) {
     }
 
@@ -43,6 +47,10 @@ class OrderRefunded extends Notification implements ShouldQueue
             }
         }
 
+        if (filled($this->note)) {
+            $mail->line($this->note);
+        }
+
         return $mail
             ->line('It usually appears on your statement within 5 to 10 business days. Refunded digital downloads are removed from your library.')
             ->action('View your orders', url('/dashboard/orders'));
@@ -52,7 +60,7 @@ class OrderRefunded extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return $this->sender() + [
-            'body' => $this->amount($this->amountCents, $this->order)." was refunded for order {$this->order->number}.",
+            'body' => $this->amount($this->amountCents, $this->order)." was refunded for order {$this->order->number}.".(filled($this->note) ? ' '.$this->note : ''),
             'link' => url('/dashboard/orders'),
             'kind' => 'order_refunded',
             'order_id' => $this->order->getKey(),

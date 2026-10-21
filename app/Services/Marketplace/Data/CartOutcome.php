@@ -52,7 +52,7 @@ enum CartOutcome: string
             self::NOT_AVAILABLE => "{$item} is not available right now.",
             self::INSUFFICIENT_STOCK => ($available ?? 0) > 0
                 ? "Only {$available} available of {$item}."
-                : "{$item} is sold out.",
+                : "{$item} is sold out or on hold for another buyer.",
             self::INVALID_QUANTITY => 'Choose a quantity of at least 1.',
             self::ACCESS_REVOKED => "Your access to {$item} was withdrawn. Contact support if this is a mistake.",
             self::ITEM_NOT_FOUND => 'That item is not in your cart.',

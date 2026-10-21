@@ -4,6 +4,7 @@ namespace App\Services\Marketplace;
 
 use App\Contracts\Purchasable;
 use App\Enums\EntitlementSource;
+use App\Enums\ListingStatus;
 use App\Models\Address;
 use App\Models\Cart;
 use App\Models\CartItem;
@@ -85,8 +86,8 @@ class CartService
 
         if ($purchasable->isDigital()) {
             $quantity = 1;
-        } elseif ($purchasable instanceof Listing && $quantity > max(0, $purchasable->quantity)) {
-            return new CartResult(CartOutcome::INSUFFICIENT_STOCK, $item, title: $title, available: max(0, $purchasable->quantity));
+        } elseif ($purchasable instanceof Listing && $quantity > ($stock = $purchasable->availableQuantity($user))) {
+            return new CartResult(CartOutcome::INSUFFICIENT_STOCK, $item, title: $title, available: $stock);
         }
 
         if ($item->quantity === $quantity) {
@@ -223,15 +224,15 @@ class CartService
 
     private function addPhysical(User $user, Purchasable&Model $purchasable, int $quantity, string $title): CartResult
     {
-        if (! $purchasable->isAvailableForPurchase()) {
-            $soldOut = $purchasable instanceof Listing && $purchasable->quantity <= 0;
+        $stock = $purchasable instanceof Listing ? $purchasable->availableQuantity($user) : PHP_INT_MAX;
 
-            return $soldOut
+        if (! $this->isAvailable($user, $purchasable)) {
+            // Sold out, or the last units are held in somebody else's running checkout.
+            return $stock <= 0 && $purchasable instanceof Listing && $this->isStockProblem($purchasable)
                 ? new CartResult(CartOutcome::INSUFFICIENT_STOCK, title: $title, available: 0)
                 : new CartResult(CartOutcome::NOT_AVAILABLE, title: $title);
         }
 
-        $stock = $purchasable instanceof Listing ? max(0, $purchasable->quantity) : PHP_INT_MAX;
         $existing = $this->itemFor($user, $purchasable);
         $wanted = ($existing?->quantity ?? 0) + $quantity;
 
@@ -289,6 +290,20 @@ class CartService
             ->first();
     }
 
+    /** isAvailableForPurchase() from this buyer's point of view (their own running checkout does not hold stock against them). */
+    private function isAvailable(User $user, Purchasable $purchasable): bool
+    {
+        return $purchasable instanceof Listing
+            ? $purchasable->isAvailableForPurchase($user)
+            : $purchasable->isAvailableForPurchase();
+    }
+
+    /** A listing that is for sale in principle, just without units left right now. */
+    private function isStockProblem(Listing $listing): bool
+    {
+        return in_array($listing->status, [ListingStatus::ACTIVE, ListingStatus::SOLD_OUT], true);
+    }
+
     private function quantityFor(Purchasable $purchasable, CartItem $item): int
     {
         return $purchasable->isDigital() ? 1 : max(1, (int) $item->quantity);
@@ -318,16 +333,17 @@ class CartService
         $seller = $purchasable->getSeller();
         $digital = $purchasable->isDigital();
         $quantity = $this->quantityFor($purchasable, $item);
-        $stock = $purchasable instanceof Listing ? max(0, (int) $purchasable->quantity) : null;
+        // Stock left after other buyers' running checkouts hold their units.
+        $stock = $purchasable instanceof Listing ? $purchasable->availableQuantity($user) : null;
         $issues = [];
 
         $issue = fn (CartIssueType $type, string $message, ?int $available = null) => new CartIssue($type, $message, $item->getKey(), $available);
 
         if ($seller?->is($user)) {
             $issues[] = $issue(CartIssueType::OWN_ITEM, "You cannot buy your own item: {$title}.");
-        } elseif (! $purchasable->isAvailableForPurchase()) {
-            $issues[] = $stock === 0
-                ? $issue(CartIssueType::INSUFFICIENT_STOCK, "{$title} is sold out.", 0)
+        } elseif (! $this->isAvailable($user, $purchasable)) {
+            $issues[] = $stock === 0 && $this->isStockProblem($purchasable)
+                ? $issue(CartIssueType::INSUFFICIENT_STOCK, "{$title} is sold out or on hold for another buyer.", 0)
                 : $issue(CartIssueType::UNAVAILABLE, "{$title} is not available right now.");
         } elseif ($digital && $user->hasAccessTo($purchasable, grantFree: false)) {
             $issues[] = $issue(CartIssueType::ALREADY_OWNED, "You already have access to {$title}.");

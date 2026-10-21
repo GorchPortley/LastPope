@@ -27,6 +27,9 @@ return new class extends Migration
             $table->string('stripe_payment_intent_id')->nullable()->index();
             $table->string('stripe_charge_id')->nullable()->index();
             $table->timestamp('paid_at')->nullable();
+            // While the order is pending, the listing stock in it is held for the buyer until this time
+            // (also the Checkout Session's expires_at). See Listing::availableQuantity().
+            $table->timestamp('reserved_until')->nullable();
             $table->timestamps();
 
             $table->index(['user_id', 'status']);

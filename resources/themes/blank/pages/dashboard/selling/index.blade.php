@@ -13,14 +13,19 @@ use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
+use Filament\Tables;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Table;
 use Livewire\Volt\Component;
 use function Laravel\Folio\{middleware, name};
 
 middleware('auth');
 name('selling.dashboard');
 
-new class extends Component implements HasForms {
-    use InteractsWithForms;
+new class extends Component implements HasForms, Tables\Contracts\HasTable {
+    use InteractsWithForms, InteractsWithTable;
 
     public ?array $data = [];
 
@@ -119,6 +124,53 @@ new class extends Component implements HasForms {
             : Notification::make()->info()->title('Stripe is still verifying your details')->send();
     }
 
+    /** The five latest sales, as a table like the ones on the other dashboard pages. */
+    public function table(Table $table): Table
+    {
+        $status = fn ($state): SellerOrderStatus => $state instanceof SellerOrderStatus ? $state : SellerOrderStatus::from((string) $state);
+
+        return $table
+            ->query(
+                SellerOrder::query()
+                    ->where('seller_id', auth()->id())
+                    ->where('status', '!=', SellerOrderStatus::PENDING->value)
+                    ->with(['order', 'items'])
+                    ->latest()
+                    ->limit(5)
+            )
+            ->heading('Recent sales')
+            ->headerActions([
+                Action::make('all')->label('All sales')->color('gray')->url(route('selling.orders')),
+            ])
+            ->paginated(false)
+            ->columns([
+                TextColumn::make('order.number')
+                    ->label('Order')
+                    ->weight('medium')
+                    ->description(fn (SellerOrder $record): string => ($record->order->paid_at ?? $record->created_at)->format('M j, Y')),
+                TextColumn::make('items_summary')
+                    ->label('Items')
+                    ->state(fn (SellerOrder $record): string => (string) $record->items->first()?->title)
+                    ->description(fn (SellerOrder $record): ?string => $record->items->count() > 1 ? '+ '.($record->items->count() - 1).' more' : null)
+                    ->limit(40),
+                TextColumn::make('status')
+                    ->badge()
+                    ->formatStateUsing(fn ($state): string => $status($state)->label())
+                    ->color(fn ($state): string => $status($state)->color()),
+                TextColumn::make('total')
+                    ->label('Total')
+                    ->state(fn (SellerOrder $record): string => money($record->grossCents(), $record->order->currency))
+                    ->weight('medium')
+                    ->alignEnd(),
+            ])
+            ->emptyStateIcon('phosphor-receipt')
+            ->emptyStateHeading('No sales yet')
+            ->emptyStateDescription('Create a listing to get started.')
+            ->emptyStateActions([
+                Action::make('listings')->label('My listings')->url(route('dashboard.listings')),
+            ]);
+    }
+
     public function with(): array
     {
         $user = auth()->user();
@@ -151,40 +203,31 @@ new class extends Component implements HasForms {
                 'pending' => (int) (clone $paid)->whereNull('transferred_at')->sum('payout_cents'),
                 'toShip' => SellerOrder::query()->where('seller_id', $user->getKey())->where('status', SellerOrderStatus::AWAITING_SHIPMENT->value)->count(),
             ],
-            'recent' => SellerOrder::query()->where('seller_id', $user->getKey())
-                ->where('status', '!=', SellerOrderStatus::PENDING->value)
-                ->with(['order', 'items'])->latest()->limit(5)->get(),
         ];
     }
 }; ?>
 
 <x-layouts.app>
     @volt('selling.dashboard')
-    <x-app.container>
-        <x-app.heading
-            title="Selling"
-            description="Your shop, payouts and sales."
-            :border="true" />
-
-        <dl class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div class="space-y-6">
+        <dl class="grid grid-cols-2 gap-6 lg:grid-cols-4">
             @foreach ([
                 ['Gross sales', money($stats['gross']), $stats['orders'].' '.\Illuminate\Support\Str::plural('order', $stats['orders']), 'gross'],
                 ['Platform fees', money($stats['fees']), 'kept by '.config('app.name'), 'fees'],
                 ['Paid out', money($stats['payouts']), 'sent to your Stripe account', 'payouts'],
                 ['Pending payouts', money($stats['pending']), $stats['toShip'] > 0 ? $stats['toShip'].' to ship' : 'released when shipped', 'pending'],
             ] as [$label, $value, $hint, $key])
-                <div class="border border-gray-200 bg-white p-4" data-stat="{{ $key }}">
-                    <dt class="text-sm text-gray-500">{{ $label }}</dt>
-                    <dd class="mt-1 text-2xl font-bold text-gray-900">{{ $value }}</dd>
-                    <p class="mt-1 text-xs text-gray-500">{{ $hint }}</p>
+                <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5" data-stat="{{ $key }}">
+                    <dt class="text-sm font-medium text-gray-500">{{ $label }}</dt>
+                    <dd class="mt-2 text-3xl font-semibold tracking-tight text-gray-950">{{ $value }}</dd>
+                    <p class="mt-2 text-sm text-gray-500">{{ $hint }}</p>
                 </div>
             @endforeach
         </dl>
 
-        <div class="mt-8 grid gap-6 xl:grid-cols-2">
-            <section class="self-start border border-gray-200 bg-white p-5" aria-labelledby="stripe-heading" data-stripe-state="{{ $stripe }}">
-                <div class="flex items-center justify-between gap-3">
-                    <h2 id="stripe-heading" class="flex items-center gap-2 text-lg font-semibold text-gray-900"><x-phosphor-bank class="h-5 w-5" /> Payouts with Stripe</h2>
+        <div class="grid gap-6 xl:grid-cols-2">
+            <x-filament::section heading="Payouts with Stripe" icon="phosphor-bank" class="self-start" data-stripe-state="{{ $stripe }}">
+                <x-slot name="headerEnd">
                     @switch($stripe)
                         @case('active') <x-marketplace.badge color="success">Active</x-marketplace.badge> @break
                         @case('pending') <x-marketplace.badge color="warning">Pending verification</x-marketplace.badge> @break
@@ -192,84 +235,49 @@ new class extends Component implements HasForms {
                         @case('platform') <x-marketplace.badge color="primary">Platform seller</x-marketplace.badge> @break
                         @default <x-marketplace.badge>Not started</x-marketplace.badge>
                     @endswitch
-                </div>
+                </x-slot>
 
-                <div class="mt-3 space-y-4 text-sm text-gray-700">
+                <div class="space-y-4 text-sm text-gray-700">
                     @switch($stripe)
                         @case('platform')
-                            <p>You sell as the platform: revenue stays with {{ config('app.name') }} and no payout account is needed.</p>
+                            <p class="text-gray-700">You sell as the platform: revenue stays with {{ config('app.name') }} and no payout account is needed.</p>
                             @break
                         @case('active')
-                            <p>Payments for your paid items are transferred to your bank through Stripe. You can publish paid designs and listings.</p>
+                            <p class="text-gray-700">Payments for your paid items are transferred to your bank through Stripe. You can publish paid designs and listings.</p>
                             <x-button tag="a" href="{{ route('selling.dashboard-link') }}" color="gray">Open Stripe dashboard</x-button>
                             @break
                         @case('pending')
-                            <p>Stripe has your details and is verifying them. This usually takes minutes, sometimes a few days. We e-mail you as soon as you can sell paid items.</p>
+                            <p class="text-gray-700">Stripe has your details and is verifying them. This usually takes minutes, sometimes a few days. We e-mail you as soon as you can sell paid items.</p>
                             <div class="flex flex-wrap gap-3">
                                 <x-button wire:click="refreshStripe" wire:loading.attr="disabled" wire:target="refreshStripe" color="gray">Refresh status</x-button>
                                 <x-button tag="a" href="{{ route('selling.dashboard-link') }}" color="gray">Open Stripe dashboard</x-button>
                             </div>
                             @break
                         @case('incomplete')
-                            <p>You started the Stripe setup but did not finish it. Continue where you left off.</p>
+                            <p class="text-gray-700">You started the Stripe setup but did not finish it. Continue where you left off.</p>
                             <x-button tag="a" href="{{ route('selling.connect') }}">Continue Stripe setup</x-button>
                             @break
                         @default
-                            <p>Connect a Stripe account to get paid. Free designs work without it, but you need it to <strong>publish paid designs</strong> and listings. Setup takes a few minutes.</p>
+                            <p class="text-gray-700">Connect a Stripe account to get paid. Free designs work without it, but you need it to <strong>publish paid designs</strong> and listings. Setup takes a few minutes.</p>
                             <x-button tag="a" href="{{ route('selling.connect') }}">Connect Stripe</x-button>
                     @endswitch
                 </div>
-            </section>
+            </x-filament::section>
 
-            <section class="border border-gray-200 bg-white p-5" aria-labelledby="shop-heading">
-                <h2 id="shop-heading" class="flex items-center gap-2 text-lg font-semibold text-gray-900"><x-phosphor-storefront class="h-5 w-5" /> Shop profile</h2>
-                <form wire:submit="save" class="mt-4 space-y-4">
+            <x-filament::section heading="Shop profile" icon="phosphor-storefront">
+                <form wire:submit="save" class="space-y-4">
                     {{ $this->form }}
                     <div class="flex flex-wrap items-center gap-3">
                         <x-button type="submit" wire:loading.attr="disabled" wire:target="save">Save shop profile</x-button>
                         @if ($profile)
-                            <a href="{{ route('seller', ['slug' => $profile->slug]) }}" class="text-sm font-medium text-purple-700 underline hover:text-purple-900">View public shop page</a>
+                            <a href="{{ route('seller', ['slug' => $profile->slug]) }}" class="text-sm font-medium text-gray-700 underline hover:text-gray-950">View public shop page</a>
                         @endif
                     </div>
                 </form>
-            </section>
+            </x-filament::section>
         </div>
 
-        <section class="mt-8" aria-labelledby="recent-heading">
-            <div class="mb-3 flex items-center justify-between">
-                <h2 id="recent-heading" class="text-lg font-semibold text-gray-900">Recent sales</h2>
-                <a href="{{ route('selling.orders') }}" class="text-sm font-medium text-purple-700 underline hover:text-purple-900">All sales</a>
-            </div>
-            @if ($recent->isEmpty())
-                <p class="border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">No sales yet. <a class="underline" href="{{ route('dashboard.listings') }}">Create a listing</a> to get started.</p>
-            @else
-                <div class="overflow-x-auto border border-gray-200 bg-white">
-                    <table class="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                            <tr>
-                                <th class="px-4 py-2 font-medium">Order</th>
-                                <th class="px-4 py-2 font-medium">Items</th>
-                                <th class="px-4 py-2 font-medium">Status</th>
-                                <th class="px-4 py-2 text-right font-medium">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            @foreach ($recent as $sale)
-                                <tr>
-                                    <td class="whitespace-nowrap px-4 py-3">
-                                        <span class="font-medium text-gray-900">{{ $sale->order->number }}</span>
-                                        <span class="block text-xs text-gray-500">{{ ($sale->order->paid_at ?? $sale->created_at)->format('M j, Y') }}</span>
-                                    </td>
-                                    <td class="px-4 py-3 text-gray-700">{{ $sale->items->first()?->title }}@if ($sale->items->count() > 1) <span class="text-gray-500">+{{ $sale->items->count() - 1 }} more</span>@endif</td>
-                                    <td class="px-4 py-3"><x-marketplace.badge :color="$sale->status->color()">{{ $sale->status->label() }}</x-marketplace.badge></td>
-                                    <td class="whitespace-nowrap px-4 py-3 text-right font-medium text-gray-900">{{ money($sale->grossCents(), $sale->order->currency) }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
-        </section>
-    </x-app.container>
+        {{ $this->table }}
+    </div>
     @endvolt
 </x-layouts.app>

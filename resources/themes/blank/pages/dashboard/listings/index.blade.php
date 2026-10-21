@@ -20,6 +20,7 @@ use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Actions\Action;
@@ -104,11 +105,44 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             app(ConnectOnboardingService::class)->ensureProfile(auth()->user());
         }
 
+        // Kits and completed speakers link a design, used gear links a driver: the other link is dropped.
+        $category = ListingCategory::tryFrom((string) ($data['category'] ?? $record?->category?->value));
+        if ($category !== null && ! $category->linksDesign()) {
+            $data['design_id'] = null;
+        }
+        if ($category !== null && ! $category->linksDriver()) {
+            $data['driver_id'] = null;
+        }
+
         $data['photos'] = array_values((array) ($data['photos'] ?? []));
         $data['ships_from_country'] = strtoupper((string) $data['ships_from_country']);
         $data['status'] = $this->resolveStatus($published, $data, $record)->value;
 
         return $data;
+    }
+
+    /**
+     * Where the type / condition the seller picked break the marketplace rules (Listing::channelRuleViolations()),
+     * as field => message. Each message is attached to its own field as a validation rule.
+     *
+     * @return array<string, string>
+     */
+    function channelViolations(Get $get): array
+    {
+        $probe = new Listing(['seller_id' => auth()->id(), 'channel' => ListingChannel::MARKETPLACE->value]);
+        $probe->category = ListingCategory::tryFrom((string) $get('category'));
+        $probe->condition = ListingCondition::tryFrom((string) $get('condition'));
+
+        return $probe->channelRuleViolations();
+    }
+
+    function channelRule(Get $get, string $field): \Closure
+    {
+        return function (string $attribute, $value, \Closure $fail) use ($get, $field): void {
+            if (($message = $this->channelViolations($get)[$field] ?? null) !== null) {
+                $fail($message);
+            }
+        };
     }
 
     function listingSchema(): array
@@ -140,7 +174,22 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         ->required()
                         ->default(ListingCategory::USED_GEAR->value)
                         ->live()
-                        ->native(false),
+                        ->native(false)
+                        ->afterStateUpdated(function (Get $get, Set $set, ?string $state): void {
+                            $category = ListingCategory::tryFrom((string) $state);
+
+                            // Used gear is never new, and only the link that belongs to the type stays.
+                            if ($category === ListingCategory::USED_GEAR && $get('condition') === ListingCondition::NEW->value) {
+                                $set('condition', ListingCondition::USED_GOOD->value);
+                            }
+                            if (! $category?->linksDesign()) {
+                                $set('design_id', null);
+                            }
+                            if (! $category?->linksDriver()) {
+                                $set('driver_id', null);
+                            }
+                        })
+                        ->rules([fn (Get $get): \Closure => $this->channelRule($get, 'category')]),
                     TextInput::make('title')
                         ->required()
                         ->maxLength(160)
@@ -148,6 +197,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     Select::make('design_id')
                         ->label('Built from a design (optional)')
                         ->helperText('Kits and finished speakers can link the design on this site they are built from.')
+                        ->visible(fn (Get $get): bool => ListingCategory::tryFrom((string) $get('category'))?->linksDesign() ?? false)
                         ->searchable()
                         ->getSearchResultsUsing(fn (string $search): array => Design::query()->active()
                             ->where('name', 'like', "%{$search}%")->orderBy('name')->limit(50)->get()
@@ -157,7 +207,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         ->nullable(),
                     Select::make('driver_id')
                         ->label('Driver from the catalogue (optional)')
-                        ->helperText('Link a driver from the database so shoppers see its specs and measurements.')
+                        ->helperText('Link the driver from the database so shoppers see its specs and measurements.')
+                        ->visible(fn (Get $get): bool => ListingCategory::tryFrom((string) $get('category'))?->linksDriver() ?? false)
                         ->searchable()
                         ->getSearchResultsUsing(fn (string $search): array => Driver::query()->active()
                             ->where(fn ($q) => $q->where('brand', 'like', "%{$search}%")->orWhere('model', 'like', "%{$search}%"))
@@ -167,18 +218,15 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         ->exists(table: 'drivers', column: 'id')
                         ->nullable(),
                     Select::make('condition')
-                        ->options(ListingCondition::options())
+                        ->options(fn (Get $get): array => ListingCondition::optionsFor($get('category')))
                         ->in(array_keys(ListingCondition::options()))
                         ->required()
                         ->default(ListingCondition::USED_GOOD->value)
                         ->native(false)
-                        ->rules([
-                            fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
-                                if ($get('category') === ListingCategory::USED_GEAR->value && $value === ListingCondition::NEW->value) {
-                                    $fail('Used gear cannot be listed as new: pick a used condition, or list it as a kit or a completed speaker.');
-                                }
-                            },
-                        ]),
+                        ->helperText(fn (Get $get): ?string => $get('category') === ListingCategory::USED_GEAR->value
+                            ? 'Used gear is never listed as new. A brand-new item is a kit or a completed speaker.'
+                            : null)
+                        ->rules([fn (Get $get): \Closure => $this->channelRule($get, 'condition')]),
                     FileUpload::make('photos')
                         ->label('Photos')
                         ->helperText('Up to 8 pictures; the first one is the cover. Drag to reorder.')

@@ -1,4 +1,9 @@
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 p-4">
+@props([
+    'drivers',
+    'cols' => 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
+    'padded' => true,
+])
+<div {{ $attributes->class(['grid gap-4', $cols, 'p-4' => $padded]) }}>
     @foreach($drivers as $driver)
         <div x-data="{ showSpecs: false }" wire:key="{{$driver->id}}" class="relative flex flex-col bg-white rounded-lg border-2 border-gray-100 hover:shadow-lg shadow-sm overflow-hidden h-full">
             <!-- Driver image section -->
@@ -27,6 +32,10 @@
                 <h2 class="text-lg font-semibold text-center mb-1 line-clamp-1">{{$driver->model}}</h2>
                 <p class="text-gray-600 text-center text-sm mb-1 line-clamp-1">By: {{$driver->brand}}</p>
                 <p class="text-gray-800 text-center text-sm mb-3 line-clamp-1">{{$driver->tag}}</p>
+                {{-- Stocked by the SDLabs store (the active store listing is eager-loaded by the page). --}}
+                @if ($driver->storeListing()?->quantity > 0)
+                    <p class="text-center text-sm font-medium text-green-700 mb-3 -mt-1" data-driver-in-stock>In stock at SDLabs &middot; {{ money($driver->storeListing()->price_cents) }}</p>
+                @endif
                 
                 <!-- Specs table -->
                 <div class="mt-auto">

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ListingStatus;
 use App\Models\Concerns\HasStorageKey;
 use Database\Factories\DriverFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -9,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Laravel\Scout\Searchable;
 
 class Driver extends Model
@@ -92,13 +94,40 @@ class Driver extends Model
     }
 
     /**
+     * SDLabs' active store listing as a relation, so lists of drivers can eager-load it
+     * (`Driver::with('activeStoreListing')`) instead of asking one query per driver.
+     */
+    public function activeStoreListing(): HasOne
+    {
+        return $this->hasOne(Listing::class)->ofMany(['id' => 'max'], fn (Builder $listings) => $listings->store()->active());
+    }
+
+    /**
      * SDLabs' active store listing of this new driver, or null. At most one store listing per driver
      * is active at a time (Listing::channelRuleViolations()). Whether it is in stock is up to the
-     * caller: check isAvailableForPurchase() or use the buy box.
+     * caller: check isAvailableForPurchase() or use the buy box. Uses the eager-loaded relation when
+     * there is one.
      */
     public function storeListing(): ?Listing
     {
+        if ($this->relationLoaded('activeStoreListing')) {
+            return $this->getRelation('activeStoreListing');
+        }
+
         return $this->listings()->store()->active()->orderByDesc('id')->first();
+    }
+
+    /**
+     * The store listing the driver page talks about: the active one, or else the newest one that sold
+     * out (a sold-out listing leaves the active state, so storeListing() is null then). Draft, paused and
+     * removed store listings do not count: those are off sale on purpose, not out of stock.
+     */
+    public function latestStoreListing(): ?Listing
+    {
+        return $this->listings()->store()
+            ->whereIn('status', [ListingStatus::ACTIVE->value, ListingStatus::SOLD_OUT->value])
+            ->orderByDesc('id')
+            ->first();
     }
 
     public function scopeActive(Builder $query): Builder

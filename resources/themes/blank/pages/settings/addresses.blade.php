@@ -133,29 +133,25 @@ new class extends Component
             </div>
 
             @if ($showForm)
-                <form wire:submit="save" class="mt-5 border border-gray-200 bg-white p-5">
-                    <h4 class="mb-4 font-semibold text-gray-900">{{ $editingId ? 'Edit address' : 'New address' }}</h4>
+                <form wire:submit="save" class="mt-5 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5">
+                    <h4 class="mb-4 text-base font-semibold text-gray-950">{{ $editingId ? 'Edit address' : 'New address' }}</h4>
                     <x-marketplace.address-fields :countries="$countries" id="settings-address" />
                     <div class="mt-5 flex items-center gap-3">
                         <x-button type="submit" wire:loading.attr="disabled" wire:target="save">Save address</x-button>
-                        <button type="button" wire:click="cancel" class="text-sm text-gray-600 underline">Cancel</button>
+                        <x-button type="button" color="gray" wire:click="cancel">Cancel</x-button>
                     </div>
                 </form>
             @endif
 
             @if ($addresses->isEmpty() && ! $showForm)
-                <div class="mt-5 border border-dashed border-gray-300 p-10 text-center">
-                    <x-phosphor-map-pin-duotone class="mx-auto h-12 w-12 text-gray-400" />
-                    <p class="mt-2 font-medium text-gray-900">No addresses yet</p>
-                    <p class="text-sm text-gray-500">Add one now to check out faster and filter the marketplace by what ships to you.</p>
-                </div>
+                <x-marketplace.empty-state heading="No addresses yet" description="Add one now to check out faster and filter the marketplace by what ships to you." icon="phosphor-map-pin" class="mt-5" />
             @endif
 
             <div class="mt-5 grid gap-4 md:grid-cols-2">
                 @foreach ($addresses as $address)
-                    <div class="flex flex-col border border-gray-200 bg-white p-4 text-sm" wire:key="address-{{ $address->id }}">
+                    <div class="flex flex-col rounded-xl bg-white p-5 text-sm shadow-sm ring-1 ring-gray-950/5" wire:key="address-{{ $address->id }}">
                         <div class="flex items-start justify-between gap-2">
-                            <p class="font-semibold text-gray-900">{{ $address->name }}</p>
+                            <p class="font-semibold text-gray-950">{{ $address->name }}</p>
                             @if ($address->is_default)<x-marketplace.badge color="primary">Default</x-marketplace.badge>@endif
                         </div>
                         <address class="mt-2 flex-1 not-italic text-gray-600">
@@ -165,9 +161,9 @@ new class extends Component
                             @if (filled($address->phone))<br>{{ $address->phone }}@endif
                         </address>
                         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-3">
-                            <button type="button" wire:click="edit({{ $address->id }})" class="font-medium text-purple-700 hover:text-purple-900">Edit</button>
+                            <button type="button" wire:click="edit({{ $address->id }})" class="font-medium text-gray-950 hover:text-purple-700">Edit</button>
                             @unless ($address->is_default)
-                                <button type="button" wire:click="makeDefault({{ $address->id }})" class="font-medium text-gray-700 hover:text-gray-900">Make default</button>
+                                <button type="button" wire:click="makeDefault({{ $address->id }})" class="font-medium text-gray-700 hover:text-gray-950">Make default</button>
                             @endunless
                             <button type="button" wire:click="delete({{ $address->id }})" wire:confirm="Delete this address?" class="ml-auto font-medium text-red-600 hover:text-red-800">Delete</button>
                         </div>

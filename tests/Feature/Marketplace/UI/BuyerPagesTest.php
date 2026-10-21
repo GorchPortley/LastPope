@@ -78,30 +78,41 @@ it('shows an empty library with a pointer to the catalogue', function () {
 
 // --- orders -----------------------------------------------------------------------------------------------
 
-it('lists only the buyers own orders with the status of every seller part', function () {
+it('lists only the buyers own orders in a table with the status of every seller part', function () {
     $mine = paidListingOrder($this->buyer);
     $other = paidListingOrder(User::factory()->create());
+    $url = route('dashboard.orders.show', ['order' => $mine['order']->number]);
+
+    voltPage($this, $this->buyer, '/dashboard/orders', 'dashboard.orders')
+        ->assertCanSeeTableRecords([$mine['order']])
+        ->assertCanNotSeeTableRecords([$other['order']])
+        ->assertSee($mine['order']->number)
+        ->assertSee('Awaiting shipment')
+        ->assertSee(money($mine['order']->total_cents));
 
     $this->actingAs($this->buyer)->get('/dashboard/orders')
         ->assertOk()
-        ->assertSee($mine['order']->number)
-        ->assertSee($mine['listing']->title)
-        ->assertSee('Awaiting shipment')
-        ->assertSee('Waiting for the seller to ship')
-        ->assertSee(money($mine['order']->total_cents))
-        ->assertSee(route('dashboard.orders.show', ['order' => $mine['order']->number]), false)
+        ->assertSee('Track what you bought')
+        ->assertSee($url, false)
         ->assertDontSee($other['order']->number);
+});
+
+it('shows an empty orders table with a pointer to the marketplace', function () {
+    $this->actingAs($this->buyer)->get('/dashboard/orders')->assertOk()->assertSee('No orders yet')->assertSee(route('marketplace'), false);
 });
 
 it('shows tracking and lets the buyer confirm receipt once the parcel shipped', function () {
     $x = paidListingOrder($this->buyer);
     $so = $x['sellerOrder'];
+    $detail = route('dashboard.orders.show', ['order' => $x['order']->number]);
 
-    $this->actingAs($this->buyer)->get('/dashboard/orders')->assertDontSee('Confirm received');
+    $this->actingAs($this->buyer)->get($detail)->assertOk()->assertDontSee('Confirm received')->assertSee('Waiting for the seller to ship');
 
     app(ShipmentService::class)->markShipped($x['seller'], $so, 'UPS', '1Z999AA10123', 'https://ups.example/track/1Z999AA10123');
 
-    $this->actingAs($this->buyer)->get('/dashboard/orders')
+    // the list says it shipped, the order page has the tracking and the button
+    $this->actingAs($this->buyer)->get('/dashboard/orders')->assertOk()->assertSee('Shipped');
+    $this->actingAs($this->buyer)->get($detail)
         ->assertOk()
         ->assertSee('Shipped')
         ->assertSee('UPS')->assertSee('1Z999AA10123')
@@ -112,7 +123,7 @@ it('shows tracking and lets the buyer confirm receipt once the parcel shipped', 
     $this->actingAs($this->buyer)->post(route('orders.received', $so))->assertRedirect()->assertSessionHas('success');
 
     expect($so->fresh()->status)->toBe(SellerOrderStatus::COMPLETED);
-    $this->actingAs($this->buyer)->get('/dashboard/orders')->assertDontSee('Confirm received')->assertSee('Completed');
+    $this->actingAs($this->buyer)->get($detail)->assertDontSee('Confirm received')->assertSee('Completed');
 });
 
 it('does not let anybody but the buyer confirm a parcel', function () {

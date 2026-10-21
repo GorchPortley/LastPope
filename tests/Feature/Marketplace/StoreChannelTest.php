@@ -313,10 +313,10 @@ it('sells the new driver from its page with the store listing and counts only ma
     $this->get(route('driver', ['id' => $driver->id]))
         ->assertOk()
         ->assertSee('data-driver-store', false)
-        ->assertSee('New from SDLabs')
+        ->assertSee('Sold by SDLabs')
         ->assertSee('$129.00')
         ->assertSee('7 available')
-        ->assertSee('1 listing in the marketplace');
+        ->assertSee('Used ones on the marketplace (1)');
 
     // a driver without a store listing has no store box
     $other = Driver::factory()->create(['active' => true]);

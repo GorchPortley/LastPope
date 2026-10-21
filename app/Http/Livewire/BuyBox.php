@@ -9,7 +9,9 @@ use App\Models\Design;
 use App\Models\Listing;
 use App\Models\User;
 use App\Services\Marketplace\CartService;
+use App\Support\Countries;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Livewire\Component;
 
 /**
@@ -22,6 +24,9 @@ use Livewire\Component;
  * every cart rule then lives in CartService. A free digital item goes straight to the library.
  *
  * States (see state()): login, owner, owned, revoked, unavailable, free, in_cart, add.
+ *
+ * The box shows the price, the stock, a shipping summary (physical items), the quantity and the button.
+ * The `label` is the small heading above the price, e.g. "Sold by SDLabs" on the driver page.
  */
 class BuyBox extends Component
 {
@@ -67,7 +72,7 @@ class BuyBox extends Component
     /**
      * What the box shows for the current visitor.
      *
-     * @return array{status: string, price: int, free: bool, digital: bool, reason: ?string, max: int, inCart: int, downloadUrl: ?string, lot: ?string, kind: string}
+     * @return array{status: string, price: int, free: bool, digital: bool, reason: ?string, max: int, inCart: int, downloadUrl: ?string, lot: ?string, kind: string, shipping: ?array{from: string, domestic: string, international: string, handling: string}}
      */
     public function state(): array
     {
@@ -89,6 +94,7 @@ class BuyBox extends Component
             'downloadUrl' => null,
             'lot' => $p instanceof Listing && $p->isLot() ? ($p->units_per_lot === 2 ? 'pair' : 'set') : null,
             'kind' => $p->getMorphClass(),
+            'shipping' => $p instanceof Listing ? $this->shippingSummary($p) : null,
         ];
 
         $seller = $p->getSeller();
@@ -162,6 +168,23 @@ class BuyBox extends Component
     public function render()
     {
         return view('livewire.buy-box', ['state' => $this->state()]);
+    }
+
+    /**
+     * The shipping terms in a few words for the box: where from, the two base prices and the handling time.
+     *
+     * @return array{from: string, domestic: string, international: string, handling: string}
+     */
+    private function shippingSummary(Listing $listing): array
+    {
+        $price = fn (?int $cents): string => $cents === null ? 'not available' : ($cents > 0 ? money($cents) : 'free');
+
+        return [
+            'from' => Countries::name($listing->ships_from_country),
+            'domestic' => $price($listing->shipping_domestic_cents),
+            'international' => $price($listing->shipping_international_cents),
+            'handling' => $listing->handling_days.' '.Str::plural('day', $listing->handling_days),
+        ];
     }
 
     /** The newest snapshot, if there is one: the file the "Download" button gives. */

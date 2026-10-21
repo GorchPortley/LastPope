@@ -27,13 +27,20 @@ new class extends Component {
 
     public function with(): array
     {
-        // Members' listings of this driver (mostly used units); SDLabs' own new stock is the store listing.
-        $listings = $this->driver->listings()->marketplace()->forSale();
+        // SDLabs' own new stock: the active store listing (the buy box), or - when it sold out - the
+        // latest one, so the page can say "Out of stock at SDLabs" instead of staying silent.
+        $store = $this->driver->storeListing();
+        $latest = $store ?? $this->driver->latestStoreListing();
+        $inStock = $store !== null && $store->quantity > 0;
+
+        // What members sell of this driver in the marketplace (used units, see Listing::channelRuleViolations()).
+        $used = $this->driver->listings()->marketplace()->forSale();
 
         return [
-            'storeListing' => $this->driver->storeListing(),
-            'listingCount' => (clone $listings)->count(),
-            'listingFrom' => (clone $listings)->min('price_cents'),
+            'storeListing' => $inStock ? $store : null,
+            'storeSoldOut' => ! $inStock && $latest !== null,
+            'usedCount' => (clone $used)->count(),
+            'usedFrom' => (clone $used)->min('price_cents'),
         ];
     }
 } ?>
@@ -156,29 +163,40 @@ new class extends Component {
                         <!-- Where to buy -->
                         @php($buyLink = filled($driver->link) && \Illuminate\Support\Str::startsWith($driver->link, ['http://', 'https://']) ? $driver->link : null)
                         <div class="space-y-4">
-                            @if ($driver->msrp_cents || $buyLink)
-                                <div class="w-full border border-gray-200 bg-white p-5" data-driver-msrp>
-                                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">New from the manufacturer</p>
-                                    @if ($driver->msrp_cents)
-                                        <p class="mt-1 text-3xl font-bold text-gray-900">{{ money($driver->msrp_cents) }} <span class="text-sm font-normal text-gray-500">MSRP</span></p>
-                                    @endif
-                                    @if ($buyLink)
-                                        <x-button tag="a" href="{{ $buyLink }}" target="_blank" rel="noopener nofollow" color="gray" class="mt-3 w-full">Buy from the manufacturer &rarr;</x-button>
-                                    @endif
-                                </div>
-                            @endif
-
                             @if ($storeListing)
                                 <div data-driver-store>
-                                    <livewire:buy-box :purchasable="$storeListing" label="New from SDLabs" :key="'store-'.$storeListing->id" />
+                                    <livewire:buy-box :purchasable="$storeListing" label="Sold by SDLabs" :key="'store-'.$storeListing->id" />
+                                    @if ($driver->msrp_cents)
+                                        <p class="mt-2 text-sm text-gray-500">Manufacturer list price: {{ money($driver->msrp_cents) }}</p>
+                                    @endif
                                 </div>
+                            @else
+                                @if ($storeSoldOut)
+                                    <x-marketplace.box class="w-full" data-driver-sold-out>
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">SDLabs store</p>
+                                        <p class="mt-1 text-2xl font-bold text-gray-900">Out of stock at SDLabs</p>
+                                        <p class="mt-1 text-sm text-gray-600">We are waiting for the next delivery of this driver.@if ($usedCount > 0) Members have used ones for sale, see below.@endif</p>
+                                    </x-marketplace.box>
+                                @endif
+
+                                @if ($driver->msrp_cents || $buyLink)
+                                    <x-marketplace.box class="w-full" data-driver-msrp>
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">New from the manufacturer</p>
+                                        @if ($driver->msrp_cents)
+                                            <p class="mt-1 text-3xl font-bold text-gray-900">{{ money($driver->msrp_cents) }} <span class="text-sm font-normal text-gray-500">MSRP</span></p>
+                                        @endif
+                                        @if ($buyLink)
+                                            <x-button tag="a" href="{{ $buyLink }}" target="_blank" rel="noopener nofollow" color="gray" class="mt-3 w-full">Buy from the manufacturer &rarr;</x-button>
+                                        @endif
+                                    </x-marketplace.box>
+                                @endif
                             @endif
 
-                            @if ($listingCount > 0)
-                                <a href="{{ route('marketplace', ['driver' => $driver->id]) }}" class="flex items-center justify-between gap-3 border border-gray-200 bg-white p-4 hover:border-purple-950" data-driver-listings>
+                            @if ($usedCount > 0)
+                                <a href="{{ route('marketplace', ['type' => 'used_gear', 'driver' => $driver->id]) }}" class="flex items-center justify-between gap-3 rounded-lg border-2 border-gray-100 bg-white p-4 shadow-sm hover:border-purple-950" data-driver-listings>
                                     <span>
-                                        <span class="block font-semibold text-gray-900">{{ $listingCount }} {{ \Illuminate\Support\Str::plural('listing', $listingCount) }} in the marketplace</span>
-                                        <span class="block text-sm text-gray-500">From {{ money((int) $listingFrom) }}</span>
+                                        <span class="block font-semibold text-gray-900">Used ones on the marketplace ({{ $usedCount }})</span>
+                                        <span class="block text-sm text-gray-500">From {{ money((int) $usedFrom) }}</span>
                                     </span>
                                     <x-phosphor-storefront class="h-8 w-8 flex-shrink-0 text-purple-950" />
                                 </a>

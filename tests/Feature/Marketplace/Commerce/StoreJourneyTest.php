@@ -33,7 +33,7 @@ it('buys a design, a store driver and a member kit in one checkout, and each sel
     $address = addressFor($buyer);
 
     // 1. the driver page offers the store listing; the design page its buy box
-    $this->actingAs($buyer)->get(route('driver', ['id' => $driver->id]))->assertOk()->assertSee('New from SDLabs')->assertSee('$80.00');
+    $this->actingAs($buyer)->get(route('driver', ['id' => $driver->id]))->assertOk()->assertSee('Sold by SDLabs')->assertSee('$80.00');
 
     Livewire::actingAs($buyer)->test(BuyBox::class, ['purchasable' => $store])->set('quantity', 2)->call('add');
     expect(app(CartService::class)->count($buyer))->toBe(2);

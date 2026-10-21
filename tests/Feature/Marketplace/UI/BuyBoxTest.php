@@ -154,3 +154,17 @@ it('renders the cart icon and the Marketplace link in the header for signed-in u
 
     $this->actingAs($this->buyer)->get('/marketplace')->assertOk()->assertSee('data-cart-count', false)->assertSee(route('cart'), false);
 });
+
+it('shows the stock and a shipping summary on the buy box of a physical listing, but not of a design', function () {
+    $listing = sellableListing(attributes: ['quantity' => 12, 'ships_from_country' => 'DE', 'shipping_domestic_cents' => 899, 'shipping_international_cents' => null, 'handling_days' => 1]);
+
+    Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => $listing, 'label' => 'Sold by SDLabs'])
+        ->assertSee('Sold by SDLabs')
+        ->assertSee('12 available')
+        ->assertSeeHtml('data-buy-box-shipping')
+        ->assertSee('Ships from Germany within 1 day')
+        ->assertSee('$8.99 in-country')->assertSee('not available international');
+
+    Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => paidDesign(onboardedSeller(), 1500)])
+        ->assertDontSeeHtml('data-buy-box-shipping');
+});

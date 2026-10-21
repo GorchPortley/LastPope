@@ -9,22 +9,32 @@
     };
 @endphp
 
-<div class="w-full border border-gray-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-800" data-buy-box="{{ $state['status'] }}">
+<x-marketplace.box class="w-full" data-buy-box="{{ $state['status'] }}">
     @if ($label)
-        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-zinc-400">{{ $label }}</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ $label }}</p>
     @endif
 
     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p class="text-3xl font-bold text-gray-900 dark:text-white">
+        <p class="text-3xl font-bold text-gray-900">
             {{ $state['free'] ? 'Free' : money($state['price']) }}
             @if ($lotWord)
-                <span class="text-sm font-normal text-gray-500 dark:text-zinc-400">per {{ $lotWord }}</span>
+                <span class="text-sm font-normal text-gray-500">per {{ $lotWord }}</span>
             @endif
         </p>
         @if (! $state['digital'] && in_array($state['status'], ['add', 'login', 'owner'], true))
-            <p class="text-sm text-gray-500 dark:text-zinc-400">{{ $state['max'] }} available</p>
+            <p class="text-sm font-medium {{ $state['max'] <= 3 ? 'text-amber-700' : 'text-green-700' }}" data-buy-box-stock>{{ $state['max'] }} available</p>
         @endif
     </div>
+
+    @if ($state['shipping'])
+        <p class="mt-2 flex items-start gap-2 text-sm text-gray-600" data-buy-box-shipping>
+            <x-phosphor-truck class="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>
+                Ships from {{ $state['shipping']['from'] }} within {{ $state['shipping']['handling'] }}.
+                Shipping {{ $state['shipping']['domestic'] }} in-country, {{ $state['shipping']['international'] }} international.
+            </span>
+        </p>
+    @endif
 
     <div class="mt-4 space-y-3">
         @switch($state['status'])
@@ -36,23 +46,23 @@
                 @break
 
             @case('owned')
-                <div class="flex items-center gap-2 font-medium text-green-700 dark:text-green-400">
+                <div class="flex items-center gap-2 font-medium text-green-700">
                     <x-phosphor-check-circle class="h-5 w-5" /> In your library
                 </div>
                 @if ($state['downloadUrl'])
                     <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full">Download</x-button>
                 @endif
-                <a href="{{ route('dashboard.library') }}" class="block text-center text-sm text-purple-700 underline hover:text-purple-900 dark:text-purple-300">Open my library</a>
+                <a href="{{ route('dashboard.library') }}" class="block text-center text-sm text-purple-700 underline hover:text-purple-900">Open my library</a>
                 @break
 
             @case('revoked')
                 <x-button class="w-full" color="gray" disabled>Not available</x-button>
-                <p class="text-sm text-gray-600 dark:text-zinc-400">Your access to this {{ $kindWord }} was withdrawn. Contact support if this is a mistake.</p>
+                <p class="text-sm text-gray-600">Your access to this {{ $kindWord }} was withdrawn. Contact support if this is a mistake.</p>
                 @break
 
             @case('unavailable')
                 <x-button class="w-full" color="gray" disabled>{{ $state['digital'] ? 'Not available' : (str_contains((string) $state['reason'], 'Sold out') ? 'Sold out' : 'Not available') }}</x-button>
-                <p class="text-sm text-gray-600 dark:text-zinc-400">{{ $state['reason'] }}</p>
+                <p class="text-sm text-gray-600">{{ $state['reason'] }}</p>
                 @break
 
             @case('login')
@@ -64,7 +74,7 @@
                     <span wire:loading.remove wire:target="add">Get for free</span>
                     <span wire:loading wire:target="add">Adding...</span>
                 </x-button>
-                <p class="text-xs text-gray-500 dark:text-zinc-400">Free items go straight to your library.</p>
+                <p class="text-xs text-gray-500">Free items go straight to your library.</p>
                 @break
 
             @case('in_cart')
@@ -76,9 +86,9 @@
             @default
                 @if (! $state['digital'])
                     <div class="flex items-center gap-3">
-                        <label for="qty-{{ $this->getId() }}" class="text-sm font-medium text-gray-700 dark:text-zinc-300">Quantity</label>
+                        <label for="qty-{{ $this->getId() }}" class="text-sm font-medium text-gray-700">Quantity</label>
                         <input id="qty-{{ $this->getId() }}" type="number" min="1" max="{{ $state['max'] }}" wire:model="quantity"
-                               class="w-24 border-gray-300 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-white">
+                               class="w-24 border-gray-300 text-sm">
                     </div>
                 @endif
                 <x-button class="w-full" wire:click="add" wire:loading.attr="disabled" wire:target="add">
@@ -86,9 +96,9 @@
                     <span wire:loading wire:target="add">Adding...</span>
                 </x-button>
                 @if ($state['inCart'] > 0)
-                    <p class="text-sm text-gray-600 dark:text-zinc-400">
+                    <p class="text-sm text-gray-600">
                         {{ $state['inCart'] }} already in your cart.
-                        <a href="{{ route('cart') }}" class="text-purple-700 underline hover:text-purple-900 dark:text-purple-300">View cart</a>
+                        <a href="{{ route('cart') }}" class="text-purple-700 underline hover:text-purple-900">View cart</a>
                     </p>
                 @endif
         @endswitch
@@ -97,4 +107,4 @@
             <x-marketplace.notice :level="$noticeLevel">{{ $notice }}</x-marketplace.notice>
         @endif
     </div>
-</div>
+</x-marketplace.box>

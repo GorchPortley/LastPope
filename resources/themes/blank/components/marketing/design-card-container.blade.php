@@ -1,5 +1,10 @@
+@props([
+    'designs',
+    'cols' => 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
+    'padded' => true,
+])
 <div>
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 p-4">
+<div {{ $attributes->class(['grid gap-4', $cols, 'p-4' => $padded]) }}>
     @foreach($designs as $design)
         <div x-data="{ showSpecs: false }" wire:key="{{ $design->id }}" class="relative flex flex-col bg-white rounded-lg border-2 border-gray-100 hover:shadow-lg shadow-sm overflow-hidden h-full">
             <!-- Design image section -->

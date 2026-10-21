@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ListingCategory;
 use App\Models\Listing;
 use App\Support\Countries;
 use Illuminate\Contracts\View\View;
@@ -10,9 +11,16 @@ use function Laravel\Folio\{name, render};
 name('listing');
 
 render(function (View $view, string $uuid) {
-    $listing = Listing::query()->with(['seller.sellerProfile', 'driver'])->where('uuid', $uuid)->firstOrFail();
+    $listing = Listing::query()->with(['seller.sellerProfile', 'driver', 'design.designer'])->where('uuid', $uuid)->firstOrFail();
 
     abort_unless(Gate::allows('view', $listing), 404);
+
+    // SDLabs' own new drivers are sold from their driver page: a store listing has no page of its own.
+    if ($listing->isStore()) {
+        abort_if($listing->driver_id === null, 404);
+
+        return redirect()->route('driver', ['id' => $listing->driver_id], 301);
+    }
 
     $user = auth()->user();
     $buyerCountry = $user?->addresses()->orderByDesc('is_default')->orderBy('id')->value('country');
@@ -21,9 +29,11 @@ render(function (View $view, string $uuid) {
         'listing' => $listing,
         'seller' => $listing->seller,
         'shop' => $listing->seller?->sellerProfile,
+        // Kits and finished speakers: the design they are built from. Used gear: the catalogue driver.
+        'design' => $listing->category !== ListingCategory::USED_GEAR && $listing->design?->active ? $listing->design : null,
         'driver' => $listing->driver?->active ? $listing->driver : null,
         'buyerCountry' => $buyerCountry,
-        'moreFromSeller' => Listing::query()->marketplace()->forSale()->with(['seller.sellerProfile'])
+        'moreFromSeller' => Listing::query()->marketplace()->forSale()->with(['seller.sellerProfile', 'driver', 'design'])
             ->where('seller_id', $listing->seller_id)->whereKeyNot($listing->getKey())->latest()->limit(4)->get(),
     ]);
 });
@@ -35,8 +45,10 @@ render(function (View $view, string $uuid) {
     $isOwner = auth()->check() && auth()->id() === $listing->seller_id;
     $photos = $listing->photoUrls();
     $lotWord = $listing->units_per_lot === 2 ? 'pair' : 'set';
-    $returns = $listing->returns_accepted ? 'Returns accepted' : 'No returns';
     $quote = $buyerCountry ? $listing->shippingCentsFor($buyerCountry, 1) : null;
+    $available = $listing->availableQuantity(auth()->user());
+    $tsKeys = ['Re', 'Fs', 'Qts', 'Vas', 'Sd', 'Xmax', 'SPL'];
+    $factory = collect($driver?->factory_specs ?? [])->only($tsKeys)->filter(fn ($value) => filled($value));
 @endphp
 
 <x-layouts.marketing :seo="[
@@ -45,15 +57,11 @@ render(function (View $view, string $uuid) {
     'image' => $photos[0] ?? url('/og_image.png'),
     'type' => 'product',
 ]">
-    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <nav class="mb-6 text-sm" aria-label="Breadcrumb">
-            <ol class="flex flex-wrap items-center gap-x-2 text-gray-500 dark:text-zinc-400">
-                <li><a href="{{ route('marketplace') }}" class="hover:text-gray-800 dark:hover:text-white">Marketplace</a></li>
-                <li aria-hidden="true">/</li>
-                <li class="font-medium text-gray-900 dark:text-white">{{ $listing->title }}</li>
-            </ol>
-        </nav>
-
+    <x-marketplace.page :crumbs="[
+        ['Marketplace', route('marketplace')],
+        [$listing->category->pluralLabel(), route('marketplace', ['type' => $listing->category->value])],
+        [$listing->title, null],
+    ]">
         @if ($listing->status !== \App\Enums\ListingStatus::ACTIVE)
             <x-marketplace.notice :level="$isOwner ? 'warning' : 'info'" class="mb-6">
                 @if ($isOwner)
@@ -65,59 +73,143 @@ render(function (View $view, string $uuid) {
             </x-marketplace.notice>
         @endif
 
-        <div class="gap-8 lg:grid lg:grid-cols-2">
-            <x-marketplace.gallery :images="$photos" :alt="$listing->title" class="mb-8 lg:mb-0" />
+        <!-- Content Container -->
+        <div class="space-y-8">
+            <!-- Top Section: Image and Details -->
+            <div class="lg:grid lg:grid-cols-2 lg:gap-8">
+                <!-- Left: Image gallery -->
+                <x-marketplace.gallery :images="$photos" :alt="$listing->title" class="relative mb-6 lg:mb-0" />
 
-            <div class="space-y-6">
-                <div>
-                    <div class="mb-2 flex flex-wrap gap-2">
-                        <x-marketplace.badge :color="$listing->isNew() ? 'success' : 'warning'">{{ $listing->condition->label() }}</x-marketplace.badge>
-                        @if ($listing->isLot())
-                            <x-marketplace.badge color="primary">Sold as a {{ $lotWord }} ({{ $listing->units_per_lot }} units)</x-marketplace.badge>
+                <!-- Right: Listing Info -->
+                <div class="space-y-6">
+                    <!-- Title and Tag -->
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900">{{ $listing->title }}</h1>
+                        <p class="mt-2 text-lg text-gray-600 italic">{{ $listing->category->label() }} &middot; {{ $listing->condition->label() }}@if ($listing->isLot()) &middot; Sold as a {{ $lotWord }}@endif</p>
+                    </div>
+
+                    <!-- Seller Info -->
+                    <div>
+                        <p class="text-sm text-gray-500">Sold by</p>
+                        @if ($shopUrl)
+                            <a href="{{ $shopUrl }}"><p class="text-lg font-medium text-gray-900 hover:text-blue-400">{{ $shopName }}</p></a>
+                        @else
+                            <p class="text-lg font-medium text-gray-900">{{ $shopName }}</p>
                         @endif
                     </div>
-                    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ $listing->title }}</h1>
-                    <p class="mt-2 text-sm text-gray-600 dark:text-zinc-400">
-                        Sold by @if ($shopUrl)<a href="{{ $shopUrl }}" class="font-medium text-purple-800 underline hover:text-purple-950 dark:text-purple-300">{{ $shopName }}</a>@else<span class="font-medium">{{ $shopName }}</span>@endif
-                        &middot; Ships from {{ Countries::name($listing->ships_from_country) }}
-                    </p>
+
+                    <!-- Buy box -->
+                    <livewire:buy-box :purchasable="$listing" />
+
+                    <!-- Specifications -->
+                    <x-marketplace.specs :items="[
+                        'Type' => $listing->category->label(),
+                        'Condition' => $listing->condition->label(),
+                        'Available' => $available.' '.($listing->isLot() ? Str::plural($lotWord, $available) : 'in stock'),
+                        'Ships from' => Countries::name($listing->ships_from_country),
+                        'Handling time' => $listing->handling_days.' '.Str::plural('day', $listing->handling_days),
+                        'Returns' => $listing->returns_accepted ? 'Accepted' : 'No returns',
+                    ]" />
                 </div>
+            </div>
 
-                <livewire:buy-box :purchasable="$listing" />
+            <!-- Built from: the design a kit or a finished speaker comes from -->
+            @if ($design)
+                <x-marketplace.section title="Built from this design" data-built-from>
+                    <div class="max-w-xs">
+                        <x-marketing.design-card-container :designs="[$design]" cols="grid-cols-1" :padded="false" />
+                    </div>
+                </x-marketplace.section>
+            @endif
 
-                <dl class="grid grid-cols-2 gap-4 border border-gray-200 bg-white p-4 text-sm dark:border-zinc-700 dark:bg-zinc-800">
-                    <div>
-                        <dt class="text-gray-500 dark:text-zinc-400">Condition</dt>
-                        <dd class="mt-0.5 font-medium text-gray-900 dark:text-white">{{ $listing->condition->label() }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-gray-500 dark:text-zinc-400">Available</dt>
-                        <dd class="mt-0.5 font-medium text-gray-900 dark:text-white">{{ $listing->availableQuantity(auth()->user()) }} {{ $listing->isLot() ? $lotWord.'s' : 'in stock' }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-gray-500 dark:text-zinc-400">Handling time</dt>
-                        <dd class="mt-0.5 font-medium text-gray-900 dark:text-white">{{ $listing->handling_days }} {{ Str::plural('day', $listing->handling_days) }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-gray-500 dark:text-zinc-400">Returns</dt>
-                        <dd class="mt-0.5 font-medium text-gray-900 dark:text-white">{{ $returns }}</dd>
-                    </div>
-                </dl>
-
-                <div class="border border-gray-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-                    <div class="flex items-start gap-3">
-                        <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center bg-purple-950 text-lg font-bold text-white">{{ Str::upper(Str::substr((string) $shopName, 0, 1)) }}</div>
-                        <div class="min-w-0 flex-1">
-                            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-zinc-400">Seller</p>
-                            @if ($shopUrl)<a href="{{ $shopUrl }}" class="block truncate font-semibold text-gray-900 hover:underline dark:text-white">{{ $shopName }}</a>@else<span class="block truncate font-semibold text-gray-900 dark:text-white">{{ $shopName }}</span>@endif
-                            @if ($shop?->country)
-                                <p class="text-sm text-gray-600 dark:text-zinc-400">{{ Countries::name($shop->country) }}</p>
+            <!-- About the driver: used gear that is a catalogue driver -->
+            @if ($driver)
+                <x-marketplace.section title="About this driver" data-about-driver>
+                    <div class="gap-8 sm:grid sm:grid-cols-[18rem_minmax(0,1fr)]">
+                        <x-marketing.driver-card-container :drivers="[$driver]" cols="grid-cols-1" :padded="false" />
+                        <div class="mt-6 space-y-6 sm:mt-0">
+                            <div>
+                                <h3 class="text-xl font-semibold text-gray-900">{{ $driver->fullName() }}</h3>
+                                @if (filled($driver->tag))
+                                    <p class="mt-1 italic text-gray-600">{{ $driver->tag }}</p>
+                                @endif
+                            </div>
+                            <x-marketplace.specs title="Key specs" class="pt-4" :items="[
+                                'Power Handling' => $driver->power ? $driver->power.'W' : null,
+                                'Impedance' => $driver->impedance ? $driver->impedance.'Ω' : null,
+                                'Size' => $driver->size,
+                                'Category' => $driver->category,
+                                'New retail price' => $driver->msrp_cents ? money($driver->msrp_cents) : null,
+                            ]" />
+                            @if ($factory->isNotEmpty())
+                                <dl class="grid grid-cols-2 gap-x-6 text-sm sm:grid-cols-3">
+                                    @foreach ($factory as $key => $value)
+                                        <div class="flex justify-between gap-2 border-b py-2">
+                                            <dt class="font-medium text-gray-600">{{ $key }}</dt>
+                                            <dd class="text-gray-900">{{ $value }}</dd>
+                                        </div>
+                                    @endforeach
+                                </dl>
                             @endif
+                            <div class="flex flex-wrap gap-2">
+                                <x-button tag="a" :href="route('driver', ['id' => $driver->id])">Full specs and measurements</x-button>
+                                <x-button tag="a" href="{{ route('marketplace', ['driver' => $driver->id]) }}" color="gray">Other used ones</x-button>
+                            </div>
                         </div>
                     </div>
+                </x-marketplace.section>
+            @endif
+
+            <!-- Description -->
+            <x-marketplace.section title="Description">
+                @if (filled($listing->description))
+                    <x-safe-html-renderer :content="(string) $listing->description" />
+                @else
+                    <p class="py-8 text-center text-gray-500">The seller did not add a description.</p>
+                @endif
+            </x-marketplace.section>
+
+            <!-- Shipping and returns -->
+            <x-marketplace.section title="Shipping and returns" data-shipping-table>
+                <dl class="space-y-1 text-gray-900">
+                    <div class="flex justify-between gap-4"><dt>Ships from</dt><dd>{{ Countries::name($listing->ships_from_country) }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt>Domestic ({{ $listing->ships_from_country }})</dt><dd>{{ $listing->shipping_domestic_cents > 0 ? money($listing->shipping_domestic_cents) : 'Free' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt>International</dt><dd>{{ $listing->shipping_international_cents === null ? 'Not available' : ($listing->shipping_international_cents > 0 ? money($listing->shipping_international_cents) : 'Free') }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt>Each additional item</dt><dd>{{ $listing->additional_item_shipping_cents > 0 ? '+ '.money($listing->additional_item_shipping_cents) : 'No extra cost' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt>Handling time</dt><dd>{{ $listing->handling_days }} {{ Str::plural('day', $listing->handling_days) }}</dd></div>
+                </dl>
+                @if ($buyerCountry)
+                    <p class="mt-3 text-sm text-gray-700">
+                        @if ($quote === null)
+                            The seller does not ship to {{ Countries::name($buyerCountry) }}.
+                        @else
+                            To your address in {{ Countries::name($buyerCountry) }}: <strong>{{ $quote > 0 ? money($quote) : 'free shipping' }}</strong> for one item.
+                        @endif
+                    </p>
+                @endif
+                <h3 class="mt-6 text-lg font-medium text-gray-900">Returns</h3>
+                <p class="mt-1 text-sm text-gray-700">
+                    @if ($listing->returns_accepted)
+                        {{ filled($listing->return_policy) ? $listing->return_policy : 'The seller accepts returns. Contact them to arrange it.' }}
+                    @else
+                        This seller does not accept returns. Ask a question before you buy.
+                    @endif
+                </p>
+            </x-marketplace.section>
+
+            <!-- Seller -->
+            <x-marketplace.section title="Seller">
+                <div class="flex flex-wrap items-center gap-4">
+                    <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-md bg-purple-950 text-xl font-bold text-white">{{ Str::upper(Str::substr((string) $shopName, 0, 1)) }}</div>
+                    <div class="min-w-0 flex-1">
+                        @if ($shopUrl)<a href="{{ $shopUrl }}" class="block truncate text-lg font-medium text-gray-900 hover:text-blue-400">{{ $shopName }}</a>@else<span class="block truncate text-lg font-medium text-gray-900">{{ $shopName }}</span>@endif
+                        @if ($shop?->country)
+                            <p class="text-sm text-gray-500">{{ Countries::name($shop->country) }}</p>
+                        @endif
+                    </div>
                     @unless ($isOwner)
-                        <div class="mt-4 flex flex-wrap gap-2">
-                            <x-button tag="a" :href="auth()->check() ? url('/chatify/'.$listing->seller_id) : route('login')" color="gray">
+                        <div class="flex flex-wrap gap-2">
+                            <x-button tag="a" :href="auth()->check() ? url('/chatify/'.$listing->seller_id) : route('login')">
                                 <x-phosphor-chat-circle class="mr-1 inline h-4 w-4" /> Contact seller
                             </x-button>
                             @if ($shopUrl)
@@ -126,117 +218,13 @@ render(function (View $view, string $uuid) {
                         </div>
                     @endunless
                 </div>
-            </div>
+            </x-marketplace.section>
+
+            @if ($moreFromSeller->isNotEmpty())
+                <x-marketplace.section :title="'More from '.$shopName">
+                    <x-marketing.listing-card-container :listings="$moreFromSeller" cols="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" :padded="false" />
+                </x-marketplace.section>
+            @endif
         </div>
-
-        <div class="mt-10 grid gap-8 lg:grid-cols-3">
-            <div class="space-y-8 lg:col-span-2">
-                <section>
-                    <h2 class="mb-3 border-b-2 border-zinc-300 pb-2 text-xl font-semibold text-gray-900 dark:border-zinc-600 dark:text-white">Description</h2>
-                    @if (filled($listing->description))
-                        <x-safe-html-renderer :content="(string) $listing->description" />
-                    @else
-                        <p class="text-gray-500 dark:text-zinc-400">The seller did not add a description.</p>
-                    @endif
-                </section>
-
-                @if ($driver)
-                    <section>
-                        <h2 class="mb-3 border-b-2 border-zinc-300 pb-2 text-xl font-semibold text-gray-900 dark:border-zinc-600 dark:text-white">About this driver</h2>
-                        <div class="flex flex-col gap-4 border border-gray-200 bg-white p-4 sm:flex-row dark:border-zinc-700 dark:bg-zinc-800">
-                            @php($driverImage = is_array($driver->card_image) ? ($driver->card_image[0] ?? null) : $driver->card_image)
-                            @if ($driverImage)
-                                <img src="{{ Storage::url($driverImage) }}" alt="{{ $driver->fullName() }}" class="h-32 w-32 flex-shrink-0 object-contain" loading="lazy">
-                            @endif
-                            <div class="min-w-0 flex-1">
-                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ $driver->fullName() }}</h3>
-                                <p class="text-sm text-gray-600 dark:text-zinc-400">{{ $driver->category }} &middot; {{ $driver->size }}" &middot; {{ $driver->impedance }}&Omega; &middot; {{ $driver->power }}W</p>
-                                @if ($driver->msrp_cents)
-                                    <p class="mt-1 text-sm text-gray-600 dark:text-zinc-400">New retail price: {{ money($driver->msrp_cents) }}</p>
-                                @endif
-                                @if (! empty($driver->factory_specs))
-                                    <dl class="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
-                                        @foreach (array_slice($driver->factory_specs, 0, 9, true) as $key => $value)
-                                            @continue(blank($value))
-                                            <div class="flex justify-between gap-2 border-b border-gray-100 py-1 dark:border-zinc-700">
-                                                <dt class="text-gray-500 dark:text-zinc-400">{{ $key }}</dt>
-                                                <dd class="font-medium text-gray-900 dark:text-white">{{ $value }}</dd>
-                                            </div>
-                                        @endforeach
-                                    </dl>
-                                @endif
-                                <div class="mt-4 flex flex-wrap gap-2">
-                                    <x-button tag="a" :href="route('driver', ['id' => $driver->id])" color="gray" size="sm">Full specs and measurements</x-button>
-                                    <x-button tag="a" :href="route('marketplace', ['driver' => $driver->id])" color="gray" size="sm">Other listings for this driver</x-button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                @endif
-            </div>
-
-            <aside class="space-y-8">
-                <section>
-                    <h2 class="mb-3 border-b-2 border-zinc-300 pb-2 text-xl font-semibold text-gray-900 dark:border-zinc-600 dark:text-white">Shipping</h2>
-                    <table class="w-full text-sm" data-shipping-table>
-                        <tbody class="divide-y divide-gray-200 dark:divide-zinc-700">
-                            <tr>
-                                <th scope="row" class="py-2 pr-3 text-left font-normal text-gray-600 dark:text-zinc-400">Ships from</th>
-                                <td class="py-2 text-right font-medium text-gray-900 dark:text-white">{{ Countries::name($listing->ships_from_country) }}</td>
-                            </tr>
-                            <tr>
-                                <th scope="row" class="py-2 pr-3 text-left font-normal text-gray-600 dark:text-zinc-400">Domestic ({{ $listing->ships_from_country }})</th>
-                                <td class="py-2 text-right font-medium text-gray-900 dark:text-white">{{ $listing->shipping_domestic_cents > 0 ? money($listing->shipping_domestic_cents) : 'Free' }}</td>
-                            </tr>
-                            <tr>
-                                <th scope="row" class="py-2 pr-3 text-left font-normal text-gray-600 dark:text-zinc-400">International</th>
-                                <td class="py-2 text-right font-medium text-gray-900 dark:text-white">
-                                    {{ $listing->shipping_international_cents === null ? 'Not available' : ($listing->shipping_international_cents > 0 ? money($listing->shipping_international_cents) : 'Free') }}
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row" class="py-2 pr-3 text-left font-normal text-gray-600 dark:text-zinc-400">Each additional item</th>
-                                <td class="py-2 text-right font-medium text-gray-900 dark:text-white">{{ $listing->additional_item_shipping_cents > 0 ? '+ '.money($listing->additional_item_shipping_cents) : 'No extra cost' }}</td>
-                            </tr>
-                            <tr>
-                                <th scope="row" class="py-2 pr-3 text-left font-normal text-gray-600 dark:text-zinc-400">Handling time</th>
-                                <td class="py-2 text-right font-medium text-gray-900 dark:text-white">{{ $listing->handling_days }} {{ Str::plural('day', $listing->handling_days) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    @if ($buyerCountry)
-                        <p class="mt-3 text-sm text-gray-700 dark:text-zinc-300">
-                            @if ($quote === null)
-                                The seller does not ship to {{ Countries::name($buyerCountry) }}.
-                            @else
-                                To your address in {{ Countries::name($buyerCountry) }}: <strong>{{ $quote > 0 ? money($quote) : 'free shipping' }}</strong> for one item.
-                            @endif
-                        </p>
-                    @endif
-                </section>
-
-                <section>
-                    <h2 class="mb-3 border-b-2 border-zinc-300 pb-2 text-xl font-semibold text-gray-900 dark:border-zinc-600 dark:text-white">Returns</h2>
-                    <p class="text-sm text-gray-700 dark:text-zinc-300">
-                        @if ($listing->returns_accepted)
-                            {{ filled($listing->return_policy) ? $listing->return_policy : 'The seller accepts returns. Contact them to arrange it.' }}
-                        @else
-                            This seller does not accept returns. Ask a question before you buy.
-                        @endif
-                    </p>
-                </section>
-            </aside>
-        </div>
-
-        @if ($moreFromSeller->isNotEmpty())
-            <section class="mt-12">
-                <h2 class="mb-4 text-xl font-semibold text-gray-900 dark:text-white">More from {{ $shopName }}</h2>
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    @foreach ($moreFromSeller as $other)
-                        <x-marketplace.listing-card :listing="$other" />
-                    @endforeach
-                </div>
-            </section>
-        @endif
-    </div>
+    </x-marketplace.page>
 </x-layouts.marketing>

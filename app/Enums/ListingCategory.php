@@ -40,6 +40,18 @@ enum ListingCategory: string
         return $this === self::DRIVER ? ListingChannel::STORE : ListingChannel::MARKETPLACE;
     }
 
+    /** Kits and completed speakers can say which site design they are built from. */
+    public function linksDesign(): bool
+    {
+        return in_array($this, [self::KIT, self::COMPLETED_SPEAKER], true);
+    }
+
+    /** Used gear can say which catalogue driver it is. (Store listings always link their driver.) */
+    public function linksDriver(): bool
+    {
+        return in_array($this, [self::USED_GEAR, self::DRIVER], true);
+    }
+
     /** @return array<int, self> the categories users can pick in the marketplace */
     public static function marketplaceCases(): array
     {

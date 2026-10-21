@@ -26,6 +26,9 @@ new class extends Component {
     public function with(): array
     {
         return [
+            // Kits and finished speakers members sell, built from this design.
+            'builds' => $this->design->listings()->marketplace()->forSale()
+                ->with(['seller.sellerProfile', 'driver', 'design'])->latest()->get(),
         ];
     }
 } ?>
@@ -106,6 +109,12 @@ new class extends Component {
         </div>
     </div>
 </div>
+                <!-- Kits & builds for sale -->
+                @if ($builds->isNotEmpty())
+                    <x-marketplace.section title="Kits & builds for sale" :count="$builds->count()" class="mt-8 pb-8" data-design-builds>
+                        <x-marketing.listing-card-container :listings="$builds" cols="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" :padded="false" />
+                    </x-marketplace.section>
+                @endif
                 <!-- Components Section -->
                 @if($design->components->count() > 0)
                     <div x-data="{ isOpen: true }" class="border-t border-gray-200 pt-8">

@@ -14,9 +14,9 @@
         @foreach ($messages as $flash)
             <div @class([
                 'flex items-start gap-3 border px-4 py-3 text-sm',
-                'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200' => $flash['level'] === 'success',
-                'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200' => $flash['level'] === 'info',
-                'border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200' => $flash['level'] === 'error',
+                'border-green-300 bg-green-50 text-green-800' => $flash['level'] === 'success',
+                'border-blue-300 bg-blue-50 text-blue-800' => $flash['level'] === 'info',
+                'border-red-300 bg-red-50 text-red-800' => $flash['level'] === 'error',
             ])>
                 @if ($flash['level'] === 'success')
                     <x-phosphor-check-circle class="mt-0.5 h-5 w-5 flex-shrink-0" />

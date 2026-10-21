@@ -30,6 +30,18 @@ class ListingResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
+    /**
+     * The channel a new listing starts in. Admins mostly create store listings here (members create their own
+     * marketplace listings from the dashboard), so the form starts as a store listing: category Driver,
+     * condition New, seller the signed-in admin. `?channel=marketplace` starts a marketplace one.
+     */
+    public static function defaultChannel(): ListingChannel
+    {
+        return request()->query('channel') === ListingChannel::MARKETPLACE->value
+            ? ListingChannel::MARKETPLACE
+            : ListingChannel::STORE;
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -42,7 +54,9 @@ class ListingResource extends Resource
                             ->relationship('seller', 'name')
                             ->searchable()
                             ->preload()
-                            ->required(),
+                            ->required()
+                            // A new listing is the signed-in admin's own: SDLabs sells it as the platform.
+                            ->default(fn (): ?int => auth()->id()),
                         Forms\Components\Select::make('status')
                             ->options(ListingStatus::options())
                             ->required()
@@ -51,7 +65,7 @@ class ListingResource extends Resource
                         Forms\Components\Select::make('channel')
                             ->options(ListingChannel::options())
                             ->required()
-                            ->default(ListingChannel::MARKETPLACE->value)
+                            ->default(fn (): string => static::defaultChannel()->value)
                             ->live()
                             ->afterStateUpdated(fn (Forms\Set $set, ?string $state) => $set('category', $state === ListingChannel::STORE->value ? ListingCategory::DRIVER->value : null))
                             ->helperText('Store: SDLabs sells a new catalogue driver from its driver page (seller must be an admin). Marketplace: kits, finished speakers and used gear.'),
@@ -60,6 +74,7 @@ class ListingResource extends Resource
                                 ? [ListingCategory::DRIVER->value => ListingCategory::DRIVER->label()]
                                 : ListingCategory::marketplaceOptions())
                             ->required()
+                            ->default(fn (): ?string => static::defaultChannel() === ListingChannel::STORE ? ListingCategory::DRIVER->value : null)
                             ->live(),
                         Forms\Components\TextInput::make('title')->required()->maxLength(160)->columnSpanFull(),
                         Forms\Components\Select::make('condition')

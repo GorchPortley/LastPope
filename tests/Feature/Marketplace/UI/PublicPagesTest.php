@@ -254,8 +254,8 @@ it('shows the manufacturer price and link next to the marketplace count on the d
         ->assertOk()
         ->assertSee('data-driver-msrp', false)->assertSee('$210.00')->assertSee('MSRP')
         ->assertSee('https://maker.example/driver', false)->assertSee('Buy from the manufacturer')
-        ->assertSee('1 listing in the marketplace')->assertSee('$99.00')
-        ->assertSee(route('marketplace', ['driver' => $driver->id]), false)
+        ->assertSee('Used ones on the marketplace (1)')->assertSee('$99.00')
+        ->assertSee(e(route('marketplace', ['type' => 'used_gear', 'driver' => $driver->id])), false)
         ->assertDontSee('data pack')->assertDontSee('data-buy-box', false); // no store listing, nothing to buy here
 });
 

@@ -15,7 +15,8 @@ new class extends Component {
         $query = Driver::query()
             ->where('active', 1)
             ->withCount('designs')  // Add count of designs
-            ->with('designs');      // Eager load designs
+            ->with('designs')       // Eager load designs
+            ->with('activeStoreListing'); // SDLabs' store listing, for the "In stock at SDLabs" line on the cards
 
         // Filter by brand
         if ($request->brand) {

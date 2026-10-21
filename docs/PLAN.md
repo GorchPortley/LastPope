@@ -289,6 +289,21 @@ card containers in `components/marketing`. Every marketplace/commerce page and t
 same layout skeleton, breadcrumbs, headings, cards, spacing, tab bars, Filament-table-in-Volt dashboards
 and colours as those.
 
+Done in R1.3 (SDLabs originals are the style authority; light theme only, no `dark:` variants):
+- Shared Blade components in `components/marketplace`: `page` (grey page + white max-w-7xl panel, breadcrumb and
+  rule), `breadcrumb`, `section` (collapsible "File Overview" heading), `specs` (dl grid), `tabs` (design-page
+  tab bar as links), `box` (card: rounded-lg border-2 border-gray-100 shadow-sm), `empty-state`, `gallery`
+  (the owner's carousel look, Alpine); `components/marketing/listing-card` + `listing-card-container` follow
+  design-card-container (the design / driver / listing containers take a `cols` prop for narrower places).
+- Public pages (`/marketplace` with the banner + sidebar filter + `?type=` tabs, listing, shop, cart, checkout,
+  success/cancel) use these; dashboards (library, orders, sales, listings) are Filament tables in Volt, order
+  detail and selling use `x-filament::section`.
+- Store listings have no page: `/marketplace/listing/{uuid}` redirects them (301) to the driver page, where the
+  buy box ("Sold by SDLabs"), "Out of stock at SDLabs" (`Driver::latestStoreListing()`) or the MSRP box shows, plus
+  "Used ones on the marketplace (n)". `Driver::activeStoreListing()` is the eager-loadable relation.
+- Note: Filament buttons (`x-button tag="a"`) double-escape `&` in `href`, so link URLs with several query
+  parameters need a plain `<a>`.
+
 ### R1.4 Seasonal themes (manual)
 - Brand colours become CSS variables (`--brand-50…950`, `--accent-*`) mapped to a Tailwind `brand`
   palette; theme templates use `brand-*` instead of hard-coded purple.

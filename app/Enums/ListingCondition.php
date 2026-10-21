@@ -63,4 +63,20 @@ enum ListingCondition: string
     {
         return collect(self::cases())->mapWithKeys(fn (self $c) => [$c->value => $c->label()])->all();
     }
+
+    /**
+     * The conditions a listing of this category can have: used gear is never "New" (see
+     * Listing::channelRuleViolations()); kits, completed speakers and store drivers can be any.
+     *
+     * @return array<string, string> value => label, for selects
+     */
+    public static function optionsFor(ListingCategory|string|null $category): array
+    {
+        $category = $category instanceof ListingCategory ? $category : ListingCategory::tryFrom((string) $category);
+
+        return collect(self::cases())
+            ->reject(fn (self $c) => $category === ListingCategory::USED_GEAR && $c === self::NEW)
+            ->mapWithKeys(fn (self $c) => [$c->value => $c->label()])
+            ->all();
+    }
 }

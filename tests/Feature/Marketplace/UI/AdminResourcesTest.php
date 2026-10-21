@@ -367,6 +367,59 @@ it('lets admins activate a listing that has open issues, with a warning', functi
     $clean = sellableListing()->forceFill(['status' => ListingStatus::PAUSED])->save();
 });
 
+it('starts a new admin listing as a store listing for the signed-in admin', function () {
+    expect(ListingResource::defaultChannel())->toBe(App\Enums\ListingChannel::STORE);
+
+    Livewire::actingAs($this->admin)->test(ListingResource\Pages\CreateListing::class)
+        ->assertFormSet([
+            'channel' => 'store',
+            'category' => 'driver',
+            'condition' => 'new',
+            'seller_id' => $this->admin->id,
+        ]);
+
+    // ?channel=marketplace starts a marketplace listing instead (still the admin as seller, no store category)
+    Livewire::withQueryParams(['channel' => 'marketplace'])->actingAs($this->admin)->test(ListingResource\Pages\CreateListing::class)
+        ->assertFormSet(['channel' => 'marketplace', 'category' => null, 'seller_id' => $this->admin->id]);
+
+});
+
+it('creates a store listing with nothing but the driver, the price and the stock filled in', function () {
+    $driver = Driver::factory()->create();
+
+    Livewire::actingAs($this->admin)->test(ListingResource\Pages\CreateListing::class)
+        ->fillForm([
+            'title' => 'Defaults only', 'status' => 'active', 'driver_id' => $driver->id, 'price_cents' => '99.00', 'quantity' => 6,
+            'units_per_lot' => 1, 'ships_from_country' => 'US', 'handling_days' => 2,
+            'shipping_domestic_cents' => '5', 'additional_item_shipping_cents' => '1',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $listing = Listing::where('title', 'Defaults only')->firstOrFail();
+    expect($listing->channel)->toBe(App\Enums\ListingChannel::STORE)
+        ->and($listing->category)->toBe(App\Enums\ListingCategory::DRIVER)
+        ->and($listing->condition)->toBe(App\Enums\ListingCondition::NEW)
+        ->and($listing->seller_id)->toBe($this->admin->id)
+        ->and($driver->storeListing()?->is($listing))->toBeTrue();
+});
+
+it('has a Store tab and a Marketplace tab on the listings page', function () {
+    $store = storeListing(['title' => 'Tabprobe Store']);
+    $market = sellableListing(attributes: ['title' => 'Tabprobe Market']);
+
+    $page = Livewire::actingAs($this->admin)->test(ListingResource\Pages\ListListings::class);
+
+    expect(array_keys($page->instance()->getTabs()))->toBe(['all', 'store', 'marketplace'])
+        ->and($page->instance()->getTabs()['store']->getLabel())->toBe('Store');
+
+    $page->assertCanSeeTableRecords([$store, $market])
+        ->set('activeTab', 'store')->assertCanSeeTableRecords([$store])->assertCanNotSeeTableRecords([$market])
+        ->set('activeTab', 'marketplace')->assertCanSeeTableRecords([$market])->assertCanNotSeeTableRecords([$store]);
+
+    $this->actingAs($this->admin)->get('/admin/listings')->assertOk()->assertSee('New store listing')->assertSee('channel=store', false);
+});
+
 it('creates a listing from the admin with a generated uuid', function () {
     $seller = onboardedSeller();
 

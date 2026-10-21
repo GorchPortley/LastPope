@@ -38,6 +38,7 @@ class BannerResource extends Resource
                         'front_page' => 'Front Page',
                         'design_page' => 'Design Page',
                         'driver_page' => 'Driver Page',
+                        'marketplace_page' => 'Marketplace Page',
                         // Add more locations as needed
                     ])
                     ->required(),

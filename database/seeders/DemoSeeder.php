@@ -486,7 +486,7 @@ class DemoSeeder extends Seeder
 
     private function seedBanners(): void
     {
-        foreach (['front_page' => 'Spring build-off: share your design', 'design_page' => 'New: paid designs from verified designers', 'driver_page' => 'Measured drivers, free to download'] as $location => $name) {
+        foreach (['front_page' => 'Spring build-off: share your design', 'design_page' => 'New: paid designs from verified designers', 'driver_page' => 'Measured drivers, free to download', 'marketplace_page' => 'Kits, finished speakers and used gear from the community'] as $location => $name) {
             $path = $this->writePublic('banners/'.$location.'.jpg', PlaceholderImage::banner(crc32($location) % 1000));
 
             Banner::create(['name' => $name, 'image_path' => $path, 'location' => $location, 'is_active' => true, 'priority' => 1]);

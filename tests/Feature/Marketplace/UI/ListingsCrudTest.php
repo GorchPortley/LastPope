@@ -297,3 +297,71 @@ it('keeps store listings out of the sellers own list, even for an admin', functi
         ->assertCanSeeTableRecords([$mine])
         ->assertCanNotSeeTableRecords([$store]);
 });
+
+// --- the type decides the form (R1.3) -----------------------------------------------------------------------
+
+it('shows the design select for kits and completed speakers and the driver select for used gear', function () {
+    $form = 'mountedTableActionForm';
+    $page = listingsPage($this, onboardedSeller())->mountTableAction('create');
+
+    $page->setTableActionData(['category' => ListingCategory::KIT->value])
+        ->assertFormFieldIsVisible('design_id', $form)->assertFormFieldIsHidden('driver_id', $form);
+
+    $page->setTableActionData(['category' => ListingCategory::COMPLETED_SPEAKER->value])
+        ->assertFormFieldIsVisible('design_id', $form)->assertFormFieldIsHidden('driver_id', $form);
+
+    $page->setTableActionData(['category' => ListingCategory::USED_GEAR->value])
+        ->assertFormFieldIsHidden('design_id', $form)->assertFormFieldIsVisible('driver_id', $form);
+});
+
+it('offers every condition for kits but never "New" for used gear', function () {
+    $form = 'mountedTableActionForm';
+    $offers = fn (string $category, callable $check) => listingsPage($this, onboardedSeller())
+        ->mountTableAction('create')
+        ->setTableActionData(['category' => $category])
+        ->assertFormFieldExists('condition', $form, fn (Filament\Forms\Components\Select $field): bool => $check($field->getOptions()));
+
+    $offers(ListingCategory::USED_GEAR->value, fn (array $options): bool => ! array_key_exists(ListingCondition::NEW->value, $options)
+        && array_key_exists(ListingCondition::OPEN_BOX->value, $options)
+        && array_key_exists(ListingCondition::USED_GOOD->value, $options)
+        && array_key_exists(ListingCondition::FOR_PARTS->value, $options));
+    $offers(ListingCategory::KIT->value, fn (array $options): bool => array_key_exists(ListingCondition::NEW->value, $options));
+    $offers(ListingCategory::COMPLETED_SPEAKER->value, fn (array $options): bool => array_key_exists(ListingCondition::NEW->value, $options));
+
+    expect(ListingCondition::optionsFor(ListingCategory::USED_GEAR))->not->toHaveKey('new')
+        ->and(ListingCondition::optionsFor('kit'))->toHaveKey('new')
+        ->and(ListingCondition::optionsFor(null))->toHaveKey('new');
+});
+
+it('puts the marketplace rule messages on the field they are about', function () {
+    $page = listingsPage($this, onboardedSeller());
+
+    // used gear as new: the message of Listing::channelRuleViolations() sits on the condition, not on the type
+    $page->callTableAction('create', data: listingFormData(['category' => 'used_gear', 'condition' => 'new']))
+        ->assertHasTableActionErrors(['condition'])
+        ->assertHasNoTableActionErrors(['category']);
+
+    $violation = (new Listing(['channel' => 'marketplace', 'category' => 'used_gear', 'condition' => 'new']))->channelRuleViolations();
+    expect($violation)->toHaveKey('condition');
+    $page->assertSee($violation['condition']);
+
+    // a type outside the marketplace set is an error on the type
+    $page->callTableAction('create', data: listingFormData(['category' => 'driver']))
+        ->assertHasTableActionErrors(['category']);
+});
+
+it('drops the link that does not belong to the type when it saves', function () {
+    $seller = onboardedSeller();
+    $design = App\Models\Design::factory()->create();
+    $driver = Driver::factory()->create();
+
+    // a kit keeps its design and loses a stray driver; used gear keeps its driver and loses a stray design
+    listingsPage($this, $seller)->callTableAction('create', data: listingFormData(['title' => 'Linked kit', 'category' => 'kit', 'condition' => 'new', 'design_id' => $design->id, 'driver_id' => $driver->id]));
+    listingsPage($this, $seller)->callTableAction('create', data: listingFormData(['title' => 'Linked gear', 'category' => 'used_gear', 'design_id' => $design->id, 'driver_id' => $driver->id]));
+
+    $kit = Listing::where('title', 'Linked kit')->firstOrFail();
+    $gear = Listing::where('title', 'Linked gear')->firstOrFail();
+
+    expect($kit->design_id)->toBe($design->id)->and($kit->driver_id)->toBeNull()
+        ->and($gear->driver_id)->toBe($driver->id)->and($gear->design_id)->toBeNull();
+});

@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\SellerProfile;
 use App\Services\Payments\Exceptions\InvalidWebhookException;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
+use Illuminate\Support\Facades\Log;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\Exception\UnexpectedValueException;
@@ -241,10 +242,25 @@ class StripeGateway implements PaymentGateway
      */
     private function call(callable $callback): mixed
     {
+        // stripe-php raises Stripe's advisory "Stripe-Notice" response header (e.g. "We recommend building
+        // your integration using Accounts v2") as an E_USER_WARNING *after* the API call succeeded. Laravel
+        // turns warnings into exceptions, which would throw away a successful result, so log them instead.
+        $previous = set_error_handler(function (int $level, string $message, string $file = '', int $line = 0) use (&$previous) {
+            if (in_array($level, [E_USER_WARNING, E_USER_NOTICE], true) && str_contains($file, 'stripe-php')) {
+                Log::notice('Stripe notice: '.$message);
+
+                return true;
+            }
+
+            return $previous ? $previous($level, $message, $file, $line) : false;
+        });
+
         try {
             return $callback();
         } catch (ApiErrorException $e) {
             throw PaymentGatewayException::wrap($e);
+        } finally {
+            restore_error_handler();
         }
     }
 }

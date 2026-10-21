@@ -173,3 +173,29 @@ it('records calls and fails on demand in the fake gateway', function () {
         ->and(fn () => $fake->refund('pi_1', 100))->toThrow(PaymentGatewayException::class)
         ->and($fake->refund('pi_1', 100))->toBe('re_fake_1');
 });
+
+it('logs a Stripe-Notice response header instead of failing the successful call', function () {
+    $user = User::factory()->create();
+    $profile = SellerProfile::factory()->withoutStripe()->for($user)->create(['country' => 'US']);
+    $this->http->respond('POST /v1/accounts', ['id' => 'acct_noticed', 'object' => 'account'], 200, [
+        'stripe-notice' => 'We recommend building your integration using Accounts v2.',
+    ]);
+    Illuminate\Support\Facades\Log::spy();
+
+    expect($this->gateway->createConnectedAccount($profile))->toBe('acct_noticed');
+
+    Illuminate\Support\Facades\Log::shouldHaveReceived('notice')
+        ->withArgs(fn (string $message) => str_contains($message, 'Accounts v2'))
+        ->once();
+});
+
+it('still reports unrelated PHP warnings raised inside a gateway call', function () {
+    $gateway = new StripeGateway('sk_test_unit', new class('sk_test_unit') extends Stripe\StripeClient {
+        public function __get($name)
+        {
+            trigger_error('something else went wrong', E_USER_WARNING);
+        }
+    });
+
+    expect(fn () => $gateway->retrieveAccountStatus('acct_x'))->toThrow(ErrorException::class, 'something else went wrong');
+});

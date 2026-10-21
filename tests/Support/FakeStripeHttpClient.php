@@ -33,9 +33,9 @@ class FakeStripeHttpClient implements ClientInterface
         ApiRequestor::setHttpClient(null);
     }
 
-    public function respond(string $route, array $body, int $status = 200): static
+    public function respond(string $route, array $body, int $status = 200, array $headers = []): static
     {
-        $this->responses[$route] = [$body, $status];
+        $this->responses[$route] = [$body, $status, $headers];
 
         return $this;
     }
@@ -51,9 +51,9 @@ class FakeStripeHttpClient implements ClientInterface
 
         $this->requests[] = ['method' => strtoupper($method), 'path' => $path, 'params' => $params ?? [], 'headers' => $parsedHeaders];
 
-        [$body, $status] = $this->responses[strtoupper($method).' '.$path] ?? [['id' => 'obj_default', 'object' => 'unknown'], 200];
+        [$body, $status, $responseHeaders] = ($this->responses[strtoupper($method).' '.$path] ?? [['id' => 'obj_default', 'object' => 'unknown'], 200]) + [2 => []];
 
-        return [json_encode($body), $status, []];
+        return [json_encode($body), $status, $responseHeaders];
     }
 
     /** The last request to "METHOD /v1/path", or null. */

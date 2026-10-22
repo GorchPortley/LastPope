@@ -22,7 +22,7 @@
             @endif
         </p>
         @if (! $state['digital'] && in_array($state['status'], ['add', 'login', 'owner'], true))
-            <p class="text-sm font-medium {{ $state['max'] <= 3 ? 'text-amber-700' : 'text-green-700' }}" data-buy-box-stock>{{ $state['stockText'] }}</p>
+            <p class="text-sm font-medium {{ $state['stockWarn'] ? 'text-amber-700' : 'text-green-700' }}" data-buy-box-stock>{{ $state['stockText'] }}</p>
         @endif
     </div>
 
@@ -30,7 +30,7 @@
         <p class="mt-2 flex items-start gap-2 text-sm text-gray-600" data-buy-box-shipping>
             <x-phosphor-truck class="mt-0.5 h-4 w-4 flex-shrink-0" />
             <span>
-                Ships from {{ $state['shipping']['from'] }} within {{ $state['shipping']['handling'] }}.
+                Ships from {{ $state['shipping']['from'] }}{{ $state['shipping']['handling'] ? ' within '.$state['shipping']['handling'] : '' }}.
                 Shipping {{ $state['shipping']['domestic'] }} in-country, {{ $state['shipping']['international'] }} international.
             </span>
         </p>
@@ -87,7 +87,7 @@
                 @if (! $state['digital'])
                     <div class="flex items-center gap-3">
                         <label for="qty-{{ $this->getId() }}" class="text-sm font-medium text-gray-700">Quantity</label>
-                        <input id="qty-{{ $this->getId() }}" type="number" min="1" max="{{ $state['max'] }}" wire:model="quantity"
+                        <input id="qty-{{ $this->getId() }}" type="number" min="1" max="{{ $state['max'] }}" wire:model.live.debounce.300ms="quantity"
                                class="w-24 border-gray-300 text-gray-700 text-sm">
                     </div>
                 @endif

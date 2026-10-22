@@ -34,8 +34,9 @@ it('says when a dropshipped product ships in the buy box, with the supplier\'s s
         ->assertDontSee('Acme')
         ->assertSeeHtml('data-buy-box="add"');
 
-    // own stock still shows its count
-    Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => storeListing(['quantity' => 4], null, $this->admin)])->assertSee('4 available');
+    // own stock in the store says when it ships; a member's listing still shows its count
+    Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => storeListing(['quantity' => 4], null, $this->admin)])->assertSee('In stock, ships in 3 days');
+    Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => sellableListing(onboardedSeller(), 5000, ['quantity' => 4])])->assertSee('4 available');
 
     // a hybrid listing shows what applies to one unit: own stock while there is some
     $hybrid = hybridListing($this->acme, 2, ['supplier_stock' => 7], $this->admin);

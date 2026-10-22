@@ -66,6 +66,10 @@ class OrderShipped extends Notification implements ShouldQueue
             $mail->line($this->parcel < $this->parcels
                 ? 'The rest of your order ships separately. You get another e-mail when the next parcel is on its way.'
                 : 'That was the last parcel of your order.');
+
+            if (($waiting = $this->waitingParcelsHtml()) !== null) {
+                $mail->line('Still to come:')->line(new HtmlString($waiting));
+            }
         }
 
         $complete = $sellerOrder->shipped_at !== null;
@@ -107,6 +111,24 @@ class OrderShipped extends Notification implements ShouldQueue
                 'tracking_url' => $this->trackingUrl(),
             ],
         );
+    }
+
+    /** The parcels of this seller order that are not (completely) shipped yet, with the expected window; null when none. */
+    private function waitingParcelsHtml(): ?string
+    {
+        $sellerOrder = $this->sellerOrder->fresh(['order']);
+        $waiting = app(ParcelPlanner::class)->parcels($sellerOrder)->reject(fn ($parcel) => $parcel->isShipped());
+
+        if ($waiting->isEmpty()) {
+            return null;
+        }
+
+        return '<ul>'.$waiting->map(function ($parcel) use ($sellerOrder) {
+            $items = $parcel->items->map(fn ($item) => ($item->quantity > 1 ? $item->quantity.' x ' : '').$item->title)->implode(', ');
+            $expected = $parcel->expectedText($sellerOrder->order->paid_at);
+
+            return '<li>'.e($items).($expected ? ' - '.e(lcfirst($expected)) : '').'</li>';
+        })->implode('').'</ul>';
     }
 
     /** The physical items in this parcel (the whole seller order's physical items without a shipment). */

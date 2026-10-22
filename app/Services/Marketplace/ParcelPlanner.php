@@ -48,6 +48,8 @@ class ParcelPlanner
                 )->values(),
                 complete: $items->every(fn (OrderItem $item) => ($shipped[$item->getKey()] ?? 0) >= $item->quantity),
                 supplierId: $key === 'stock' ? null : (int) $items->first()->supplier_id,
+                leadTimeMinDays: $supplier?->lead_time_min_days,
+                leadTimeMaxDays: $supplier?->lead_time_max_days,
             );
         })->values();
     }

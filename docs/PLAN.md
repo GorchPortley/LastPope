@@ -472,3 +472,25 @@ products**. Marketplace (user) listings are unchanged. Migration policy §7 appl
 - Feed + margin: `SupplierFeedSync` + `marketplace:sync-supplier-stock` (hourly), `MarginReport` (rows(), forRange(), toCsv(), unitMargin(),
   lowMarginWarning()). Config keys in `config/marketplace.php` (`store_name`, `store_email`, `purchase_order_prefix`, `dropship_unknown_stock_max`,
   `supplier_feed_timeout_seconds`, `supplier_feed_max_kb`, `stripe_fee_bps`, `stripe_fee_fixed_cents`, `min_margin_bps`).
+
+### R3 implementation notes (admin screens and buyer pages, part 2)
+- Filament, navigation group **Store** (admins only through `SupplierPolicy` / `SupplierOrderPolicy`): `SupplierResource` (every supplier field,
+  feed URL or CSV upload on the private disk, "Sync stock now" via `SupplierFeedSync`, "Download feed template" via
+  `SupplierFeedSync::templateCsv()`), `SupplierOrderResource` (slug `purchase-orders`: queue with status tabs and a "to send" navigation
+  badge, page with every `PurchaseOrderService` action, see `SupplierOrderResource/PurchaseOrderActions` which also serves the queue rows
+  and `OrderResource`'s `PurchaseOrdersRelationManager`), page `Margins` (`MarginReport`, presets this month / last month / last 30 days /
+  custom, CSV), widget `StoreFulfilment` on the dashboard (POs to send, POs with a problem, store parcels to ship, suppliers with feed errors).
+- `ListingResource`: for store listings a "Fulfilment and cost" section (mode radio, supplier, supplier SKU, cost, read-only supplier stock and
+  last sync) and a live "Margin per unit" next to the price (warning colour below `min_margin_bps`); a pure dropship listing hides the own
+  quantity, handling time and own shipping; `ListingResource::normalizeFulfilment()` clears what the mode does not use (supplier for own stock,
+  quantity 0 for dropship, always own stock for marketplace listings). The model's `channelRuleViolations()` stays the second line of defence.
+- "Ship SDLabs parcel" (`OrderResource/ShipStoreParcelAction`, on the order page and the seller order relation manager) ships the own-stock
+  units with `ShipmentService::shipItems()` (`ownRemainingQuantities()` is the public wrapper of what is left); supplier lines are listed in
+  the form and shipped from their purchase order. "Mark shipped" stays for marketplace sellers' orders and for correcting tracking.
+- Buyer pages: the buy box says when the chosen quantity ships (`fulfillmentFor()`; a store listing shows "In stock, ships in N days" /
+  "Ships in X–Y business days", marketplace listings keep "N available"); its quantity input is live (`wire:model.live`), `quantity` may be
+  empty while typing (`quantity()` is the number). Cart and checkout draw one block per parcel (`ShippingGroup::label()`, components
+  `marketplace/parcel-heading`, `cart-line`, `checkout-line`). The buyer's order page lists parcels ("Parcel 1 of 3", items, status, carrier +
+  tracking link, expected window for unshipped supplier parcels: `Parcel::expectedText()` counts business days from the payment date);
+  `OrderReceipt` lists the parcels when there are several, `OrderShipped` adds "Still to come". No supplier name, SKU, cost or PO number reaches
+  a buyer (tests assert the demo suppliers' names are absent from every buyer page and mail).

@@ -315,7 +315,7 @@ it('sells the new driver from its page with the store listing and counts only ma
         ->assertSee('data-driver-store', false)
         ->assertSee('Sold by SDLabs')
         ->assertSee('$129.00')
-        ->assertSee('7 available')
+        ->assertSee('In stock, ships in 3 days')
         ->assertSee('Used ones on the marketplace (1)');
 
     // a driver without a store listing has no store box

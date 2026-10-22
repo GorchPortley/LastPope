@@ -67,30 +67,54 @@
         </div>
     </dl>
 
-    @php($parcels = $so->shipments()->with('items.orderItem')->get())
+    @php($shipments = $so->shipments()->with('items.orderItem')->get())
+    {{-- The parcels of a physical part of the order: own stock / each supplier (never named), see ParcelPlanner. --}}
+    @php($plan = $so->hasPhysicalItems() ? app(\App\Services\Marketplace\ParcelPlanner::class)->parcels($so) : collect())
+    @php($several = ! in_array($so->status, [\App\Enums\SellerOrderStatus::PENDING, \App\Enums\SellerOrderStatus::REFUNDED, \App\Enums\SellerOrderStatus::CANCELLED], true)
+        && ($plan->count() > 1 || $shipments->count() > 1 || ($so->status === \App\Enums\SellerOrderStatus::PARTIALLY_SHIPPED && $shipments->isNotEmpty())))
     @if ($so->status->awaitsShipment())
         <p class="mt-3 border-t border-gray-100 pt-3 text-sm text-gray-600">
             <x-phosphor-package class="mr-1 inline h-4 w-4 align-text-bottom" />
-            @if ($parcels->isEmpty())
+            @if ($shipments->isEmpty())
                 Waiting for the seller to ship. You get an e-mail with the tracking details.
+                @if (! $several && ($expected = $plan->first()?->expectedText($order->paid_at)))
+                    <span data-expected-shipping>{{ $expected }}.</span>
+                @endif
             @else
-                {{ $parcels->count() }} {{ \Illuminate\Support\Str::plural('parcel', $parcels->count()) }} shipped; the rest of this part ships separately. You get an e-mail for every parcel.
+                {{ $shipments->count() }} {{ \Illuminate\Support\Str::plural('parcel', $shipments->count()) }} shipped; the rest of this part ships separately. You get an e-mail for every parcel.
             @endif
         </p>
     @endif
-    @if ($parcels->count() > 1 || ($so->status === \App\Enums\SellerOrderStatus::PARTIALLY_SHIPPED && $parcels->isNotEmpty()))
+    @if ($several)
         <ul class="mt-3 divide-y divide-gray-100 border-t border-gray-100 text-sm" data-parcels>
-            @foreach ($parcels as $parcel)
-                <li class="flex flex-wrap items-center justify-between gap-3 py-2">
-                    <p class="min-w-0 text-gray-700">
-                        <x-phosphor-truck class="mr-1 inline h-4 w-4 align-text-bottom" />
-                        Parcel {{ $loop->iteration }}: shipped {{ $parcel->shipped_at?->format('M j') }}
-                        @if (filled($parcel->carrier)) with <strong>{{ $parcel->carrier }}</strong>@endif
-                        @if (filled($parcel->tracking_number)), tracking <span class="font-mono">{{ $parcel->tracking_number }}</span>@endif
-                        <span class="block text-gray-500">{{ $parcel->items->map(fn ($row) => ($row->quantity > 1 ? $row->quantity.' x ' : '').$row->orderItem?->title)->implode(', ') }}</span>
-                    </p>
-                    @if (filled($parcel->tracking_url))
-                        <a href="{{ $parcel->tracking_url }}" target="_blank" rel="noopener nofollow" class="font-medium text-brand-700 underline hover:text-brand-900">Track parcel</a>
+            @foreach ($plan as $parcel)
+                <li class="py-3" data-parcel="{{ $parcel->key }}">
+                    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <p class="min-w-0 font-medium text-gray-950">
+                            <x-phosphor-package class="mr-1 inline h-4 w-4 align-text-bottom" />
+                            Parcel {{ $loop->iteration }} of {{ $plan->count() }}
+                            <span class="font-normal text-gray-500">&middot; {{ $parcel->label() }}</span>
+                        </p>
+                        <x-marketplace.badge :color="$parcel->isShipped() ? 'success' : ($parcel->isPartlyShipped() ? 'info' : 'warning')" data-parcel-status>
+                            {{ $parcel->isShipped() ? 'Shipped' : ($parcel->isPartlyShipped() ? 'Partly shipped' : 'Not shipped yet') }}
+                        </x-marketplace.badge>
+                    </div>
+                    <p class="mt-1 text-gray-600">{{ $parcel->items->map(fn ($item) => ($item->quantity > 1 ? $item->quantity.' x ' : '').$item->title)->implode(', ') }}</p>
+                    @foreach ($parcel->shipments as $shipment)
+                        <div class="mt-1 flex flex-wrap items-center justify-between gap-3 text-gray-700">
+                            <p class="min-w-0">
+                                <x-phosphor-truck class="mr-1 inline h-4 w-4 align-text-bottom" />
+                                Shipped {{ $shipment->shipped_at?->format('M j') }}{{ filled($shipment->carrier) ? ' with ' : '' }}@if (filled($shipment->carrier))<strong>{{ $shipment->carrier }}</strong>@endif{{ filled($shipment->tracking_number) ? ', tracking ' : '' }}@if (filled($shipment->tracking_number))<span class="font-mono">{{ $shipment->tracking_number }}</span>@endif
+                            </p>
+                            @if (filled($shipment->tracking_url))
+                                <a href="{{ $shipment->tracking_url }}" target="_blank" rel="noopener nofollow" class="font-medium text-brand-700 underline hover:text-brand-900">Track parcel</a>
+                            @endif
+                        </div>
+                    @endforeach
+                    @if (! $parcel->isShipped() && $so->status->awaitsShipment())
+                        <p class="mt-1 text-gray-500" data-expected-shipping>
+                            {{ $parcel->expectedText($order->paid_at) ?? ($parcel->isPartlyShipped() ? 'The rest of this parcel ships soon.' : 'Being prepared for shipment.') }}
+                        </p>
                     @endif
                 </li>
             @endforeach

@@ -69,65 +69,47 @@ new class extends Component
                                             <span class="font-semibold text-gray-900">{{ $group->displayName }}</span>
                                         @endif
                                     </span>
-                                    <span class="text-gray-500">{{ $group->hasPhysicalItems() ? 'Ships separately from this seller' : 'Digital delivery' }}</span>
+                                    <span class="text-gray-500">
+                                        @if (! $group->hasPhysicalItems())
+                                            Digital delivery
+                                        @elseif ($group->hasMultipleParcels())
+                                            Ships in {{ count($group->shippingGroups) }} parcels
+                                        @endif
+                                    </span>
                                 </header>
 
-                                <ul class="divide-y divide-gray-200">
-                                    @foreach ($group->lines as $line)
-                                        <li class="flex gap-4 p-4" wire:key="line-{{ $line->id() }}">
-                                            <x-marketplace.thumb :purchasable="$line->purchasable" class="rounded-md" />
+                                @php
+                                    // The parcels of this seller (own stock / each supplier), then the lines that ship nowhere (downloads).
+                                    $parcels = $group->shippingGroups;
+                                    $parceled = collect($parcels)->flatMap(fn ($parcel) => collect($parcel->lines)->map(fn ($line) => $line->id()))->all();
+                                    $others = collect($group->lines)->reject(fn ($line) => in_array($line->id(), $parceled, true))->values();
+                                @endphp
 
-                                            <div class="min-w-0 flex-1">
-                                                <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-                                                    <h2 class="min-w-0 text-lg font-semibold text-gray-900">
-                                                        @if ($line->purchasable instanceof Design)
-                                                            <a href="{{ route('design', ['id' => $line->purchasable->getKey()]) }}" class="hover:text-link-400">{{ $line->title }}</a>
-                                                        @elseif ($line->purchasable instanceof Listing)
-                                                            <a href="{{ $line->purchasable->isStore() && $line->purchasable->driver_id ? route('driver', ['id' => $line->purchasable->driver_id]) : route('listing', ['uuid' => $line->purchasable->uuid]) }}" class="hover:text-link-400">{{ $line->title }}</a>
-                                                        @else
-                                                            {{ $line->title }}
-                                                        @endif
-                                                    </h2>
-                                                    <p class="text-lg font-semibold text-gray-900">{{ money($line->lineTotalCents()) }}</p>
-                                                </div>
+                                @foreach ($parcels as $parcel)
+                                    <div wire:key="parcel-{{ $group->seller?->getKey() ?? 0 }}-{{ $parcel->key }}" class="border-t border-gray-200 first:border-t-0">
+                                        <x-marketplace.parcel-heading :group="$parcel" :note="$parcel->shippingPending ? 'Shipping at checkout' : ($parcel->shippingCents > 0 ? 'Shipping '.money($parcel->shippingCents) : 'Free shipping')" class="border-b border-gray-100 bg-white px-4 py-2.5" />
+                                        <ul class="divide-y divide-gray-200">
+                                            @foreach ($parcel->lines as $line)
+                                                <x-marketplace.cart-line :line="$line" />
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                @endforeach
 
-                                                <p class="mt-0.5 text-sm text-gray-500">
-                                                    {{ $line->isDigital ? 'Digital download' : 'Physical item, shipped by the seller' }}
-                                                    @if (! $line->isDigital && $line->purchasable instanceof Listing)
-                                                        &middot; {{ $line->purchasable->condition->label() }}
-                                                    @endif
-                                                    &middot; {{ money($line->unitPriceCents) }} each
-                                                </p>
-
-                                                @if ($line->priceChanged())
-                                                    <p class="mt-1 text-sm font-medium text-amber-700">
-                                                        The price changed from {{ money($line->storedUnitPriceCents) }} to {{ money($line->unitPriceCents) }} since you added it.
-                                                    </p>
-                                                @endif
-                                                @foreach ($line->issues as $issue)
-                                                    <p class="mt-1 text-sm font-medium text-red-600">{{ $issue->message }}</p>
-                                                @endforeach
-
-                                                <div class="mt-3 flex flex-wrap items-center gap-4">
-                                                    @if (! $line->isDigital && $line->purchasable)
-                                                        <div class="inline-flex items-center overflow-hidden rounded-md border border-gray-300">
-                                                            <button type="button" wire:click="updateQuantity({{ $line->id() }}, {{ $line->quantity - 1 }})" class="px-2.5 py-1.5 text-gray-700 hover:bg-gray-100" aria-label="Decrease quantity">&minus;</button>
-                                                            <input type="number" min="1" @if($line->maxQuantity) max="{{ $line->maxQuantity }}" @endif
-                                                                   value="{{ $line->quantity }}"
-                                                                   wire:change="updateQuantity({{ $line->id() }}, $event.target.value)"
-                                                                   aria-label="Quantity"
-                                                                   class="w-14 appearance-none border-0 border-x border-gray-300 bg-transparent px-1 py-1.5 text-center text-sm focus:ring-0">
-                                                            <button type="button" wire:click="updateQuantity({{ $line->id() }}, {{ $line->quantity + 1 }})" class="px-2.5 py-1.5 text-gray-700 hover:bg-gray-100" aria-label="Increase quantity">+</button>
-                                                        </div>
-                                                    @endif
-                                                    <button type="button" wire:click="removeItem({{ $line->id() }})" class="text-sm font-medium text-red-600 hover:text-red-800">
-                                                        Remove
-                                                    </button>
-                                                </div>
+                                @if ($others->isNotEmpty())
+                                    <div class="border-t border-gray-200 first:border-t-0">
+                                        @if ($parcels !== [])
+                                            <div class="flex items-center gap-2 border-b border-gray-100 bg-white px-4 py-2.5 text-sm font-medium text-gray-800">
+                                                <x-phosphor-download-simple class="h-4 w-4 text-gray-500" /> Digital delivery
                                             </div>
-                                        </li>
-                                    @endforeach
-                                </ul>
+                                        @endif
+                                        <ul class="divide-y divide-gray-200">
+                                            @foreach ($others as $line)
+                                                <x-marketplace.cart-line :line="$line" />
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                @endif
 
                                 <footer class="flex justify-between border-t border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-600">
                                     <span>Subtotal from this seller</span>

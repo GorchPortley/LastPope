@@ -18,6 +18,11 @@ class EditListing extends EditRecord
         ];
     }
 
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return ListingResource::normalizeFulfilment($data);
+    }
+
     protected function beforeSave(): void
     {
         if (! ListingResource::passesChannelRules($this->form->getState(), $this->record)) {

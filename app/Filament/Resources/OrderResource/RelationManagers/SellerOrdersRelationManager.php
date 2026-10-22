@@ -6,7 +6,9 @@ use App\Enums\SellerOrderStatus;
 use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Filament\Resources\OrderIssueResource;
 use App\Filament\Resources\OrderResource\Pages\ViewOrder;
+use App\Filament\Resources\OrderResource\ShipStoreParcelAction;
 use App\Models\SellerOrder;
+use App\Services\Marketplace\ParcelPlanner;
 use App\Services\Marketplace\RefundService;
 use App\Services\Marketplace\ShipmentService;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
@@ -51,6 +53,10 @@ class SellerOrdersRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('platform_fee_cents')->label('Fee')->formatStateUsing($money),
                 Tables\Columns\TextColumn::make('payout_cents')->label('Payout')->formatStateUsing($money),
                 Tables\Columns\TextColumn::make('transferred_at')->label('Transferred')->dateTime()->placeholder('no'),
+                Tables\Columns\TextColumn::make('parcels')
+                    ->label('Parcels')
+                    ->state(fn (SellerOrder $record): ?string => static::parcelsText($record))
+                    ->placeholder('-'),
                 Tables\Columns\TextColumn::make('tracking_number')
                     ->label('Tracking')
                     ->description(fn (SellerOrder $record): ?string => $record->carrier)
@@ -69,12 +75,15 @@ class SellerOrdersRelationManager extends RelationManager
                     ->placeholder('-'),
             ])
             ->actions([
-                // Platform sellers (SDLabs' store) have no seller dashboard of their own: any admin ships for them.
+                // Platform sellers (SDLabs' store) have no seller dashboard of their own: any admin ships for them. The
+                // store ships parcels (own stock now, the suppliers' parcels from their purchase orders), see ShipStoreParcelAction.
+                ShipStoreParcelAction::make(Tables\Actions\Action::class),
                 Tables\Actions\Action::make('markShipped')
                     ->label(fn (SellerOrder $record): string => $record->status === SellerOrderStatus::SHIPPED ? 'Update tracking' : 'Mark shipped')
                     ->icon('heroicon-m-truck')
                     ->color('primary')
                     ->visible(fn (SellerOrder $record): bool => in_array($record->status, [SellerOrderStatus::AWAITING_SHIPMENT, SellerOrderStatus::PARTIALLY_SHIPPED, SellerOrderStatus::SHIPPED], true)
+                        && ($record->status === SellerOrderStatus::SHIPPED || ! $record->seller?->isPlatformSeller())
                         && Gate::allows('ship', $record))
                     ->modalHeading(fn (SellerOrder $record): string => 'Ship '.$record->order->number)
                     ->modalDescription('The buyer gets an e-mail with these details.')
@@ -156,6 +165,18 @@ class SellerOrdersRelationManager extends RelationManager
                             : Notification::make()->warning()->title('Nothing to reverse')->send();
                     }),
             ]);
+    }
+
+    /** "1 of 2 parcels shipped" for a store order that ships in several parcels, null otherwise. */
+    public static function parcelsText(SellerOrder $sellerOrder): ?string
+    {
+        if (! $sellerOrder->seller?->isPlatformSeller() || ! $sellerOrder->hasPhysicalItems()) {
+            return null;
+        }
+
+        $parcels = app(ParcelPlanner::class)->parcels($sellerOrder);
+
+        return $parcels->isEmpty() ? null : $parcels->where('complete', true)->count().' of '.$parcels->count().' '.\Illuminate\Support\Str::plural('parcel', $parcels->count()).' shipped';
     }
 
     /** Refunded (fully or partly) after a payout was transferred, but the reversal never went through. */

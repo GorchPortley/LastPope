@@ -4,6 +4,7 @@ namespace App\Filament\Resources\OrderResource\Pages;
 
 use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Filament\Resources\OrderResource;
+use App\Filament\Resources\OrderResource\ShipStoreParcelAction;
 use App\Models\Order;
 use App\Services\Marketplace\Data\RefundResult;
 use App\Services\Marketplace\RefundService;
@@ -20,6 +21,7 @@ class ViewOrder extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            ShipStoreParcelAction::make(Actions\Action::class),
             Actions\Action::make('refundOrder')
                 ->label('Refund order')
                 ->icon('heroicon-m-arrow-uturn-left')

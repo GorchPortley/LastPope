@@ -3,7 +3,6 @@
 namespace App\Http\Livewire;
 
 use App\Contracts\Purchasable;
-use App\Enums\FulfillmentMode;
 use App\Enums\ListingStatus;
 use App\Models\CartItem;
 use App\Models\Design;
@@ -35,8 +34,11 @@ class BuyBox extends Component
 
     public ?string $label = null;
 
-    /** Units to put in the cart (listings only; digital items are always 1). */
-    public int $quantity = 1;
+    /**
+     * Units to put in the cart (listings only; digital items are always 1). Bound live to the quantity input, so it can be
+     * empty while the buyer types: use quantity() for the number.
+     */
+    public int|string|null $quantity = 1;
 
     public ?string $notice = null;
 
@@ -58,7 +60,7 @@ class BuyBox extends Component
 
         /** @var Purchasable&Model $purchasable */
         $purchasable = $this->purchasable;
-        $quantity = $purchasable->isDigital() ? 1 : max(1, $this->quantity);
+        $quantity = $purchasable->isDigital() ? 1 : $this->quantity();
 
         $result = app(CartService::class)->add($user, $purchasable, $quantity);
 
@@ -70,10 +72,16 @@ class BuyBox extends Component
         }
     }
 
+    /** The units chosen so far: at least one, whatever is in the input. */
+    public function quantity(): int
+    {
+        return max(1, (int) $this->quantity);
+    }
+
     /**
      * What the box shows for the current visitor.
      *
-     * @return array{status: string, price: int, free: bool, digital: bool, reason: ?string, max: int, stockText: string, inCart: int, downloadUrl: ?string, lot: ?string, kind: string, shipping: ?array{from: string, domestic: string, international: string, handling: string}}
+     * @return array{status: string, price: int, free: bool, digital: bool, reason: ?string, max: int, stockText: string, stockWarn: bool, inCart: int, downloadUrl: ?string, lot: ?string, kind: string, shipping: ?array{from: string, domestic: string, international: string, handling: string}}
      */
     public function state(): array
     {
@@ -92,11 +100,12 @@ class BuyBox extends Component
             'reason' => null,
             'max' => 1,
             'stockText' => '',
+            'stockWarn' => false,
             'inCart' => 0,
             'downloadUrl' => null,
             'lot' => $p instanceof Listing && $p->isLot() ? ($p->units_per_lot === 2 ? 'pair' : 'set') : null,
             'kind' => $p->getMorphClass(),
-            'shipping' => $p instanceof Listing ? $this->shippingSummary($p) : null,
+            'shipping' => null,
         ];
 
         $seller = $p->getSeller();
@@ -135,10 +144,13 @@ class BuyBox extends Component
 
         if ($p instanceof Listing) {
             $state['max'] = max(1, $p->availableQuantity($user));
-            // Own stock shows its count; a product a supplier ships says when it ships (docs/PLAN.md 8.2).
-            $state['stockText'] = $p->fulfillmentMode() === FulfillmentMode::STOCK
-                ? $state['max'].' available'
-                : $p->shippingTextFor(1, $user);
+            // The store says when the chosen quantity ships (docs/PLAN.md 8.2): in stock and shipped by us, or by a supplier
+            // within its lead time. A hybrid listing answers for the quantity in the input, so the text follows it.
+            // Marketplace sellers show their count.
+            $quote = $p->isStore() ? $p->fulfillmentFor($this->quantity(), $user) : null;
+            $state['stockText'] = $quote ? $quote->shippingText() : $state['max'].' available';
+            $state['stockWarn'] = $state['max'] <= 3 || ($quote !== null && ! $quote->available);
+            $state['shipping'] = $this->shippingSummary($p, $user);
         }
 
         if (! $available) {
@@ -177,25 +189,24 @@ class BuyBox extends Component
     }
 
     /**
-     * The shipping terms in a few words for the box: where from, the two base prices and the handling time.
+     * The shipping terms in a few words for the box: where from, the two base prices and - for a marketplace seller's own
+     * stock - the handling time. A store listing says when it ships in the stock line instead, and prices the quantity in
+     * the input the way checkout would: own stock by the listing's rules, a supplier's parcel by the supplier's.
      *
-     * @return array{from: string, domestic: string, international: string, handling: string}
+     * @return array{from: string, domestic: string, international: string, handling: ?string}
      */
-    private function shippingSummary(Listing $listing): array
+    private function shippingSummary(Listing $listing, ?User $user): array
     {
         $price = fn (?int $cents): string => $cents === null ? 'not available' : ($cents > 0 ? money($cents) : 'free');
 
-        // A line a supplier ships is priced with the supplier's rules and takes the supplier's lead time (never named).
-        $quote = $listing->fulfillmentFor(1, auth()->user());
-        $supplier = $quote->isSupplier() ? $quote->supplier : null;
+        $quote = $listing->isStore() ? $listing->fulfillmentFor($this->quantity(), $user) : null;
+        $supplier = $quote?->isSupplier() ? $quote->supplier : null;
 
         return [
             'from' => Countries::name($supplier?->ships_from_country ?? $listing->ships_from_country),
             'domestic' => $price($supplier ? $supplier->shipping_domestic_cents : $listing->shipping_domestic_cents),
             'international' => $price($supplier ? $supplier->shipping_international_cents : $listing->shipping_international_cents),
-            'handling' => $supplier
-                ? ($quote->leadTimeText() ?: 'a few days')
-                : $listing->handling_days.' '.Str::plural('day', $listing->handling_days),
+            'handling' => $listing->isStore() ? null : $listing->handling_days.' '.Str::plural('day', $listing->handling_days),
         ];
     }
 

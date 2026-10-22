@@ -305,6 +305,17 @@ class ShipmentService
     }
 
     /**
+     * Units the store itself still has to ship (for the admin's "Ship SDLabs parcel" form): everything that is left except
+     * the lines a supplier fulfils through a purchase order.
+     *
+     * @return array<int, int> order item id => units
+     */
+    public function ownRemainingQuantities(SellerOrder $sellerOrder): array
+    {
+        return $this->ownRemaining($sellerOrder);
+    }
+
+    /**
      * Units left that nobody but us ships: everything except the lines a supplier fulfils through a purchase order.
      *
      * @return array<int, int> order item id => units

@@ -6,6 +6,7 @@ use App\Enums\OrderStatus;
 use App\Enums\SellerOrderStatus;
 use App\Filament\Resources\OrderResource\Pages;
 use App\Filament\Resources\OrderResource\RelationManagers\IssuesRelationManager;
+use App\Filament\Resources\OrderResource\RelationManagers\PurchaseOrdersRelationManager;
 use App\Filament\Resources\OrderResource\RelationManagers\SellerOrdersRelationManager;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -138,13 +139,16 @@ class OrderResource extends Resource
                     ->schema([
                         Infolists\Components\RepeatableEntry::make('items')
                             ->label('')
-                            ->columns(5)
+                            ->columns(6)
                             ->schema([
                                 Infolists\Components\TextEntry::make('title')->columnSpan(2),
                                 Infolists\Components\TextEntry::make('quantity')->label('Qty'),
                                 Infolists\Components\TextEntry::make('is_digital')
                                     ->label('Type')
                                     ->formatStateUsing(fn ($state): string => $state ? 'Digital' : 'Physical'),
+                                Infolists\Components\TextEntry::make('fulfilled_by')
+                                    ->label('Fulfilled by')
+                                    ->state(fn (OrderItem $record): string => static::fulfilledBy($record)),
                                 Infolists\Components\TextEntry::make('line_total_cents')
                                     ->label('Line total')
                                     ->formatStateUsing(fn ($state, OrderItem $record): string => money((int) $state, $record->order?->currency)),
@@ -166,6 +170,7 @@ class OrderResource extends Resource
     {
         return [
             SellerOrdersRelationManager::class,
+            PurchaseOrdersRelationManager::class,
             IssuesRelationManager::class,
         ];
     }
@@ -188,6 +193,22 @@ class OrderResource extends Resource
                 ->where('reversal_pending_cents', '>', 0)
                 // refunded before partial refunds existed: no reversal id means it never went through
                 ->orWhere(fn (Builder $legacy) => $legacy->where('status', SellerOrderStatus::REFUNDED->value)->whereNull('stripe_reversal_id')));
+    }
+
+    /** Where a line comes from, for the admin: the seller, the store's own stock, or a supplier (with its purchase order). */
+    public static function fulfilledBy(OrderItem $item): string
+    {
+        if ($item->is_digital) {
+            return 'Download';
+        }
+
+        if ($item->isFromSupplier()) {
+            $po = $item->supplierOrderItem?->supplierOrder;
+
+            return 'Supplier'.($po ? ' ('.$po->number.')' : '');
+        }
+
+        return $item->sellerOrder?->seller?->isPlatformSeller() ? 'SDLabs stock' : 'Seller';
     }
 
     public static function status(mixed $state): OrderStatus

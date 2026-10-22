@@ -315,10 +315,12 @@ it('ships a platform order from the admin panel', function () {
         ['ownerRecord' => $order, 'pageClass' => App\Filament\Resources\OrderResource\Pages\ViewOrder::class],
     );
 
-    $manager->assertTableActionVisible('markShipped', $sellerOrder)
-        ->callTableAction('markShipped', $sellerOrder, data: ['carrier' => 'DHL', 'tracking_number' => 'JD0007', 'tracking_url' => 'https://dhl.example/JD0007'])
+    // the store ships parcels ("Ship SDLabs parcel", R3 part 2): the own-stock items of the order, in one go
+    $item = $sellerOrder->items()->first();
+    $manager->assertTableActionVisible('shipParcel', $sellerOrder)->assertTableActionHidden('markShipped', $sellerOrder)
+        ->callTableAction('shipParcel', $sellerOrder, data: ['quantities' => [$item->id => $item->quantity], 'carrier' => 'DHL', 'tracking_number' => 'JD0007', 'tracking_url' => 'https://dhl.example/JD0007'])
         ->assertHasNoTableActionErrors()
-        ->assertNotified('Marked as shipped');
+        ->assertNotified('Parcel shipped');
 
     expect($sellerOrder->fresh())->status->toBe(SellerOrderStatus::SHIPPED)->carrier->toBe('DHL')->tracking_number->toBe('JD0007');
 
@@ -327,5 +329,5 @@ it('ships a platform order from the admin panel', function () {
     Livewire\Livewire::actingAs($admin)->test(
         App\Filament\Resources\OrderResource\RelationManagers\SellerOrdersRelationManager::class,
         ['ownerRecord' => $marketOrderModel, 'pageClass' => App\Filament\Resources\OrderResource\Pages\ViewOrder::class],
-    )->assertTableActionHidden('markShipped', $marketSellerOrder);
+    )->assertTableActionHidden('markShipped', $marketSellerOrder)->assertTableActionHidden('shipParcel', $marketSellerOrder);
 });

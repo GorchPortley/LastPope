@@ -136,28 +136,29 @@ new class extends Component
 
                             <div class="divide-y divide-gray-200">
                                 @foreach ($summary->sellers as $group)
-                                    <div class="space-y-2 p-5 text-sm" wire:key="group-{{ $group->seller?->getKey() ?? 0 }}">
+                                    {{-- One block per parcel (own stock / each supplier), then the lines that ship nowhere (downloads). --}}
+                                    @php($parcels = $group->shippingGroups)
+                                    @php($parceled = collect($parcels)->flatMap(fn ($parcel) => collect($parcel->lines)->map(fn ($line) => $line->id()))->all())
+                                    @php($others = collect($group->lines)->reject(fn ($line) => in_array($line->id(), $parceled, true))->values())
+                                    <div class="space-y-3 p-5 text-sm" wire:key="group-{{ $group->seller?->getKey() ?? 0 }}" data-checkout-seller>
                                         <div class="font-medium text-gray-600">Sold by {{ $group->displayName }}</div>
-                                        @foreach ($group->lines as $line)
-                                            <div wire:key="line-{{ $line->id() }}">
-                                                <div class="flex justify-between gap-3 text-gray-900">
-                                                    <span class="min-w-0">{{ $line->quantity > 1 ? $line->quantity.' x ' : '' }}{{ $line->title }}</span>
-                                                    <span class="flex-shrink-0">{{ money($line->lineTotalCents()) }}</span>
-                                                </div>
-                                                @if ($line->priceChanged())
-                                                    <p class="text-amber-700">The price changed from {{ money($line->storedUnitPriceCents) }} to {{ money($line->unitPriceCents) }} since you added it.</p>
-                                                @endif
-                                                @foreach ($line->issues as $issue)
-                                                    <p class="text-red-600">{{ $issue->message }}</p>
+
+                                        @foreach ($parcels as $parcel)
+                                            <div class="space-y-2 rounded-md bg-gray-50 p-3" wire:key="parcel-{{ $group->seller?->getKey() ?? 0 }}-{{ $parcel->key }}">
+                                                <x-marketplace.parcel-heading :group="$parcel" />
+                                                @foreach ($parcel->lines as $line)
+                                                    <x-marketplace.checkout-line :line="$line" />
                                                 @endforeach
+                                                <div class="flex justify-between border-t border-gray-200 pt-2 text-gray-600">
+                                                    <span>Shipping</span>
+                                                    <span data-parcel-shipping>{{ $parcel->shippingPending ? 'choose an address' : ($parcel->shippingCents > 0 ? money($parcel->shippingCents) : 'free') }}</span>
+                                                </div>
                                             </div>
                                         @endforeach
-                                        @if ($group->hasPhysicalItems())
-                                            <div class="flex justify-between text-gray-600">
-                                                <span>Shipping</span>
-                                                <span>{{ $group->shippingPending ? 'choose an address' : money($group->shippingCents) }}</span>
-                                            </div>
-                                        @endif
+
+                                        @foreach ($others as $line)
+                                            <x-marketplace.checkout-line :line="$line" />
+                                        @endforeach
                                     </div>
                                 @endforeach
 

@@ -23,7 +23,7 @@ class CreateListing extends CreateRecord
         $uuid = (string) ($data['uuid'] ?? '');
         $data['uuid'] = Str::isUuid($uuid) && ! Listing::withTrashed()->where('uuid', $uuid)->exists() ? $uuid : (string) Str::uuid();
 
-        return $data;
+        return ListingResource::normalizeFulfilment($data);
     }
 
     protected function afterCreate(): void

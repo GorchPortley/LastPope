@@ -133,7 +133,7 @@ it('sells SDLabs\' new driver through the store listing box, with its label', fu
     $listing = storeListing(['price_cents' => 7000, 'quantity' => 9], $driver);
 
     Livewire::actingAs($this->buyer)->test(BuyBox::class, ['purchasable' => $listing, 'label' => 'New from SDLabs'])
-        ->assertSee('New from SDLabs')->assertSee('$70.00')->assertSee('9 available')->assertSee('Add to cart')
+        ->assertSee('New from SDLabs')->assertSee('$70.00')->assertSee('In stock, ships in 3 days')->assertDontSee('9 available')->assertSee('Add to cart')
         ->call('add')->assertSee('was added to your cart');
 
     expect($this->carts->count($this->buyer))->toBe(1);

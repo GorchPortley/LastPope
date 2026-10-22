@@ -68,6 +68,37 @@ class SupplierFeedSync
         return $result;
     }
 
+    /**
+     * A CSV the supplier (or an admin) can fill in: the configured SKU, quantity and - when mapped - cost column headers,
+     * with a row per SKU of the supplier's listings (quantity and cost left empty: such rows are skipped by a sync) or one
+     * example row when the supplier has no listings with a SKU yet. For the admin's "Download feed template" action.
+     */
+    public function templateCsv(Supplier $supplier): string
+    {
+        $skuColumn = (string) ($supplier->feed_sku_column ?: 'sku');
+        $quantityColumn = (string) ($supplier->feed_quantity_column ?: 'quantity');
+        $costColumn = filled($supplier->feed_cost_column) ? (string) $supplier->feed_cost_column : null;
+
+        $skus = $supplier->listings()->whereNotNull('supplier_sku')->where('supplier_sku', '!=', '')->orderBy('id')->pluck('supplier_sku')->unique()->values();
+
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, array_values(array_filter([$skuColumn, $quantityColumn, $costColumn])), escape: '');
+
+        if ($skus->isEmpty()) {
+            fputcsv($handle, array_values(array_filter(['EXAMPLE-SKU-001', '10', $costColumn !== null ? '12.50' : null], fn ($cell) => $cell !== null)), escape: '');
+        }
+
+        foreach ($skus as $sku) {
+            fputcsv($handle, $costColumn !== null ? [$sku, '', ''] : [$sku, ''], escape: '');
+        }
+
+        rewind($handle);
+        $csv = (string) stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv;
+    }
+
     // --- Reading the feed ------------------------------------------------------------------------------------------
 
     /** @throws SupplierFeedException */

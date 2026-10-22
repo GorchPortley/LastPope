@@ -494,3 +494,35 @@ products**. Marketplace (user) listings are unchanged. Migration policy §7 appl
   tracking link, expected window for unshipped supplier parcels: `Parcel::expectedText()` counts business days from the payment date);
   `OrderReceipt` lists the parcels when there are several, `OrderShipped` adds "Still to come". No supplier name, SKU, cost or PO number reaches
   a buyer (tests assert the demo suppliers' names are absent from every buyer page and mail).
+
+## 9. Revision R4: personalised design PDF and branded e-mails (owner requests)
+
+### R4.1 Personalised design PDF
+- The stored snapshot ZIP keeps the **generic** PDF (no name; owner previews, fallbacks). Every design snapshot download
+  (`DownloadController::designSnapshot`, after the `download` policy) goes through `Services\Snapshots\PersonalisedSnapshotDownload`: it
+  renders the PDF again for the downloader (`DesignPdf::render($snapshot->stashed_data, PdfLicense)`) and **streams a new ZIP** with
+  `maennchen/zipstream-php` (now a direct requirement, pinned to the installed 3.2.2): every other entry is copied entry by entry from the stored
+  ZIP (ZipArchive stream -> ZipStream, same names, order, compression kind and timestamps, no temp file, only the PDF is in memory), the PDF entry
+  is the personalised one. No PDF entry, a non-local disk or a render failure -> the stored ZIP is streamed unchanged.
+- The PDF is rendered from the snapshot's own manifest (`DesignSnapshotBuilder::content()` also stores `tag`), not from the live design, so a
+  version stays what it was. The footer on every page: "Licensed to {name} (@{username}) · downloaded {date} · {Order SDL-…|Free download|
+  Designer copy|Admin copy|Complimentary copy|Purchased copy} · {app url}" + "For personal use — please don't redistribute." + "Page x of y". No e-mail
+  address, everything escaped (`PdfLicense`). dompdf runs with PHP, JavaScript and remote access off; images come from disk as data URIs.
+- Cache: `{snapshots dir}/personalised/{snapshot id}/u{user id}-{snapshot updated_at}-{footer fingerprint}.pdf` on the private disk (a changed name or
+  a new day renders a fresh PDF and replaces the user's older one). `PersonalisedSnapshotDownload::forget()` runs when the snapshot is rebuilt
+  (`DesignSnapshotBuilder`) or deleted (`DesignSnapshot::deleted`); deleting the design removes its whole folder.
+- Look: `resources/views/pdf/Design.blade.php` in the default palette (`App\Support\BrandColors`, a PHP copy of the hex values of app.css;
+  `BrandColorsTest` keeps them in sync), the site logo as SVG (`resources/pdf/sdlabs-logo-white.svg`), DejaVu Sans (the site itself uses the
+  system font stack, there is no web font to embed).
+
+### R4.2 Branded e-mails
+- Mail theme `sdlabs` (`config('mail.markdown.theme')`, `resources/views/vendor/mail/html/themes/sdlabs.css`): brand-950 header band with the
+  wordmark as text, amber rule, brand-700 buttons, light-tinted table header, footer with the site links; dark-mode and phone rules live in
+  `html/layout.blade.php`. `<x-mail::message variant="business">` (the supplier purchase order) drops the tagline and the marketing links.
+  Every mail the app sends is markdown mail or a notification through `notifications::email`, so all of them use it (Wave and Laravel's verify and
+  reset mails included). Flarum's own forum mails are sent by Flarum with its own templates.
+- Admin > Settings > **Email previews** (`Filament\Pages\EmailPreviews`, admins only): all mails rendered in sandboxed iframes (desktop / phone
+  width, plain-text version) from made-up data. `Support\EmailPreviews\SampleData` creates the shop with the real order code (OrderBuilder,
+  ShipmentService, plain Eloquent, no factories: the production image has no Faker) inside a transaction that is always rolled back, with
+  notifications, mail and queues faked; `EmailPreviews::definitions()` lists the mails (add new ones there: a test checks every mail-capable
+  notification is covered).

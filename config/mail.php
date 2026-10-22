@@ -108,7 +108,8 @@ return [
     */
 
     'markdown' => [
-        'theme' => 'default',
+        // resources/views/vendor/mail/html/themes/sdlabs.css: the SDLabs brand colours, header band and footer
+        'theme' => 'sdlabs',
 
         'paths' => [
             resource_path('views/vendor/mail'),

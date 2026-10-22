@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Snapshots\PersonalisedSnapshotDownload;
 use Database\Factories\DesignSnapshotFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -33,6 +34,9 @@ class DesignSnapshot extends Model
             if (filled($snapshot->download_path)) {
                 Storage::disk('private')->delete($snapshot->download_path);
             }
+
+            // the personalised PDFs made for this snapshot's downloads
+            PersonalisedSnapshotDownload::forget($snapshot);
         });
     }
 

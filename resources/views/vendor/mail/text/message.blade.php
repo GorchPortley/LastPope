@@ -1,3 +1,4 @@
+@props(['variant' => 'default', 'label' => 'Purchase order'])
 @component('mail::layout')
     {{-- Header --}}
     @slot('header')
@@ -20,8 +21,7 @@
 
     {{-- Footer --}}
     @slot('footer')
-        @component('mail::footer')
-            © {{ date('Y') }} {{ config('app.name') }}. @lang('All rights reserved.')
+        @component('mail::footer', ['variant' => $variant])
         @endcomponent
     @endslot
 @endcomponent

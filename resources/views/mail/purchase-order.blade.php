@@ -1,4 +1,5 @@
-<x-mail::message>
+{{-- businesslike: same theme, but the footer carries no marketing links --}}
+<x-mail::message variant="business">
 # Purchase order {{ $po->number }}
 
 Hello {{ $supplier->contact_name ?: $supplier->name }},

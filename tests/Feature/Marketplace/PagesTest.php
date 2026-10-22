@@ -79,7 +79,9 @@ it('shows the cart with prices from the cent columns and keeps guests out', func
 it('renders the design snapshot PDF view without a network', function () {
     $design = Design::factory()->create(['build_cost_cents' => 50000]);
 
-    $html = view('pdf.Design', ['variation' => 'v1', 'design' => $design])->render();
+    $pdf = app(App\Services\Snapshots\DesignPdf::class)->viewData(['name' => $design->name, 'version' => 'v1', 'build_cost_cents' => 50000]);
+    $html = view('pdf.Design', ['pdf' => $pdf, 'license' => null])->render();
 
-    expect($html)->toContain('$500.00')->not->toContain('http://')->not->toContain('https://');
+    // nothing is fetched: no remote image, stylesheet or font (the footer only prints the site address as text)
+    expect($html)->toContain('$500.00')->not->toMatch('/(src|href)=["\']https?:/')->not->toContain('url(http')->not->toContain('@import');
 });

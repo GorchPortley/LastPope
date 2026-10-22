@@ -4,7 +4,7 @@ namespace App\Services\Snapshots;
 
 use App\Models\Design;
 use App\Models\DesignSnapshot;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -12,6 +12,9 @@ use Throwable;
  * Builds a versioned design snapshot: a ZIP on the private disk with every uploaded file of the
  * design (and of its components), a PDF of the design page, manifest.json and README.txt, plus the
  * DesignSnapshot row that records the version, the manifest and the file size.
+ *
+ * The PDF in the ZIP is the generic copy. Every download of it renders a personalised one from the manifest instead
+ * (see PersonalisedSnapshotDownload), so a snapshot is the single source of what its PDF shows.
  *
  * Path: designs/{storage_key}/snapshots/{slug}-{version}.zip
  */
@@ -32,7 +35,7 @@ class DesignSnapshotBuilder extends SnapshotBuilder
         'other_files' => 'other',
     ];
 
-    public function __construct(private readonly PdfImages $images = new PdfImages())
+    public function __construct(private readonly DesignPdf $pdf = new DesignPdf())
     {
     }
 
@@ -48,6 +51,8 @@ class DesignSnapshotBuilder extends SnapshotBuilder
 
         $archive = new SnapshotArchive($this->disk());
         $warnings = [];
+        $createdAt = now()->toIso8601String();
+        $content = $this->content($design, $version);
 
         try {
             foreach (self::DESIGN_FILES as $column => $folder) {
@@ -67,13 +72,13 @@ class DesignSnapshotBuilder extends SnapshotBuilder
             }
 
             try {
-                $archive->addString($baseName.'.pdf', $this->pdf($design, $version));
+                $archive->addString($baseName.'.pdf', $this->pdf->render($content + ['created_at' => $createdAt]));
             } catch (Throwable $e) {
                 Log::warning('Design snapshot PDF could not be generated', ['design_id' => $design->getKey(), 'error' => $e->getMessage()]);
                 $warnings[] = 'The PDF could not be generated: '.$e->getMessage();
             }
 
-            $manifest = $this->manifest($design, $version, $filename, $archive, $warnings);
+            $manifest = $this->manifest($content, $filename, $createdAt, $archive, $warnings);
             $archive->addString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             $archive->addString('README.txt', $this->readme(
                 (string) $design->purchasableTitle(),
@@ -101,7 +106,7 @@ class DesignSnapshotBuilder extends SnapshotBuilder
             $this->disk()->delete($existing->download_path);
         }
 
-        return DesignSnapshot::updateOrCreate(
+        $snapshot = DesignSnapshot::updateOrCreate(
             ['design_id' => $design->getKey(), 'version' => $version],
             [
                 'snapshot_name' => $filename,
@@ -110,17 +115,26 @@ class DesignSnapshotBuilder extends SnapshotBuilder
                 'download_path' => $path,
             ],
         );
+
+        // personalised PDFs were made from the previous build of this version
+        PersonalisedSnapshotDownload::forget($snapshot);
+
+        return $snapshot;
     }
 
-    /** @return array<string, mixed> the manifest (also stored as the snapshot's stashed_data) */
-    private function manifest(Design $design, string $version, string $filename, SnapshotArchive $archive, array $warnings): array
+    /**
+     * What the design looked like at this version: the manifest without its archive details, and everything the PDF
+     * is rendered from (now and for every personalised download later).
+     *
+     * @return array<string, mixed>
+     */
+    private function content(Design $design, string $version): array
     {
         return [
             'name' => $design->name,
             'designer' => $design->designer?->name,
             'version' => $version,
-            'archive' => $filename,
-            'created_at' => now()->toIso8601String(),
+            'tag' => $design->tag,
             'images' => $design->card_image,
             'category' => $design->category,
             'price_cents' => $design->price_cents,
@@ -141,6 +155,20 @@ class DesignSnapshotBuilder extends SnapshotBuilder
                 'description' => $component->description,
                 'specifications' => $component->specifications,
             ])->values()->all(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $content  see content()
+     * @return array<string, mixed> the manifest (also stored as the snapshot's stashed_data)
+     */
+    private function manifest(array $content, string $filename, string $createdAt, SnapshotArchive $archive, array $warnings): array
+    {
+        return [
+            ...Arr::only($content, ['name', 'designer', 'version']),
+            'archive' => $filename,
+            'created_at' => $createdAt,
+            ...Arr::except($content, ['name', 'designer', 'version']),
             // Entries added so far; manifest.json and README.txt themselves are not listed.
             'files' => array_map(fn (array $entry) => ['path' => $entry['path'], 'size' => $entry['size']], $archive->entries()),
             'missing_files' => $archive->missing(),
@@ -164,22 +192,6 @@ class DesignSnapshotBuilder extends SnapshotBuilder
         $driver = $component->driver ? trim($component->driver->brand.' '.$component->driver->model) : 'driver';
 
         return strtoupper((string) $component->position).'-'.$this->slug($driver, 'driver');
-    }
-
-    private function pdf(Design $design, string $version): string
-    {
-        return Pdf::setOption(['isRemoteEnabled' => false, 'defaultFont' => 'DejaVu Sans'])
-            ->loadView('pdf.Design', [
-                'variation' => $version,
-                'design' => $design,
-                'images' => $this->images->embedAll((array) $design->card_image, 4),
-                'summaryHtml' => $this->images->inlineHtml((string) tiptap_converter()->asHtml($design->summary)),
-                'descriptionHtml' => $this->images->inlineHtml((string) tiptap_converter()->asHtml($design->description)),
-                'componentHtml' => $design->components
-                    ->mapWithKeys(fn ($component) => [$component->getKey() => $this->images->inlineHtml((string) tiptap_converter()->asHtml($component->description))])
-                    ->all(),
-            ])
-            ->output();
     }
 
     /** "{slug}-{version}.zip", made unique if another version already uses the same file name. */

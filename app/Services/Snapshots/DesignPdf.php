@@ -13,13 +13,16 @@ use Throwable;
  * Without a licence this is the generic copy that is stored in the snapshot ZIP; with one the footer on every page
  * carries the licensee (see PdfLicense), which is how each download gets its own copy.
  *
- * Images are read from disk and embedded (PdfImages): dompdf never fetches anything over the network, and neither
- * PHP nor JavaScript inside the HTML is evaluated.
+ * Images are read from disk and embedded (PdfImages), and the frequency response figure is drawn from the response data
+ * the snapshot kept (ResponseChart): dompdf never fetches anything over the network, and neither PHP nor JavaScript
+ * inside the HTML is evaluated.
  */
 class DesignPdf
 {
-    public function __construct(private readonly PdfImages $images = new PdfImages())
-    {
+    public function __construct(
+        private readonly PdfImages $images = new PdfImages(),
+        private readonly ResponseChart $chart = new ResponseChart(),
+    ) {
     }
 
     /**
@@ -67,7 +70,7 @@ class DesignPdf
 
     /**
      * The content as the view wants it: plain strings and arrays, every rich text converted to HTML with its images
-     * embedded. Missing keys (an old or hand-made snapshot) simply leave their section out.
+     * embedded, the response figure as a data URI. Missing keys (an old or hand-made snapshot) simply leave their section out.
      *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
@@ -82,7 +85,6 @@ class DesignPdf
                 'quantity' => max(1, (int) ($component['quantity'] ?? 1)),
                 'range' => $this->range($component['low_frequency'] ?? null, $component['high_frequency'] ?? null),
                 'air_volume' => $this->number($component['air_volume'] ?? null) ?? '-',
-                'specs' => $this->pairs($component['specifications'] ?? null),
                 'html' => $this->html($component['description'] ?? null),
             ])
             ->values();
@@ -103,6 +105,7 @@ class DesignPdf
                 'Drivers' => $components->isNotEmpty() ? (string) $components->sum('quantity') : '',
             ], fn ($value) => $value !== ''),
             'images' => $this->images->embedAll((array) ($data['images'] ?? []), 4),
+            'responseChart' => $this->chart->dataUri(is_array($data['frequency_response'] ?? null) ? $data['frequency_response'] : null),
             'summaryHtml' => $this->html($data['summary'] ?? null),
             'descriptionHtml' => $this->html($data['description'] ?? null),
             'bom' => $this->pairs($data['bom'] ?? null),
@@ -127,7 +130,7 @@ class DesignPdf
     }
 
     /**
-     * A key/value list (bill of materials, driver specifications) as label => text, blank entries dropped.
+     * A key/value list (the bill of materials) as label => text, blank entries dropped.
      *
      * @return array<string, string>
      */

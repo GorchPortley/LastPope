@@ -142,7 +142,7 @@ img {
     -premailer-width: 100%;
 }
 
-/* Header: a band in the brand colour with the wordmark as text (it shows with images blocked) */
+/* Header: a band in the brand colour with the logo mark (PNG) and "SDLabs.cc" as text next to it (the text shows with images blocked) */
 
 .header-band {
     background-color: #3b0764;

@@ -4,6 +4,7 @@ namespace App\Services\Snapshots;
 
 use App\Models\Design;
 use App\Models\DesignSnapshot;
+use App\Support\FrequencyResponse;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -130,6 +131,9 @@ class DesignSnapshotBuilder extends SnapshotBuilder
      */
     private function content(Design $design, string $version): array
     {
+        // the lines of the design's response files and their sum, for the figure in the PDF (the site's viewer reads the same files)
+        $response = FrequencyResponse::summary($this->paths($design->frd_files));
+
         return [
             'name' => $design->name,
             'designer' => $design->designer?->name,
@@ -144,6 +148,7 @@ class DesignSnapshotBuilder extends SnapshotBuilder
             'summary' => $design->summary,
             'description' => $design->description,
             'bom' => $design->bill_of_materials,
+            ...($response !== null ? ['frequency_response' => $response] : []),
             'forum_link' => $design->forum_slug ? url('forum/'.$design->forum_slug) : null,
             'components' => $design->components->map(fn ($component) => [
                 'position' => $component->position,

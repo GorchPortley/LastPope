@@ -513,11 +513,16 @@ products**. Marketplace (user) listings are unchanged. Migration policy §7 appl
   (`DesignSnapshotBuilder`) or deleted (`DesignSnapshot::deleted`); deleting the design removes its whole folder.
 - Look: `resources/views/pdf/Design.blade.php` in the default palette (`App\Support\BrandColors`, a PHP copy of the hex values of app.css;
   `BrandColorsTest` keeps them in sync), the site logo as SVG (`resources/pdf/sdlabs-logo-white.svg`), DejaVu Sans (the site itself uses the
-  system font stack, there is no web font to embed).
+  system font stack, there is no web font to embed). No Thiele/Small table and no "Design plans" kicker (owner feedback). Photos: card images and
+  the `<img>` uploads in the summary/description are read from the public disk (`PdfImages`: `/storage/...` or any-host `.../storage/...` URLs,
+  WebP converted, EXIF rotation applied, capped to the page); an image that cannot be read is left out, never fetched. **Frequency response
+  figure**: `DesignSnapshotBuilder::content()` keeps `frequency_response` (the lines of the design's FRD files and their complex sum, 1/48 octave
+  points; `App\Support\FrequencyResponse`, the same parsing and summation as the page's `FrequencyResponseViewer`); `ResponseChart` draws it with GD
+  (2x supersampled PNG, log axis 20 Hz - 20 kHz, dB range fitted) as a data URI. No FRD files, no section.
 
 ### R4.2 Branded e-mails
 - Mail theme `sdlabs` (`config('mail.markdown.theme')`, `resources/views/vendor/mail/html/themes/sdlabs.css`): brand-950 header band with the
-  wordmark as text, amber rule, brand-700 buttons, light-tinted table header, footer with the site links; dark-mode and phone rules live in
+  logo mark (`public/images/email/logo.png`, a 2x PNG of the site logo's ring because mail clients block SVG) and "SDLabs.cc" as text next to it, amber rule, brand-700 buttons, light-tinted table header, footer with the site links; dark-mode and phone rules live in
   `html/layout.blade.php`. `<x-mail::message variant="business">` (the supplier purchase order) drops the tagline and the marketing links.
   Every mail the app sends is markdown mail or a notification through `notifications::email`, so all of them use it (Wave and Laravel's verify and
   reset mails included). Flarum's own forum mails are sent by Flarum with its own templates.

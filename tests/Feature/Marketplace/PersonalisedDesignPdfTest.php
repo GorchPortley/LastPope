@@ -545,3 +545,57 @@ it('has no remote resources and no scripts in the HTML it renders', function () 
 
     expect($html)->not->toMatch('/(src|href)=["\']https?:/')->not->toContain('url(http')->not->toContain('@import')->not->toContain('<script');
 });
+
+// --- What the PDF shows ---------------------------------------------------------------------------
+
+/** The HTML dompdf gets for a snapshot. */
+function pdfHtml(DesignSnapshot $snapshot): string
+{
+    return view('pdf.Design', ['pdf' => app(DesignPdf::class)->viewData((array) $snapshot->stashed_data), 'license' => null])->render();
+}
+
+it('leaves the Thiele/Small parameters and the "Design plans" kicker out, and keeps the rest of the component', function () {
+    $html = pdfHtml(pdfSnapshot());
+
+    // the fixture's driver has Fs and Qts in its specifications
+    expect($html)->not->toContain('Design plans')->not->toContain('Qts')->not->toContain('38 Hz')->not->toContain('0.35')
+        ->and($html)->toContain('Aurelia A16-W')->toContain('40 – 2,500 Hz')->toContain('Component details');
+});
+
+it('embeds the card images and the uploads inside the summary and description, capped to the page', function () {
+    $key = PDF_KEY;
+    $snapshot = pdfSnapshot(design: [
+        'summary' => '<p>Look:</p><img src="'.url("storage/designs/{$key}/Attachments/cover.jpg").'" alt="Cover">',
+        'description' => '<p><img src="/storage/designs/'.$key.'/Attachments/cover.jpg" width="3000" height="2000"></p><p><img src="/storage/designs/'.$key.'/Attachments/gone.jpg"></p>',
+    ]);
+
+    $html = pdfHtml($snapshot);
+
+    // the card image, the summary's and the description's; the file that is gone is left out
+    expect(substr_count($html, 'src="data:image/jpeg;base64,'))->toBe(3)
+        ->and($html)->not->toContain('/storage/')->not->toContain('gone.jpg')
+        ->and($html)->toContain('width="650"')
+        ->and(app(DesignPdf::class)->render((array) $snapshot->stashed_data))->toContain('/Subtype /Image');
+});
+
+it('draws the frequency response figure when the design has response files, and has no section without', function () {
+    $private = Storage::disk('private');
+    $curve = fn (float $offset) => implode("\n", array_map(fn ($f) => sprintf('%d %.1f %d', $f, 85 + $offset - abs(log10($f / 1000)) * 12, 0), [20, 50, 100, 300, 1000, 3000, 10000, 20000]));
+    $private->put('designs/k/lf.frd', $curve(0));
+    $private->put('designs/k/hf.frd', $curve(-3));
+
+    $with = pdfSnapshot(design: ['frd_files' => ['designs/k/lf.frd', 'designs/k/hf.frd']]);
+    $without = pdfSnapshot(design: ['storage_key' => 'cccccccc-0000-4000-8000-000000000003']);
+
+    $html = pdfHtml($with);
+
+    expect($html)->toContain('<h2>Frequency response</h2>')->toContain('src="data:image/png;base64,')
+        ->and(pdfHtml($without))->not->toContain('<h2>Frequency response</h2>')->not->toContain('data:image/png')
+        // the figure is a PNG of 1400 px with one line per file and the sum (both files and their sum are in the snapshot)
+        ->and($with->stashed_data['frequency_response']['series'])->toHaveCount(2)->and($with->stashed_data['frequency_response']['sum'])->not->toBeEmpty()
+        ->and($without->stashed_data)->not->toHaveKey('frequency_response');
+
+    preg_match('~data:image/png;base64,([A-Za-z0-9+/=]+)~', $html, $png);
+    expect(getimagesizefromstring(base64_decode($png[1]))[0])->toBe(1400)
+        ->and(app(DesignPdf::class)->render((array) $with->stashed_data))->toStartWith('%PDF');
+});

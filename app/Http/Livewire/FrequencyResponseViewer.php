@@ -2,8 +2,8 @@
 
 namespace App\Http\Livewire;
 
+use App\Support\FrequencyResponse;
 use Livewire\Component;
-use Illuminate\Support\Facades\{Storage, Cache};
 
 // Measurement files are source files: they live on the private disk and are only read server-side here.
 
@@ -14,21 +14,6 @@ class FrequencyResponseViewer extends Component
     public array $summedResponse = [];
     public array $phaseData = [];
     public string $activeTab = 'amplitude';
-
-    private const FREQ_RANGE = [
-        'min' => 20,
-        'max' => 20000
-    ];
-
-    private const AMP_RANGE = [
-        'min' => 0,
-        'max' => 120
-    ];
-
-    private const COLORS = [
-        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
-        '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
-    ];
 
     public function mount($design)
     {
@@ -46,37 +31,8 @@ class FrequencyResponseViewer extends Component
             return [];
         }
 
-        $frdFiles = $this->getFrdFiles();
-        $processedData = [];
-        $colorIndex = 0;
-
-        foreach ($frdFiles as $filePath) {
-            if (!Storage::disk('private')->exists($filePath)) {
-                continue;
-            }
-
-            $fileData = $this->processFile($filePath);
-            if (!empty($fileData)) {
-                $label = pathinfo($filePath, PATHINFO_FILENAME);
-                $color = self::COLORS[$colorIndex % count(self::COLORS)];
-                $colorIndex++;
-
-                $processedData[] = [
-                    'data' => $fileData,
-                    'label' => $label,
-                    'color' => $color
-                ];
-            }
-        }
-
-        $amplitudeData = $this->processAmplitudeData($processedData);
-        $phaseData = $this->processPhaseData($processedData);
-
-        return [
-            'chartData' => $amplitudeData['chartData'],
-            'summedResponse' => $amplitudeData['summedResponse'],
-            'phaseData' => $phaseData['phaseData']
-        ];
+        // parsing, colours, the summed response and the phase lines are shared with the design PDF
+        return FrequencyResponse::forFiles($this->getFrdFiles());
     }
 
     private function setData(array $data): void
@@ -91,164 +47,6 @@ class FrequencyResponseViewer extends Component
         return is_string($this->design->frd_files)
             ? json_decode($this->design->frd_files, true)
             : $this->design->frd_files;
-    }
-
-    private function processFile(string $filePath): array
-    {
-        $content = Storage::disk('private')->get($filePath) ?? '';
-        return $this->parseFRDFile($content);
-    }
-
-    private function parseFRDFile(string $content): array
-    {
-        $lines = array_filter(
-            explode("\n", trim($content)),
-            fn($line) => !empty($line) && $line[0] !== '*' && $line[0] !== '#'
-        );
-
-        $data = [];
-        foreach ($lines as $line) {
-            $values = preg_split('/\s+/', trim($line));
-            if (count($values) < 3) continue;
-
-            $point = $this->validateDataPoint($values);
-            if ($point) {
-                $data[] = $point;
-            }
-        }
-
-        return $data;
-    }
-
-    private function validateDataPoint(array $values): ?array
-    {
-        $freq = (float)$values[0];
-        $amp = (float)$values[1];
-
-        if ($freq < self::FREQ_RANGE['min'] || $freq > self::FREQ_RANGE['max']) {
-            return null;
-        }
-
-        if ($amp < self::AMP_RANGE['min'] || $amp > self::AMP_RANGE['max']) {
-            return null;
-        }
-
-        return [
-            'frequency' => $freq,
-            'amplitude' => $amp,
-            'phase' => $values[2]
-        ];
-    }
-
-    private function processAmplitudeData(array $processedData): array
-    {
-        $chartData = [];
-        $summedData = [];
-        foreach ($processedData as $dataset) {
-            $chartData[] = [
-                'label' => $dataset['label'],
-                'data' => array_map(fn($point) => [
-                    'x' => $point['frequency'],
-                    'y' => $point['amplitude']
-                ], $dataset['data']),
-                'borderColor' => $dataset['color'],
-                'fill' => false
-            ];
-
-            foreach ($dataset['data'] as $point) {
-                $freq = $point['frequency'];
-                $amplitude = pow(10, $point['amplitude'] / 20.0);
-                $phase = deg2rad($point['phase']);
-
-                $real = $amplitude * cos($phase);
-                $imag = $amplitude * sin($phase);
-
-                $key = (string) $freq;
-
-                if (!isset($summedData[$key])) {
-                    $summedData[$key] = ['real' => $real, 'imag' => $imag, 'count' => 0];
-                } else {
-                    $summedData[$key]['real'] += $real;
-                    $summedData[$key]['imag'] += $imag;
-                    $summedData[$key]['count']++;
-                }
-            }
-        }
-
-        $summedResponse = [];
-        if (!empty($summedData)) {
-            ksort($summedData, SORT_NUMERIC);
-
-            // Prepare data for smoothing
-            $processedData = [];
-            foreach ($summedData as $freq => $complex) {
-                $magnitude = sqrt(pow($complex['real'], 2) + pow($complex['imag'], 2));
-                $db = 20 * log10(max($magnitude, 1e-20));
-                $processedData[] = ['x' => (float) $freq, 'y' => $db];
-            }
-
-            // Apply smoothing to low frequencies
-            $summedResponse = $this->smoothLowFrequencies($processedData);
-        }
-
-        return [
-            'chartData' => $chartData,
-            'summedResponse' => $summedResponse
-        ];
-    }
-
-    private function smoothLowFrequencies(array $data, int $lowFreqThreshold = 60, int $windowSize = 33): array
-    {
-        // Sort data by frequency
-        usort($data, fn($a, $b) => $a['x'] <=> $b['x']);
-
-        $smoothedData = [];
-        foreach ($data as $index => $point) {
-            // Apply smoothing only to low frequencies
-            if ($point['x'] < $lowFreqThreshold) {
-                // Calculate moving average
-                $windowStart = max(0, $index - floor($windowSize / 2));
-                $windowEnd = min(count($data) - 1, $index + floor($windowSize / 2));
-
-                $windowValues = array_slice($data, $windowStart, $windowEnd - $windowStart + 1);
-                $avgValue = array_sum(array_column($windowValues, 'y')) / count($windowValues);
-
-                $smoothedData[] = ['x' => $point['x'], 'y' => $avgValue];
-            } else {
-                // Keep original values for frequencies above threshold
-                $smoothedData[] = $point;
-            }
-        }
-
-        return $smoothedData;
-    }
-
-
-
-    private function processPhaseData(array $processedData): array
-    {
-        $phaseData = [];
-
-        foreach ($processedData as $dataset) {
-            $phaseData[] = [
-                'label' => $dataset['label'] . ' Phase',
-                'data' => array_map(fn($point) => [
-                    'x' => $point['frequency'],
-                    'y' => $this->normalizePhase($point['phase'])
-                ], $dataset['data']),
-                'borderColor' => $dataset['color'],
-                'fill' => false
-            ];
-        }
-
-        return ['phaseData' => $phaseData];
-    }
-
-    private function normalizePhase(float $phase): float
-    {
-        while ($phase > 180) $phase -= 360;
-        while ($phase < -180) $phase += 360;
-        return $phase;
     }
 
     public function render()

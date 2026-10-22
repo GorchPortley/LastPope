@@ -140,17 +140,19 @@ it('embeds images in the PDF from the disk, not from URLs', function () {
         ->and(strlen($pdf))->toBeGreaterThan(15000);
 });
 
-it('turns storage URLs in rich text into embedded images', function () {
-    Storage::disk('public')->put('designs/x/Attachments/a.jpg', PlaceholderImage::driver(1));
+it('turns the uploads in rich text into embedded images and leaves out what it cannot read', function () {
+    Storage::disk('public')->put('designs/x/Description Images/a b.jpg', PlaceholderImage::driver(1));
     $images = app(PdfImages::class);
 
-    $html = $images->inlineHtml('<p><img alt="a" src="http://localhost/storage/designs/x/Attachments/a.jpg"></p><img src="http://elsewhere.test/b.jpg"><img src="/storage/../../etc/passwd">');
+    $html = $images->inlineHtml('<p><img alt="a" src="http://localhost/storage/designs/x/Description%20Images/a%20b.jpg" width="2400" height="1200"></p>'
+        .'<img src="/storage/designs/x/Description Images/a b.jpg"><img src="http://elsewhere.test/b.jpg"><img src="/storage/../../etc/passwd"><img src="/storage/designs/x/nope.jpg">');
 
-    expect($html)->toContain('src="data:image/jpeg;base64,')
-        ->and($html)->toContain('src="http://elsewhere.test/b.jpg"')   // remote images are left alone (and never fetched)
-        ->and($html)->toContain('src="/storage/../../etc/passwd"')      // paths that escape the disk are ignored
+    expect(substr_count($html, '<img'))->toBe(2)                       // the two uploads; the others are gone, not left to fail
+        ->and($html)->toContain('src="data:image/jpeg;base64,')->not->toContain('elsewhere')->not->toContain('passwd')->not->toContain('nope')
+        ->and($html)->toContain('width="650"')                          // 2400 px in the editor, capped to the page
         ->and($images->embed('../secret.jpg'))->toBeNull()
-        ->and($images->embed('designs/x/Attachments/nope.jpg'))->toBeNull();
+        ->and($images->embed('designs/x/Description Images/nope.jpg'))->toBeNull()
+        ->and($images->embed('designs/x/Description Images/a b.jpg'))->toStartWith('data:image/');
 });
 
 it('replaces a version that is built again instead of adding a second row', function () {

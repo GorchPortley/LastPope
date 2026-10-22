@@ -9,10 +9,11 @@ use App\Services\Marketplace\ShipmentService;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Mail\Markdown;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\Str;
 use Wave\Notifications\VerifyEmail;
 
 /*
- * The "sdlabs" mail theme: a brand-colour header band with the wordmark as text, brand buttons, a footer with the site
+ * The "sdlabs" mail theme: a brand-colour header band with the logo and the name, brand buttons, a footer with the site
  * links, and a businesslike variant for the purchase order to a supplier.
  */
 
@@ -26,14 +27,13 @@ it('uses the sdlabs theme for all markdown mail', function () {
         ->and(file_exists(resource_path('views/vendor/mail/html/themes/sdlabs.css')))->toBeTrue();
 });
 
-it('has the header band with the wordmark as text and the footer with the site links', function () {
+it('has the header band with the logo and the name, and the footer with the site links', function () {
     $html = themed((new MailMessage)->subject('x')->greeting('Hello')->line('Body')->action('Open it', 'https://example.test/x'));
 
     expect($html)
-        // header: a band in the brand colour (inlined from the theme), the wordmark as a text link, the amber rule
+        // header: a band in the brand colour (inlined from the theme), the name as a text link, the amber rule
         ->toContain('class="header-band"')->toContain('background-color: #3b0764')
-        ->toContain('class="wordmark"')->toContain('>SDLabs</a>')
-        ->toContain('The speaker design marketplace')
+        ->toContain('class="wordmark"')->toContain('>SDLabs.cc</a>')
         ->toContain('class="header-accent"')
         // footer: name, tagline, the four links, why you got it
         ->toContain('site-footer')
@@ -45,8 +45,26 @@ it('has the header band with the wordmark as text and the footer with the site l
         ->toContain('© '.date('Y').' SDLabs')
         // button in the brand colour, inlined (works without the stylesheet)
         ->toContain('button button-primary')->toContain('background-color: #7e22ce')
-        // no web fonts, no remote images, no CSS variables
-        ->not->toContain('var(--')->not->toContain('<img')->not->toContain('fonts.googleapis');
+        // no web fonts, no CSS variables, and the logo is the only image
+        ->not->toContain('var(--')->not->toContain('fonts.googleapis')
+        ->and(substr_count($html, '<img'))->toBe(1);
+});
+
+it('shows the site logo and "SDLabs.cc" in the header, and no tagline there', function () {
+    $html = themed((new MailMessage)->subject('x')->line('Body'));
+    $header = Str::between($html, 'class="header-band"', 'class="header-accent"');
+    $logo = public_path('images/email/logo.png');
+
+    expect($header)
+        // a PNG (mail clients block SVG) at an absolute URL, with the name next to it as text so it reads without images
+        ->toContain('src="'.asset('images/email/logo.png').'"')->toContain('alt="SDLabs.cc"')->toContain('>SDLabs.cc</a>')
+        ->not->toContain('The speaker design marketplace')
+        ->and(asset('images/email/logo.png'))->toStartWith('http')
+        // the file exists, at twice the 36 px it is shown at
+        ->and(is_file($logo))->toBeTrue()
+        ->and(getimagesize($logo)[0])->toBe(72)
+        // the footer is as it was
+        ->and($html)->toContain('footer-tagline');
 });
 
 it('keeps the layout responsive and supports dark mode', function () {
@@ -56,12 +74,12 @@ it('keeps the layout responsive and supports dark mode', function () {
         ->toContain('name="color-scheme"');
 });
 
-it('names the site after the app name, in the header and the footer', function () {
+it('names the site after the app name in the footer', function () {
     config(['app.name' => 'Acme Audio']);
 
     $html = themed((new MailMessage)->line('Body'));
 
-    expect($html)->toContain('>Acme Audio</a>')->toContain('You\'re receiving this because you have an account at Acme Audio.')->not->toContain('Wave');
+    expect($html)->toContain('You\'re receiving this because you have an account at Acme Audio.')->not->toContain('Wave');
 });
 
 it('styles the tables of the order mails: header row, row lines, numbers on the right', function () {
@@ -74,7 +92,7 @@ it('styles the tables of the order mails: header row, row lines, numbers on the 
         // inlined from the theme: header cells on the light brand tint, body cells with a bottom rule
         ->toMatch('/<th[^>]*background-color: #faf5ff/')
         ->toMatch('/<td[^>]*border-bottom: 1px solid #e5e7eb/')
-        ->toContain('text-align: right');
+        ->toMatch('/<t[dh][^>]*align="right"/');
 });
 
 it('themes the verification, reset and Wave mails too', function () {

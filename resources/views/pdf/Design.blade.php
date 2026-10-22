@@ -2,8 +2,8 @@
     The design PDF in a snapshot ZIP (App\Services\Snapshots\DesignPdf). dompdf renders it (no flexbox, no grid, no
     remote images: layout is tables and blocks, images are data URIs), in the default site palette (App\Support\BrandColors).
 
-    $pdf     normalised content (see DesignPdf::viewData): name, designer, tag, version, date, specs, images, summaryHtml,
-             descriptionHtml, components (with their own specs and html), bom
+    $pdf     normalised content (see DesignPdf::viewData): name, designer, tag, version, date, specs, images, responseChart,
+             summaryHtml, descriptionHtml, components (with their description as html), bom
     $license App\Services\Snapshots\PdfLicense or null (the generic copy kept with the snapshot: no name in the footer)
 --}}
 @php
@@ -41,7 +41,6 @@
         .band table { width: 100%; border-collapse: collapse; }
         .band td { padding: 0; vertical-align: middle; }
         .band .logo { height: 8mm; }
-        .band .kind { text-align: right; font-size: 7.5pt; letter-spacing: 1.5pt; text-transform: uppercase; color: {{ C::accent(200) }}; }
         .band h1 { font-size: 22pt; line-height: 1.2; font-weight: bold; margin: 9mm 0 0 0; color: #ffffff; }
         .band .tag { font-size: 10pt; color: {{ C::brand(200) }}; margin: 2mm 0 0 0; }
         .band .meta { margin-top: 5mm; font-size: 8.5pt; color: {{ C::brand(100) }}; }
@@ -74,6 +73,11 @@
         .label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.6pt; color: {{ C::gray(500) }}; }
         .value { font-size: 11pt; font-weight: bold; color: {{ C::gray(900) }}; margin-top: 0.5mm; }
 
+        /* Frequency response figure (a PNG drawn by App\Services\Snapshots\ResponseChart) */
+        .figure { text-align: center; margin: 0 0 2mm 0; }
+        .figure img { width: 100%; }
+        .figure .caption { text-align: left; font-size: 7pt; color: {{ C::gray(500) }}; margin-top: 1mm; }
+
         /* Data tables */
         table.data { width: 100%; border-collapse: collapse; margin: 0 0 2mm 0; }
         table.data thead { display: table-header-group; }
@@ -102,10 +106,6 @@
             font-size: 8pt;
             padding: 0.5mm 2.5mm;
         }
-        table.ts { width: 100%; border-collapse: collapse; margin: 2mm 0 3mm 0; }
-        table.ts td { width: 16.66%; padding: 0 2mm 2mm 0; vertical-align: top; }
-        table.ts .label { font-size: 6.5pt; }
-        table.ts .value { font-size: 8.5pt; }
 
         /* Rich text from the editor */
         .rich { font-size: 8.5pt; }
@@ -167,7 +167,6 @@
                 {{-- the site logo, white on the band (SVG: vector, embedded from disk) --}}
                 <img class="logo" src="{{ resource_path('pdf/sdlabs-logo-white.svg') }}" alt="SDLabs">
             </td>
-            <td class="kind">Design plans</td>
         </tr>
     </table>
     <h1>{{ $pdf['name'] }}</h1>
@@ -221,6 +220,16 @@
             </tr>
         @endforeach
     </table>
+    </div>
+@endif
+
+@if (filled($pdf['responseChart']))
+    <div class="keep">
+    <h2>Frequency response</h2>
+    <div class="figure">
+        <img src="{{ $pdf['responseChart'] }}" alt="Frequency response">
+        <div class="caption">Measured response of each file in this design, with their summed response.</div>
+    </div>
     </div>
 @endif
 
@@ -282,23 +291,6 @@
             <h2>Component details</h2>
         @endif
         <h3><span class="pos">{{ $component['position'] }}</span>&nbsp; {{ $component['driver'] }}@if ($component['quantity'] > 1) <span class="muted">&times; {{ $component['quantity'] }}</span>@endif</h3>
-        @if (! empty($component['specs']))
-            <table class="ts">
-                @foreach (array_chunk($component['specs'], 6, true) as $row)
-                    <tr>
-                        @foreach ($row as $label => $value)
-                            <td>
-                                <div class="label">{{ $label }}</div>
-                                <div class="value">{{ $value }}</div>
-                            </td>
-                        @endforeach
-                        @for ($i = count($row); $i < 6; $i++)
-                            <td></td>
-                        @endfor
-                    </tr>
-                @endforeach
-            </table>
-        @endif
         @if (filled($component['html']))
             <div class="rich">{!! $component['html'] !!}</div>
         @endif

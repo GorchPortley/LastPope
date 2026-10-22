@@ -5,7 +5,7 @@
 # (Or put  COMPOSE_FILE=compose.yaml:compose.dev.yaml  in your local .env and drop the -f flags.)
 #
 # What it changes:
-#   * your checkout is bind-mounted into app / queue / scheduler, so code edits show up at once
+#   * your checkout is bind-mounted into app / queue / scheduler / reverb, so code edits show up at once
 #   * APP_ENV=local, debug on, no config/route caching, OPcache off
 #   * mail is caught by Mailpit:        http://localhost:8025
 #   * Vite dev server with hot reload:  http://localhost:5173 (service "vite")
@@ -67,6 +67,12 @@ services:
     #   docker compose restart queue
 
   scheduler:
+    <<: *dev-code
+    environment:
+      <<: *dev-env
+
+  # Live chat server; like `queue:work` it keeps the code in memory: `docker compose restart reverb` after PHP changes.
+  reverb:
     <<: *dev-code
     environment:
       <<: *dev-env

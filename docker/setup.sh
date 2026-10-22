@@ -9,11 +9,16 @@
 #   * copies .env.example to .env if there is no .env yet
 #   * asks for the public domain and an e-mail address (Let's Encrypt expiry notices)
 #   * generates strong random passwords/keys: database passwords, Redis password, Laravel APP_KEY,
-#     Flarum API key and forum admin password, JWT secret
+#     Flarum API key and forum admin password, JWT secret, and the id/key/secret of the live-chat
+#     (Reverb) WebSocket server
 #   * fills in the URLs that depend on the domain
 #
 # It is safe to run again: secrets that are already set are NEVER replaced (only empty values and
 # the well-known placeholders from .env.example are). Nothing leaves your machine; PHP is not needed.
+#
+#   docker/setup.sh --secrets-only    for scripts (the auto-updater uses it): add only the secrets that are
+#                                     still missing and that are safe to add to a running site (the live-chat
+#                                     REVERB_* ones); every other line of .env is left exactly as it is
 
 set -euo pipefail
 
@@ -28,6 +33,7 @@ EMAIL_ARG=""
 NON_INTERACTIVE=0
 PROXY_ARG=""
 PROXY_PORT_ARG=""
+SECRETS_ONLY=0
 
 usage() {
   cat <<'EOF'
@@ -41,6 +47,8 @@ Usage: docker/setup.sh [-d DOMAIN] [-e EMAIL] [--behind-proxy [--proxy-port PORT
   --proxy-port PORT     local port for --behind-proxy
   --direct              the stack's own Caddy answers on 80/443 and gets certificates (default)
   -n, --non-interactive never ask; take domain and e-mail from the options or from .env (for CI, scripts)
+  --secrets-only        change nothing except adding secrets that are missing from an existing .env and are
+                        safe to add to a running site (live chat: REVERB_APP_ID/KEY/SECRET). Never asks.
   -h, --help            show this help
 
 Without options the script asks, and offers the values already in .env as defaults.
@@ -55,6 +63,7 @@ while [ $# -gt 0 ]; do
     --direct) PROXY_ARG=no; shift ;;
     --proxy-port) PROXY_PORT_ARG="${2:-}"; shift 2 ;;
     -n | --non-interactive) NON_INTERACTIVE=1; shift ;;
+    --secrets-only) SECRETS_ONLY=1; NON_INTERACTIVE=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -110,6 +119,20 @@ rand_alnum() {
   printf '%s' "${out:0:n}"
 }
 
+# rand_lower N: N random lowercase letters/digits (Pusher/Reverb style keys).
+rand_lower() {
+  rand_alnum "$1" | tr 'A-Z' 'a-z'
+}
+
+# rand_digits N: a random number of N digits that does not start with 0 (Reverb app id).
+rand_digits() {
+  local n="$1" out=""
+  while [ "${#out}" -lt "$n" ]; do
+    out+="$(head -c 64 /dev/urandom | od -An -tu1 | tr -dc '0-9' | sed 's/^0*//')"
+  done
+  printf '%s' "${out:0:n}"
+}
+
 # rand_app_key: a Laravel APP_KEY (base64 of 32 random bytes), same format as `artisan key:generate`.
 rand_app_key() {
   printf 'base64:%s' "$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
@@ -145,6 +168,16 @@ ensure_value() {
   fi
 }
 
+# ensure_stateless_secrets: secrets that hold no state anywhere else (unlike the database passwords, which MariaDB
+# stores in its data volume), so a missing one can always be generated, also for a site that is already running.
+# Put every secret that a later version of compose.yaml starts to require HERE, so the auto-updater adds it.
+ensure_stateless_secrets() {
+  # Live chat (Reverb): the app id is just a number, the key is public (browsers get it), the secret is not.
+  ensure_secret REVERB_APP_ID rand_digits 8
+  ensure_secret REVERB_APP_KEY rand_lower 20
+  ensure_secret REVERB_APP_SECRET rand_lower 40
+}
+
 ask() {
   # ask "Prompt" "default" -> value on stdout
   local prompt="$1" default="${2:-}" reply
@@ -163,6 +196,19 @@ valid_domain() {
 valid_email() {
   [[ "$1" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]
 }
+
+# --- 0. --secrets-only: add what is missing, touch nothing else --------------
+
+if [ "$SECRETS_ONLY" = 1 ]; then
+  [ -f "$ENV_FILE" ] || die "$ENV_FILE not found: run docker/setup.sh without --secrets-only first."
+  ensure_stateless_secrets
+  if [ "${#GENERATED[@]}" -gt 0 ]; then
+    ok "added to $ENV_FILE (secrets that were missing): ${GENERATED[*]}"
+  else
+    ok "$ENV_FILE already has every secret that can be added automatically; nothing changed"
+  fi
+  exit 0
+fi
 
 # --- 1. .env ----------------------------------------------------------------
 
@@ -235,7 +281,13 @@ proxy_port="${PROXY_PORT_ARG:-$(env_get CADDY_HTTP_BIND)}"
 proxy_port="${proxy_port##*:}"
 [[ "$proxy_port" =~ ^[0-9]+$ ]] && [ "$proxy_port" != 80 ] || proxy_port=8880
 
+# The CADDY_* lines are only (re)written when you chose something (an option, or an answer below) or when
+# they are missing. A plain re-run, e.g. `docker/setup.sh -n` from a script, keeps what is in .env.
+caddy_chosen=0
+if [ -n "$PROXY_ARG" ] || [ -n "$PROXY_PORT_ARG" ]; then caddy_chosen=1; fi
+
 if [ "$INTERACTIVE" = 1 ] && [ -z "$PROXY_ARG" ] && [ "$domain" != "localhost" ]; then
+  caddy_chosen=1
   echo
   info "${BOLD}Does another web server already use ports 80/443 on this machine?${RESET}"
   info "Answer y if nginx, Apache or Webmin/Virtualmin already serve websites here. That server then keeps"
@@ -256,7 +308,9 @@ if [ "$INTERACTIVE" = 1 ] && [ -z "$PROXY_ARG" ] && [ "$domain" != "localhost" ]
   fi
 fi
 
-if [ "$behind" = yes ]; then
+if [ "$caddy_chosen" = 0 ] && [ -n "$(env_get CADDY_CONFIG)" ] && [ -n "$(env_get CADDY_HTTP_BIND)" ] && [ -n "$(env_get CADDY_HTTPS_BIND)" ]; then
+  :  # keep the existing CADDY_CONFIG / CADDY_HTTP_BIND / CADDY_HTTPS_BIND
+elif [ "$behind" = yes ]; then
   env_set CADDY_CONFIG "Caddyfile.behind-proxy"
   env_set CADDY_HTTP_BIND "127.0.0.1:$proxy_port"
   env_set CADDY_HTTPS_BIND "127.0.0.1:$((proxy_port + 1))"
@@ -289,6 +343,7 @@ ensure_secret REDIS_PASSWORD rand_alnum 32
 ensure_secret FLARUM_API_KEY rand_alnum 40
 ensure_secret FLARUM_ADMIN_PASSWORD rand_alnum 20
 ensure_secret JWT_SECRET rand_alnum 64
+ensure_stateless_secrets
 
 # Names that must not be empty (the example file normally has them already).
 ensure_value MARIADB_DATABASE "lastpope"
@@ -304,6 +359,7 @@ ok "domain ............ $domain"
 ok "contact e-mail .... $email"
 ok "site URL .......... https://$domain"
 ok "forum URL ......... https://$domain/forum"
+ok "live chat ......... wss://$domain/ws (Reverb container; nothing goes through pusher.com)"
 if [ "$behind" = yes ]; then
   ok "web server ........ your existing one forwards $domain to http://127.0.0.1:$proxy_port"
 else
@@ -343,7 +399,8 @@ ${BOLD}Next steps${RESET}
      lose it and you cannot read your own database. It is git-ignored: never commit it.
   2. Fill in the optional parts in $ENV_FILE when you are ready: Stripe keys, SMTP mail settings.
 $( [ "$behind" = yes ] && printf '%s\n' "  2b. Configure your existing web server to forward https://$domain to http://127.0.0.1:$proxy_port" \
-      "      (nginx example + HTTPS certificate: section 'Behind an existing web server' in docs/DEPLOY.md)." )
+      "      (nginx example incl. the WebSocket location for live chat + HTTPS certificate: section" \
+      "      'Behind an existing web server' in docs/DEPLOY.md)." )
   3. Start everything:
          docker compose up -d --build
      The first start takes a few minutes (building the image, creating the databases, installing the forum).

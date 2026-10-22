@@ -11,11 +11,15 @@ return [
     | framework when an event needs to be broadcast. You may set this to
     | any of the connections defined in the "connections" array below.
     |
-    | Supported: "pusher", "ably", "redis", "log", "null"
+    | Supported: "reverb", "pusher", "ably", "redis", "log", "null"
+    |
+    | Nothing in the app broadcasts Laravel events yet; Chatify (live chat) talks to
+    | Reverb through its own settings in config/chatify.php. BROADCAST_DRIVER is the
+    | pre-Laravel-11 name of BROADCAST_CONNECTION and still works.
     |
     */
 
-    'default' => env('BROADCAST_DRIVER', 'null'),
+    'default' => env('BROADCAST_CONNECTION', env('BROADCAST_DRIVER', 'null')),
 
     /*
     |--------------------------------------------------------------------------
@@ -29,6 +33,27 @@ return [
     */
 
     'connections' => [
+
+        // Self-hosted Laravel Reverb (see config/reverb.php). These are the SERVER-side settings: inside
+        // Docker the app reaches the `reverb` container directly (REVERB_HOST=reverb, plain http).
+        // What browsers use is in config/chatify.php ('client').
+        'reverb' => [
+            'driver' => 'reverb',
+            'key' => env('REVERB_APP_KEY'),
+            'secret' => env('REVERB_APP_SECRET'),
+            'app_id' => env('REVERB_APP_ID'),
+            'options' => [
+                'host' => env('REVERB_HOST', 'localhost'),
+                'port' => env('REVERB_PORT', 8080),
+                'scheme' => env('REVERB_SCHEME', 'http'),
+                'useTLS' => env('REVERB_SCHEME', 'http') === 'https',
+                // Trailing slash on purpose: Guzzle resolves "apps/{id}/events" against it.
+                'path' => rtrim((string) env('REVERB_SERVER_PATH', '/ws'), '/').'/',
+            ],
+            'client_options' => [
+                // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+            ],
+        ],
 
         'pusher' => [
             'driver' => 'pusher',

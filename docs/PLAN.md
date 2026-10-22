@@ -228,8 +228,9 @@ a resonance peak at fs and voice-coil inductance rise) written to the private di
 
 - `docker/app/Dockerfile`: multi-stage (node → Vite build; composer `--no-dev`), runtime on a pinned
   `serversideup/php:8.3-fpm-nginx` tag. Compose services: `app` (web), `queue`, `scheduler`, `mariadb` (app DB + a
-  `flarum` DB), `redis`, `flarum` (pinned `crazymax/flarum`), `caddy` (automatic HTTPS for `${APP_DOMAIN}`,
-  `/forum` → flarum, everything else → app). Named volumes for db, redis, app storage, flarum data, caddy data.
+  `flarum` DB), `redis`, `flarum` (pinned `crazymax/flarum`), `reverb` (Laravel Reverb WebSocket server for Chatify's live chat,
+  replaces pusher.com; `php artisan reverb:start`, internal port 8080), `caddy` (automatic HTTPS for `${APP_DOMAIN}`,
+  `/forum` → flarum, `/ws/app/*` → reverb, everything else → app). Named volumes for db, redis, app storage, flarum data, caddy data.
 - `compose.dev.yaml` override: bind-mounted code, Vite dev server, Mailpit, `stripe-cli` forwarding webhooks.
 - `.env.example` documents every variable. `docs/DEPLOY.md`: VPS, DNS, install Docker, clone, `.env`,
   `docker compose up -d`, admin user, forum setup, Stripe setup (Connect settings, both webhook endpoints and their

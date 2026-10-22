@@ -31,13 +31,21 @@ const setMessengerId = (id) => $("meta[name=id]").attr("content", id);
  *-------------------------------------------------------------
  */
 Pusher.logToConsole = chatify.pusher.debug;
+// LastPope: `chatify.pusher` is config('chatify.client') (public key + connection options, never the secret).
+// For the self-hosted Reverb server (options.selfHosted) the URL prefix goes in wsPath, WebSocket is the only
+// transport and no usage statistics are sent to pusher.com. With pusher.com (CHATIFY_DRIVER=pusher) none of
+// these three is set and Pusher JS keeps its defaults. (Re-apply this if `chatify:publish` overwrites the file.)
+const pusherSelfHosted = !!chatify.pusher.options.selfHosted;
 const pusher = new Pusher(chatify.pusher.key, {
     encrypted: chatify.pusher.options.encrypted,
     cluster: chatify.pusher.options.cluster,
     wsHost: chatify.pusher.options.host,
     wsPort: chatify.pusher.options.port,
     wssPort: chatify.pusher.options.port,
+    wsPath: chatify.pusher.options.path || "",
     forceTLS: chatify.pusher.options.useTLS,
+    enabledTransports: pusherSelfHosted ? ["ws", "wss"] : undefined,
+    disableStats: pusherSelfHosted,
     authEndpoint: chatify.pusherAuthEndpoint,
   auth: {
     headers: {
@@ -619,17 +627,42 @@ function cancelUpdatingAvatar() {
 
 // subscribe to the channel
 const channelName = "private-chatify";
+// Own inbox: only the server publishes here (new messages, event "messaging"). The server lets nobody but the owner in.
 var channel = pusher.subscribe(`${channelName}.${auth_id}`);
-var clientSendChannel;
+
+// LastPope: the "client events" (typing, seen, message deleted, ...) used to be sent to the OTHER user's inbox
+// (`private-chatify.<other id>`), which any logged-in user could subscribe to and read. They now travel on a channel
+// that only the two people of the open conversation may join: private-chatify-chat.<lower id>.<higher id>
+// (see App\Support\Chatify\ChannelAuthorizer). It is joined when a conversation opens and left when another opens, so
+// a client event reaches the other person only while they have the same conversation open.
+var clientSendChannel; // the pair channel, undefined while no conversation is open (kept under the old names)
 var clientListenChannel;
+var pairChannelName = null;
+
+function pairChannelFor(otherId) {
+  const me = parseInt(auth_id, 10);
+  const other = parseInt(otherId, 10);
+  if (!me || !other || me === other) return null;
+  return `private-chatify-chat.${Math.min(me, other)}.${Math.max(me, other)}`;
+}
 
 function initClientChannel() {
-  if (getMessengerId()) {
-    clientSendChannel = pusher.subscribe(`${channelName}.${getMessengerId()}`);
-    clientListenChannel = pusher.subscribe(`${channelName}.${auth_id}`);
-  }
+  const name = pairChannelFor(getMessengerId());
+  if (name === pairChannelName) return;
+  if (pairChannelName) pusher.unsubscribe(pairChannelName);
+  pairChannelName = name;
+  clientSendChannel = clientListenChannel = name ? pusher.subscribe(name) : undefined;
+  if (clientListenChannel) bindClientEvents(clientListenChannel);
 }
-initClientChannel();
+
+// Send a client event on the pair channel; if the subscription is still being authorised, send it as soon as it is.
+function sendClientEvent(eventName, payload) {
+  const ch = clientSendChannel;
+  if (!ch) return false;
+  if (ch.subscribed) return ch.trigger(eventName, payload);
+  ch.bind("pusher:subscription_succeeded", () => ch.trigger(eventName, payload));
+  return false;
+}
 
 // Listen to messages, and append if data received
 channel.bind("messaging", function (data) {
@@ -642,6 +675,10 @@ channel.bind("messaging", function (data) {
     $(".messenger-list-item[data-contact=" + getMessengerId() + "]")
       .find("tr>td>b")
       .remove();
+  } else {
+    // Another conversation (or none) is open: refresh that contact in the list (unseen counter, order). The sender's
+    // browser used to ask for this with a client-contactItem event on our inbox; the server event does it now.
+    updateContactItem(data.from_id);
   }
 
   playNotificationSound(
@@ -650,51 +687,54 @@ channel.bind("messaging", function (data) {
   );
 });
 
-// listen to typing indicator
-clientListenChannel.bind("client-typing", function (data) {
-  if (data.from_id == getMessengerId() && data.to_id == auth_id) {
-    data.typing == true
-      ? messagesContainer.find(".typing-indicator").show()
-      : messagesContainer.find(".typing-indicator").hide();
-  }
-  // scroll to bottom
-  scrollToBottom(messagesContainer);
-});
-
-// listen to seen event
-clientListenChannel.bind("client-seen", function (data) {
-  if (data.from_id == getMessengerId() && data.to_id == auth_id) {
-    if (data.seen == true) {
-      $(".message-time")
-        .find(".fa-check")
-        .before('<span class="fas fa-check-double seen"></span> ');
-      $(".message-time").find(".fa-check").remove();
+function bindClientEvents(ch) {
+  // listen to typing indicator
+  ch.bind("client-typing", function (data) {
+    if (data.from_id == getMessengerId() && data.to_id == auth_id) {
+      data.typing == true
+        ? messagesContainer.find(".typing-indicator").show()
+        : messagesContainer.find(".typing-indicator").hide();
     }
-  }
-});
+    // scroll to bottom
+    scrollToBottom(messagesContainer);
+  });
 
-// listen to contact item updates event
-clientListenChannel.bind("client-contactItem", function (data) {
-  if (data.to == auth_id) {
-    if (data.update) {
-      updateContactItem(data.from);
-    } else {
-      console.error("Can not update contact item!");
+  // listen to seen event
+  ch.bind("client-seen", function (data) {
+    if (data.from_id == getMessengerId() && data.to_id == auth_id) {
+      if (data.seen == true) {
+        $(".message-time")
+          .find(".fa-check")
+          .before('<span class="fas fa-check-double seen"></span> ');
+        $(".message-time").find(".fa-check").remove();
+      }
     }
-  }
-});
+  });
 
-// listen on message delete event
-clientListenChannel.bind("client-messageDelete", function (data) {
-  $("body").find(`.message-card[data-id=${data.id}]`).remove();
-});
-// listen on delete conversation event
-clientListenChannel.bind("client-deleteConversation", function (data) {
-  if (data.from == getMessengerId() && data.to == auth_id) {
-    $("body").find(`.messages`).html("");
-    $(".messages").find(".message-hint").show();
-  }
-});
+  // listen to contact item updates event
+  ch.bind("client-contactItem", function (data) {
+    if (data.to == auth_id) {
+      if (data.update) {
+        updateContactItem(data.from);
+      } else {
+        console.error("Can not update contact item!");
+      }
+    }
+  });
+
+  // listen on message delete event
+  ch.bind("client-messageDelete", function (data) {
+    $("body").find(`.message-card[data-id=${data.id}]`).remove();
+  });
+  // listen on delete conversation event
+  ch.bind("client-deleteConversation", function (data) {
+    if (data.from == getMessengerId() && data.to == auth_id) {
+      $("body").find(`.messages`).html("");
+      $(".messages").find(".message-hint").show();
+    }
+  });
+}
+initClientChannel();
 // -------------------------------------
 // presence channel [User Active Status]
 var activeStatusChannel = pusher.subscribe("presence-activeStatus");
@@ -732,7 +772,7 @@ document.addEventListener("visibilitychange", handleVisibilityChange, false);
  *-------------------------------------------------------------
  */
 function isTyping(status) {
-  return clientSendChannel.trigger("client-typing", {
+  return sendClientEvent("client-typing", {
     from_id: auth_id, // Me
     to_id: getMessengerId(), // Messenger
     typing: status,
@@ -759,7 +799,7 @@ function makeSeen(status) {
     data: { _token: csrfToken, id: getMessengerId() },
     dataType: "JSON",
   });
-  return clientSendChannel.trigger("client-seen", {
+  return sendClientEvent("client-seen", {
     from_id: auth_id, // Me
     to_id: getMessengerId(), // Messenger
     seen: status,
@@ -772,7 +812,7 @@ function makeSeen(status) {
  *-------------------------------------------------------------
  */
 function sendContactItemUpdates(status) {
-  return clientSendChannel.trigger("client-contactItem", {
+  return sendClientEvent("client-contactItem", {
     from: auth_id, // Me
     to: getMessengerId(), // Messenger
     update: status,
@@ -785,7 +825,7 @@ function sendContactItemUpdates(status) {
  *-------------------------------------------------------------
  */
 function sendMessageDeleteEvent(messageId) {
-  return clientSendChannel.trigger("client-messageDelete", {
+  return sendClientEvent("client-messageDelete", {
     id: messageId,
   });
 }
@@ -795,7 +835,7 @@ function sendMessageDeleteEvent(messageId) {
  *-------------------------------------------------------------
  */
 function sendDeleteConversationEvent() {
-  return clientSendChannel.trigger("client-deleteConversation", {
+  return sendClientEvent("client-deleteConversation", {
     from: auth_id,
     to: getMessengerId(),
   });
@@ -1266,25 +1306,30 @@ $(document).ready(function () {
   // make message input autosize.
   autosize($(".m-send"));
 
+  // On connection state change [Updating] and get [info & msgs]
+  function loadOpenConversation() {
+    if (getMessengerId() != 0) {
+      if (
+        $(".messenger-list-item")
+          .find("tr[data-action]")
+          .attr("data-action") == "1"
+      ) {
+        $(".messenger-listView").hide();
+      }
+      IDinfo(getMessengerId());
+    }
+  }
+
   // check if pusher has access to the channel [Internet status]
   pusher.connection.bind("state_change", function (states) {
     let selector = $(".internet-connection");
     checkInternet(states.current, selector);
-    // listening for pusher:subscription_succeeded
-    channel.bind("pusher:subscription_succeeded", function () {
-      // On connection state change [Updating] and get [info & msgs]
-      if (getMessengerId() != 0) {
-        if (
-          $(".messenger-list-item")
-            .find("tr[data-action]")
-            .attr("data-action") == "1"
-        ) {
-          $(".messenger-listView").hide();
-        }
-        IDinfo(getMessengerId());
-      }
-    });
   });
+  // LastPope: the package bound this listener inside the state_change handler above. A fast (self-hosted, nearby)
+  // server can be connected before this point, so no state change ever came and the open conversation stayed
+  // read-only until a reload. Bound once here instead; it also runs again after every reconnect.
+  channel.bind("pusher:subscription_succeeded", loadOpenConversation);
+  if (channel.subscribed) loadOpenConversation();
 
   // tabs on click, show/hide...
   $(".messenger-listView-tabs a").on("click", function () {

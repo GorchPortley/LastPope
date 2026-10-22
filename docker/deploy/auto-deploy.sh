@@ -16,7 +16,8 @@
 #   3. CI gate: ask GitHub whether the tests workflow passed for that exact commit. Still running or
 #      not started yet: wait (we simply look again on the next run). Failed: do not deploy.
 #   4. Back up both databases (gzip'd SQL dump). If the backup fails, nothing is changed.
-#   5. git merge --ff-only, docker compose build, docker compose up -d, migrations + seeding.
+#   5. git merge --ff-only, add secrets the new code needs and .env lacks (docker/setup.sh --secrets-only),
+#      docker compose build, docker compose up -d, migrations + seeding.
 #   6. Health check. Unhealthy?  Put the old code back (git reset --hard <old>), rebuild, restart.
 #   7. Tell you (optional NOTIFY_URL) and remove old dangling Docker images.
 #
@@ -516,7 +517,7 @@ echo ($r["status"] ?? "-"), " ", ($r["conclusion"] ?? "-"), " ", ($r["html_url"]
     log "[dry-run] $LOCAL_SHORT -> $REMOTE_SHORT is ready to deploy: $SUBJECT"
     git log -n 15 --oneline --no-decorate "$LOCAL_SHA..$REMOTE_SHA" | log_block "[dry-run]   "
     log "[dry-run] would back up both databases to $BACKUP_FILE (keeping the newest $BACKUP_KEEP)"
-    log "[dry-run] would run: git merge --ff-only; docker compose build; docker compose up -d --remove-orphans"
+    log "[dry-run] would run: git merge --ff-only; docker/setup.sh --secrets-only (adds secrets missing from .env, changes nothing else); docker compose build; docker compose up -d --remove-orphans"
     if [ "$SEED_DB" = 1 ]; then
       log "[dry-run] would run: php artisan migrate --force; php artisan db:seed --force"
     else
@@ -702,6 +703,17 @@ echo ($r["status"] ?? "-"), " ", ($r["conclusion"] ?? "-"), " ", ($r["html_url"]
     finish_failed fail "Deploy of $REMOTE_SHORT FAILED ($1). The running site was not touched and the code is back at $LOCAL_SHORT. Fix it and push, or retry with --force."
   }
 
+  # The new code may need settings that this server's .env does not have yet (the live-chat REVERB_* secrets came
+  # that way). Add exactly the missing ones now, with the setup.sh that was just merged, so the compose check
+  # below does not refuse every deploy until somebody logs in. --secrets-only changes nothing else in .env, never
+  # asks a question and prints names only, never values. It is not fatal here: the compose check decides.
+  if [ -f "$ENV_FILE" ] && [ -f "$REPO/docker/setup.sh" ]; then
+    if step "add secrets that are missing from .env (docker/setup.sh --secrets-only)" bash "$REPO/docker/setup.sh" --secrets-only </dev/null; then
+      grep -E '^(ok|!!) ' "$RUN_LOG" | tail -n 1 | log_block "   " || true
+    else
+      log "   WARNING: setup.sh could not complete; continuing, the compose check below tells whether anything is still missing."
+    fi
+  fi
   if ! step "check the compose configuration" dc config --quiet; then
     abort_untouched "docker compose configuration is invalid"
     return 1

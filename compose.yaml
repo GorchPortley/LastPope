@@ -4,6 +4,8 @@
 #   app      Laravel web app (nginx + PHP-FPM); runs migrations and caches on start
 #   queue    Laravel queue worker  (php artisan queue:work)
 #   scheduler Laravel scheduler    (php artisan schedule:work)
+#   reverb   Laravel Reverb WebSocket server (live chat; self-hosted Pusher replacement), reached
+#            through Caddy at wss://APP_DOMAIN/ws
 #   mariadb  database for the app AND for the forum (two databases, two users)
 #   redis    cache, sessions, queue
 #   flarum   the forum, reached through Caddy at https://APP_DOMAIN/forum
@@ -14,7 +16,7 @@
 name: lastpope
 
 # ---------------------------------------------------------------------------
-# Shared definitions for the three containers that run the Laravel code.
+# Shared definitions for the containers that run the Laravel code (app, queue, scheduler, reverb).
 # ---------------------------------------------------------------------------
 x-app-image: &app-image lastpope-app:local
 
@@ -48,6 +50,23 @@ x-app-env: &app-env
   FORUM_ENABLED: ${FORUM_ENABLED:-true}
   FLARUM_URL: https://${APP_DOMAIN}/forum
   FLARUM_INTERNAL_URL: http://flarum:8000/forum
+  # Live chat (Chatify) over the self-hosted Reverb server (CHATIFY_DRIVER=pusher in .env would switch it
+  # back to pusher.com). App id / key / secret come from .env (docker/setup.sh makes them); the rest is
+  # wired here: PHP reaches the reverb container directly (http, no TLS), browsers connect to
+  # wss://APP_DOMAIN/ws, which Caddy forwards to it.
+  BROADCAST_CONNECTION: reverb
+  REVERB_APP_ID: ${REVERB_APP_ID:?REVERB_APP_ID is empty - run docker/setup.sh first}
+  REVERB_APP_KEY: ${REVERB_APP_KEY:?REVERB_APP_KEY is empty - run docker/setup.sh first}
+  REVERB_APP_SECRET: ${REVERB_APP_SECRET:?REVERB_APP_SECRET is empty - run docker/setup.sh first}
+  REVERB_HOST: reverb
+  REVERB_PORT: "8080"
+  REVERB_SCHEME: http
+  REVERB_SERVER_PATH: /ws
+  REVERB_CLIENT_HOST: ${APP_DOMAIN}
+  REVERB_CLIENT_PORT: "443"
+  REVERB_CLIENT_SCHEME: https
+  # Only pages of this site may open a WebSocket to Reverb.
+  REVERB_ALLOWED_ORIGINS: ${REVERB_ALLOWED_ORIGINS:-${APP_DOMAIN}}
   # Web server inside the image: Caddy is the trusted proxy in front of nginx.
   TRUSTED_PROXY: local
   # The app never needs these; do not hand them to PHP code.
@@ -161,6 +180,27 @@ services:
     stop_signal: SIGTERM
     healthcheck:
       test: ["CMD", "healthcheck-schedule"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # Laravel Reverb: the WebSocket server for live chat (Chatify). Same image as the app but no web server
+  # and no migrations here (only `app` runs those). Not published on the host: Caddy forwards
+  # wss://APP_DOMAIN/ws/app/... to it, and the app/queue containers call its HTTP API at
+  # http://reverb:8080/ws/apps/... inside the Docker network.
+  reverb:
+    <<: *app-common
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    stop_signal: SIGTERM
+    environment:
+      <<: *app-env
+      PHP_MEMORY_LIMIT: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ws/up >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

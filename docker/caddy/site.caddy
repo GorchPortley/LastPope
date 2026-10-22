@@ -1,7 +1,8 @@
 # Routing shared by both Caddy front-ends (imported inside their site block):
 #
-#   /forum*  ->  flarum:8000   (the forum, served under the /forum sub-path)
-#   /*       ->  app:8080      (the Laravel app)
+#   /forum*      ->  flarum:8000   (the forum, served under the /forum sub-path)
+#   /ws/app/*    ->  reverb:8080   (live chat: Laravel Reverb WebSocket server)
+#   /*           ->  app:8080      (the Laravel app)
 #
 # Caddyfile               - Caddy is the public web server and gets HTTPS certificates itself.
 # Caddyfile.behind-proxy  - another web server on the host (nginx, Apache, Webmin) handles HTTPS
@@ -54,6 +55,20 @@ handle /forum/assets/* {
 handle @forum {
 	reverse_proxy flarum:8000 {
 		lb_try_duration 5s
+	}
+}
+
+# --- Live chat: Laravel Reverb (WebSocket), served under /ws -------------
+# The browser opens wss://DOMAIN/ws/app/<key>; Caddy forwards the WebSocket upgrade by itself. Reverb
+# is configured with the same /ws prefix (REVERB_SERVER_PATH) and expects to see it, so it is NOT
+# stripped. Only this WebSocket endpoint is public: Reverb's HTTP API (/ws/apps/..., signed with the
+# secret) is for the app and queue containers and is deliberately not routed here, so from outside it
+# falls through to the app below and answers 404. lb_try_duration: ride out a `reverb` restart.
+@reverb path /ws/app/*
+handle @reverb {
+	reverse_proxy reverb:8080 {
+		lb_try_duration 5s
+		lb_try_interval 250ms
 	}
 }
 

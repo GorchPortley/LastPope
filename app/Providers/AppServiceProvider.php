@@ -19,6 +19,11 @@ class AppServiceProvider extends ServiceProvider
     {
         // One per request (and per Octane request): it memoises the active season.
         $this->app->scoped(SeasonalTheme::class);
+
+        // Chatify's routes name the package's controllers; the container hands out ours, which refuses to sign
+        // another person's real-time channel (see App\Support\Chatify\ChannelAuthorizer).
+        $this->app->bind(\Chatify\Http\Controllers\MessagesController::class, \App\Http\Controllers\Chatify\MessagesController::class);
+        $this->app->bind(\Chatify\Http\Controllers\Api\MessagesController::class, \App\Http\Controllers\Chatify\Api\MessagesController::class);
     }
 
     /**

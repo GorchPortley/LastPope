@@ -88,7 +88,7 @@
                     <div class="flex items-center gap-3">
                         <label for="qty-{{ $this->getId() }}" class="text-sm font-medium text-gray-700">Quantity</label>
                         <input id="qty-{{ $this->getId() }}" type="number" min="1" max="{{ $state['max'] }}" wire:model="quantity"
-                               class="w-24 border-gray-300 text-sm">
+                               class="w-24 border-gray-300 text-gray-700 text-sm">
                     </div>
                 @endif
                 <x-button class="w-full" wire:click="add" wire:loading.attr="disabled" wire:target="add">

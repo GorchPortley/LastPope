@@ -15,9 +15,9 @@
                         <div class="inline-flex items-center justify-center w-10 h-10 text-4xl leading-none text-white bg-black aspect-square">
                             <span class="-translate-y-[3px] translate-x-px">»</span>
                         </div>
-                        <div class="mt-4 text-lg font-medium text-gray-900">Extensive Design Repository</div>
+                        <div class="mt-4 text-lg font-medium text-gray-900">Design Repository</div>
                         <div class="mt-2 text-sm text-gray-500 line-clamp-3">
-                            Explore a growing library of speaker designs, complete with enclosure, electrical, and acoustic data to kickstart your project.
+                            Complete, buildable speaker designs: schematics, cabinet plans, measurements and parts lists. Share yours for free or sell them. 
                         </div>
                     </div>
                     <div>
@@ -26,7 +26,7 @@
                         </div>
                         <div class="mt-4 text-lg font-medium text-gray-900">Driver Repository</div>
                         <div class="mt-2 text-sm text-gray-500 line-clamp-3">
-                            Access a comprehensive database of speaker drivers with factory specifications, uploaded files, and design compatibility information.
+                            Real measurements, T/S parameters and Designs for every driver, purchase them straight from SDLabs.
                         </div>
                     </div>
                 </div>
@@ -37,9 +37,9 @@
                         <div class="inline-flex items-center justify-center w-10 h-10 text-4xl leading-none text-white bg-black aspect-square">
                             <span class="-translate-y-[3px] translate-x-px">»</span>
                         </div>
-                        <div class="mt-4 text-lg font-medium text-gray-900">File Management</div>
+                        <div class="mt-4 text-lg font-medium text-gray-900">Marketplace</div>
                         <div class="mt-2 text-sm text-gray-500 line-clamp-3">
-                            Organize and modify your project files seamlessly with our built-in file manager tailored for speaker design workflows.
+                            Kits, finished speakers and used gear from builders including you!
                         </div>
                     </div>
                     <div>
@@ -48,7 +48,7 @@
                         </div>
                         <div class="mt-4 text-lg font-medium text-gray-900">Community Forum</div>
                         <div class="mt-2 text-sm text-gray-500 line-clamp-3">
-                            Join a passionate community of speaker enthusiasts to share knowledge, seek advice, and collaborate on innovative projects.
+                            A discussion for every design and driver, where builders share questions, logs and results.
                         </div>
                     </div>
                 </div>

@@ -4,10 +4,10 @@
             Discover Your Next Favorite Speaker
         </h1>
         <p class="text-base font-medium text-gray-500 sm:text-lg">
-            Discover, design, and bring your speaker ideas to life with SDLabs.
+            Discover, design, and bring your speaker ideas to life with SDLabs. This is a demo filled with fictional products, login using username Demo and password DemoPassword to view dashboard.
         </p>
-        <x-button tag="a" href="https://www.sdlabs.cc/blog/site-news/welcome-to-the-sdlabscc-beta">Read an introduction</x-button>
-        <x-button tag="a" href="https://www.sdlabs.cc/blog/tutorials/how-to-use-sdlabscc">How to use SDLabs</x-button>
+        <!-- <x-button tag="a" href="https://www.sdlabs.cc/blog/site-news/welcome-to-the-sdlabscc-beta">Read an introduction</x-button>
+        <x-button tag="a" href="https://www.sdlabs.cc/blog/tutorials/how-to-use-sdlabscc">How to use SDLabs</x-button> -->
         <div class="flex flex-col sm:flex-row sm:space-x-3 sm:space-y-0 space-y-3 w-full mx-auto items-stretch lg:items-center justify-center">
             @auth
                 <x-button class="animate-shimmer" tag="a" href="{{route('dashboard')}}">Dashboard</x-button>

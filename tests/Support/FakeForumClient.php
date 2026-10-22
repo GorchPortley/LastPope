@@ -128,7 +128,7 @@ class FakeForumClient implements ForumClient
             'reachable' => $this->reachable,
             'authorized' => $this->reachable && $this->authorized,
             'title' => 'Test Forum',
-            'version' => '1.8.20',
+            'version' => '2.0.2',
             'message' => $this->reachable ? 'OK' : 'connection refused',
         ];
     }

@@ -10,7 +10,7 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 - [5. Get the code and create the settings file](#5-get-the-code-and-create-the-settings-file)
 - [6. Start everything](#6-start-everything)
 - [7. First run: base data and the first admin user](#7-first-run-base-data-and-the-first-admin-user)
-- [8. Forum setup](#8-forum-setup)
+- [8. Forum](#8-forum)
 - [9. Mail](#9-mail)
 - [10. Stripe setup](#10-stripe-setup)
 - [11. Backups and restore](#11-backups-and-restore)
@@ -26,19 +26,20 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 
 ## 1. What you are installing
 
-Eight containers, started together by Docker Compose (`compose.yaml`):
+Nine containers, started together by Docker Compose (`compose.yaml`):
 
 ```
 Internet (ports 80 / 443)
    |
    v
 caddy ........ HTTPS certificates (Let's Encrypt, automatic) and the front door
-   |-- /forum*     ->  flarum ...... the forum (Flarum 1.8), served under https://YOURDOMAIN/forum
+   |-- /forum*     ->  flarum ...... the forum (Flarum 2), served under https://YOURDOMAIN/forum
    |-- /ws/app/*   ->  reverb ...... live chat: the WebSocket server (Laravel Reverb), wss://YOURDOMAIN/ws
    '-- (rest)      ->  app ......... the website (Laravel + Wave + Filament, nginx + PHP-FPM)
 
 queue ........ background worker: builds download ZIPs/PDFs, sends mail, talks to the forum
 scheduler .... runs the app's scheduled jobs once a minute
+flarum-scheduler  runs the forum's scheduled jobs once a minute (same image as the forum)
 mariadb ...... the database server: one database for the site, one for the forum
 redis ........ cache, login sessions and the job queue
 ```
@@ -46,7 +47,7 @@ redis ........ cache, login sessions and the job queue
 Only `caddy` is reachable from the internet. The database, Redis, the forum and Reverb never publish a port.
 
 Everything that must survive restarts lives in Docker volumes: database, uploaded files and
-downloads (`app-storage`), the forum's files, Redis, and Caddy's certificates.
+downloads (`app-storage`), the forum's files (`flarum-assets`), Redis, and Caddy's certificates.
 
 ## 2. What you need
 
@@ -138,7 +139,7 @@ Things you can change in `.env` later (then run `docker compose up -d` to apply)
   upload fields in the dashboard (Livewire/Filament).
 - `MAIL_*`: your SMTP service, see [Mail](#9-mail).
 - `STRIPE_*`: see [Stripe setup](#10-stripe-setup).
-- `FLARUM_FORUM_TITLE`: forum name shown at first install.
+- `FLARUM_FORUM_TITLE`: forum name shown at first install (change it later in the forum administration).
 
 ## 6. Start everything
 
@@ -147,7 +148,7 @@ docker compose up -d --build
 ```
 
 The first run downloads images and builds the app image, so allow **5-15 minutes**. Then it
-creates the databases, runs the migrations and installs the forum. Follow it with:
+creates the databases, runs the migrations and installs the forum (the forum image downloads Flarum and its extensions while it is built). Follow it with:
 
 ```bash
 docker compose logs -f          # Ctrl+C stops watching, not the site
@@ -300,7 +301,7 @@ DEMO_PASSWORD=pick-something-long   # every demo account gets this; the default 
 
 The demo admin is `admin@sdlabs.test`. Error pages still stay non-debug in demo mode.
 
-The demo content includes the forum: once the forum is up (section 8) run
+The demo content includes the forum: once the forum is up ([section 8](#8-forum)) run
 `docker compose exec app php artisan forum:setup && docker compose exec app php artisan forum:seed-demo` and every
 demo design, driver and listing gets a discussion with a few replies from the other demo users. (When the forum
 is already connected, `db:seed --force` does this for you at the end.)
@@ -314,24 +315,60 @@ docker compose exec app php artisan app:create-user
 It asks for name, e-mail, username, password and role: choose `admin`. Log in at
 https://shop.example.com/auth/login, then open the admin panel at `/admin`.
 
-## 8. Forum setup
+## 8. Forum
 
-The forum is installed automatically. After the first start you already have:
+The forum is **Flarum 2.0** with a set of extensions, installed into our own image (`docker/flarum`). It is set up
+automatically on the first start. After that you already have:
 
-- the forum at **https://shop.example.com/forum**, using Flarum 1.8 with the usual default
-  extensions switched on (Tags, Likes, Mentions, Markdown, ...) plus the **Embed** extension, which
-  the design and driver pages use to show their discussion inside the page
-  (`/forum/embed/<discussion>`);
+- the forum at **https://shop.example.com/forum**, with Flarum's usual default extensions switched on (Tags,
+  Likes, Mentions, Markdown, ...) plus the ones LastPope needs: **Embed** (the design and driver pages show their
+  discussion inside the page, `/forum/embed/<discussion>`, without the forum's top bar), **Upload** (images and
+  files in posts), **Polls**, **Reactions**, **Best answer** and **Byobu** (private discussions). The full list
+  with versions is under ["What is in the image"](#what-is-in-the-image);
 - a forum administrator named `forumadmin` (or `FLARUM_ADMIN_USER`) whose password is
   `FLARUM_ADMIN_PASSWORD` in `.env`. Log in at `/forum` and open **Administration** in the user menu
   to change the title, look and feel, or e-mail settings;
 - the master API key (`FLARUM_API_KEY`) already stored in the forum's database, so the website
   can create users and discussions without any manual step;
-- a separate database and database user (`flarum`) for the forum.
+- a separate database and database user (`flarum`) for the forum;
+- permission for members to upload files and for visitors to download them (set once at the first install; change it
+  under Administration, Permissions; the accepted file types are on the Upload extension's page in the administration).
 
 Members of the website are created in the forum and signed in automatically (single sign-on): the
 site sets the forum's login cookie for the path `/forum` on the same domain, which is why the forum
 lives under `/forum` and not on a separate sub-domain.
+
+### What is in the image
+
+`docker/flarum/Dockerfile` builds the forum on the same pinned `serversideup/php:8.3-fpm-nginx` base as the website
+(nginx + PHP-FPM, plus the PHP extensions `gd`, `exif` and `intl`). Flarum and its extensions are installed with
+Composer **while the image is built**, from `docker/flarum/composer.json` and `composer.lock` (exact versions);
+nothing is downloaded when the container runs and the forum's Extension Manager is not installed.
+
+| | |
+|---|---|
+| Flarum | `flarum/core` 2.0.2 |
+| Switched on at the first install | the ones Flarum enables itself: `flarum/approval` 2.0.1, `bbcode` 2.0.1, `emoji` 2.0.1, `flags` 2.0.1, `lang-english` 2.0.0, `likes` 2.0.2, `lock` 2.0.1, `markdown` 2.0.1, `mentions` 2.0.2, `statistics` 2.0.1, `sticky` 2.0.2, `subscriptions` 2.0.1, `suspend` 2.0.2, `tags` 2.0.2 |
+| Added for LastPope, switched on | `flarum/embed` 2.0.1, `fof/upload` 2.0.2, `fof/polls` 3.0.1, `fof/reactions` 2.0.0, `fof/best-answer` 2.0.0, `fof/byobu` 2.0.0 |
+| Installed, switched off | `flarum/audit` 2.0.2, `deck` 2.0.2, `gdpr` 2.0.1, `messages` 2.0.2 (Byobu already does private discussions), `nicknames` 2.0.1. Switch them on in the administration (Extensions) if you want them. |
+| Not installed | `flarum/realtime`: it needs its own WebSocket service. |
+| Served at | `/forum` of your domain. Caddy forwards `/forum*` unchanged to the container's nginx (port 8000), which serves `/forum/assets/*` (compiled JS/CSS, avatars, uploads) straight from disk and everything else through Flarum. |
+| Volumes | `flarum-assets` = `public/assets` (avatars, uploaded files, logo, compiled JS/CSS) and `flarum-storage` = `storage` (caches, logs, sessions). `config.php` is not kept: it is written from the environment at every start. |
+| Scheduler | the `flarum-scheduler` container runs `php flarum schedule:run` at the start of every minute (see below). |
+
+**What happens on every start** of the `flarum` container (`docker/flarum/lib/start.php`, before the web server starts):
+
+1. it waits for the database;
+2. on an **empty** forum database it installs Flarum (admin from `FLARUM_ADMIN_*`, URL from your domain, mail settings copied
+   from `MAIL_*`); on an **existing** one it writes `config.php` and runs `php flarum migrate`. That is Flarum's own way of
+   bringing an older database up to date, which is why the same image also upgrades a Flarum 1.8 forum in place;
+3. it stores `FLARUM_API_KEY` in the forum's `api_keys` table (changing the key in `.env` and restarting replaces the old one);
+4. it switches on the extensions listed above and in `FLARUM_EXTENSIONS`, **each one once**: an extension you switch off
+   in the administration stays off after the next restart;
+5. it publishes the extensions' assets and clears and rebuilds Flarum's caches.
+
+A failed first install is rolled back completely (the next start begins again); a database that cannot be reached makes
+the container stop after 3 minutes, and Docker restarts it.
 
 ### Connecting the website to the forum
 
@@ -341,7 +378,7 @@ After the first start (and after you have created your admin account), run once:
 docker compose exec app php artisan forum:setup
 ```
 
-It prints a status table: is the forum reachable from the app, does the API key work, and do the three
+It prints a status table: is the forum reachable from the app (and which Flarum version), does the API key work, and do the three
 forum **tags** exist. Missing tags are created: `designs`, `drivers` and `marketplace` (the slugs come
 from `FORUM_DESIGN_TAG`, `FORUM_DRIVER_TAG`, `FORUM_LISTING_TAG`; an empty value switches the automatic
 discussions off for that kind of item). The command is safe to repeat; `--check` only reports.
@@ -378,17 +415,94 @@ already have replies are left alone, so a second run adds nothing. It refuses to
 or `demo`, and `db:seed` runs it for you when the forum is switched on and reachable (otherwise `db:seed` prints
 the command to run later).
 
-Flarum lets each member post once every 10 seconds, so the first run against a real forum takes a few minutes: the
-command takes turns between members and waits when the forum says "slow down" (`FORUM_THROTTLE_WAIT`). To make it
-instant on a throw-away demo forum, open the forum administration, **Permissions**, and give the *Member* group
-"Post without throttling".
+Flarum 2 does not throttle posts made with the master API key, so the whole demo content (about 55 threads and 175
+replies) takes about a minute. If a forum ever answers "slow down", the command waits (`FORUM_THROTTLE_WAIT`) and carries on.
+
+### The forum's scheduler
+
+Flarum has no background daemon for its recurring jobs (clean-ups, e-mail digests, scheduled polls, ...): something has to run
+`php flarum schedule:run` once a minute. The `flarum-scheduler` container does exactly that, from the same image as the
+forum, in a small loop (`docker/flarum/bin/flarum-scheduler`); it shares the `flarum-storage` volume with the forum, so the
+administration's dashboard can tell that the scheduler is alive. Check it with `docker compose ps flarum-scheduler` (healthy
+= it ran within the last 3 minutes) and `docker compose logs flarum-scheduler`.
+
+### Adding an extension
+
+Extensions are part of the image, so adding one means changing `docker/flarum/composer.json` and rebuilding. Use only
+extensions that support **Flarum 2** (the extension's page on [extiverse.com](https://extiverse.com) or packagist.org says so).
+
+```bash
+cd ~/lastpope/docker/flarum
+# 1. add  "vendor/package": "1.2.3"  (an exact version) to "require" in composer.json, then refresh composer.lock.
+#    Composer is run in a container, nothing needs to be installed on the server:
+docker run --rm --user "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer \
+  -v "$PWD":/app -w /app composer:2 update vendor/package --no-install --no-scripts
+# 2. rebuild and restart the forum (the scheduler uses the same image)
+cd ~/lastpope
+docker compose up -d --build flarum flarum-scheduler
+```
+
+Commit `composer.json` and `composer.lock` together. The extension is then installed but still **off**: switch it on in
+the forum administration (Extensions), or list its id in `.env` (`FLARUM_EXTENSIONS="vendor-package"`, the composer name with `/`
+replaced by `-`) and run `docker compose up -d flarum`; it is switched on once at the next start, and its database changes
+are applied. If composer complains about a missing PHP extension, add `--ignore-platform-req=ext-name` for the lock
+refresh and add the extension to `install-php-extensions` in `docker/flarum/Dockerfile`.
+
+### Upgrading Flarum
+
+Same procedure: raise the versions in `docker/flarum/composer.json` (`flarum/core` and the extensions; for a patch release such
+as 2.0.2 to 2.0.3 usually just the version numbers), run the same `docker run ... composer:2 update` command (without a package name, or with the packages you raised), rebuild
+with `docker compose up -d --build flarum flarum-scheduler`. The new container runs `php flarum migrate` itself, publishes the
+assets and clears the caches. Take a [backup](#11-backups-and-restore) first, read the release notes on
+[discuss.flarum.org](https://discuss.flarum.org) for anything but a patch release, and look at
+`docker compose logs flarum` afterwards. If a new Flarum version changes the launcher files of the `flarum/flarum` skeleton
+(`docker/flarum/skeleton/`: `flarum`, `site.php`, `public/index.php`), copy the new ones from the skeleton repository.
+
+### Resetting the forum
+
+`docker/flarum/reset.sh` throws the whole forum away and installs a fresh, empty one: handy for a dev or demo site.
+
+```bash
+cd ~/lastpope
+docker/flarum/reset.sh
+```
+
+It tells you what it is about to delete and asks you to **type the domain** to confirm. Then it stops the forum, removes its volumes,
+drops and recreates the forum database (with `MARIADB_ROOT_PASSWORD` from `.env`), starts the forum again (which installs it from the
+`FLARUM_*` settings in `.env`) and runs `php artisan forum:unlink --force` in the app container, so the site forgets the forum
+discussions and accounts it had stored. The site's own database is not touched. It ends by printing what to run next:
+
+```bash
+docker compose exec app php artisan forum:setup
+docker compose exec app php artisan forum:seed-demo           # demo site: threads and replies for every design, driver and listing
+docker compose exec app php artisan forum:setup --backfill    # real site: a discussion for every published design, driver and listing
+```
+
+Members get their forum account again the next time they log in, or when something is posted under their name.
+
+### Upgrading from the 1.8 forum
+
+Until now the forum was Flarum 1.8 (the `crazymax/flarum` image). The upgrade needs nothing but the usual update
+(`git pull`, `docker compose up -d --build`, or the [automatic updater](#13-automatic-updates)):
+
+- **The dev forum is reset** (owner's decision): after the update run `docker/flarum/reset.sh` and then the commands it prints. All
+  1.8 discussions, accounts and settings are gone, and so is the old `flarum-data` volume.
+- **A forum you want to keep** is migrated **in place**. The first start of the new image finds the existing forum database
+  (same database, same `flarum_` table prefix), runs `php flarum migrate`, switches on the new extensions once and keeps
+  accounts, discussions, tags and settings. Take a [backup](#11-backups-and-restore) before. Two things stay behind in the old
+  volume `lastpope_flarum-data`: avatars and uploaded files (copy the avatars with
+  `docker run --rm -v lastpope_flarum-data:/old:ro -v lastpope_flarum-assets:/new alpine sh -c 'cp -a /old/assets/avatars/. /new/avatars/'`
+  and `docker compose restart flarum`) and extensions that were installed from the forum's Extension Manager, which have to be added to
+  `docker/flarum/composer.json` (Flarum 2 versions only; an extension that is not ready for 2.0 will not work). `docker volume rm lastpope_flarum-data`
+  removes the old volume once you have what you need.
+- **There is no way back by switching the code back**: the migrated database no longer works with Flarum 1.8. The
+  updater's automatic rollback puts the old code back but does not undo the database change; restore the database dump
+  taken before the update (section 11, or `backups/` of the updater) if you really want to return to 1.8.
 
 ### Forum tips
 
-- Add Flarum extensions by listing them in `.env` (`FLARUM_EXTENSIONS="flarum/embed:^1.8 fof/upload:^1.0"`) and
-  running `docker compose up -d flarum`; or use the Extension Manager in the forum administration.
-  Only extensions that support **Flarum 1.x** work with this image.
-- The forum's mail settings are copied from `MAIL_*` once, on its first start. Change them later
+- Add Flarum extensions as described in ["Adding an extension"](#adding-an-extension). The forum's own Extension Manager is deliberately not installed.
+- The forum's mail settings are copied from `MAIL_*` once, when it is installed. Change them later
   in the forum administration (Administration, Email).
 - A member's forum user name is taken from their site username; Flarum only allows letters, digits, `-` and
   `_` (3-30 characters), so other characters are replaced. The names `admin`, `administrator`, the forum
@@ -397,6 +511,11 @@ instant on a throw-away demo forum, open the forum administration, **Permissions
   until the next login.
 - Changing `FLARUM_ADMIN_PASSWORD` in `.env` does **not** change an existing forum account's
   password (it is only used for the first install). Change it in the forum itself.
+- Uploaded files are served from the same web address as the site, so the forum's web server sends them with a policy that stops
+  a browser from running anything in them. Keep the Upload extension's accepted file types short (images, PDF, ZIP).
+- Flarum writes its own log to the volume: `docker compose exec flarum sh -c 'tail -n 50 storage/logs/*.log'`.
+- Flarum's console is available as `docker compose exec flarum php flarum <command>` (`info` shows versions and extensions, `cache:clear`,
+  `migrate`, `extension:enable <id>` / `extension:disable <id>`).
 
 ## 9. Mail
 
@@ -523,10 +642,10 @@ have new signing secrets), put the live keys and secrets in `.env`, and run `doc
 ## 11. Backups and restore
 
 What to back up: **the databases**, **the uploaded files** (volume `app-storage`), **the forum files**
-(volume `flarum-data`) and **`.env`**. The certificates (`caddy-data`) are optional: they are re-issued
+(volume `flarum-assets`: avatars and uploads) and **`.env`**. The certificates (`caddy-data`) are optional: they are re-issued
 automatically.
 
-Volume names start with the project name: `lastpope_app-storage`, `lastpope_flarum-data`. List them with
+Volume names start with the project name: `lastpope_app-storage`, `lastpope_flarum-assets`. List them with
 `docker volume ls`.
 
 **Back up** (run in the project folder; the files end up in `~/backups`):
@@ -544,9 +663,9 @@ docker compose exec -T mariadb sh -c \
 docker run --rm -v lastpope_app-storage:/data:ro -v ~/backups:/backup alpine \
   tar czf /backup/app-storage-$STAMP.tgz -C /data .
 
-# 3. forum files (avatars, installed extensions)
-docker run --rm -v lastpope_flarum-data:/data:ro -v ~/backups:/backup alpine \
-  tar czf /backup/flarum-data-$STAMP.tgz -C /data .
+# 3. forum files (avatars, uploaded files; the caches in flarum-storage are rebuilt by themselves)
+docker run --rm -v lastpope_flarum-assets:/data:ro -v ~/backups:/backup alpine \
+  tar czf /backup/flarum-assets-$STAMP.tgz -C /data .
 
 # 4. the settings file
 cp .env ~/backups/env-$STAMP && chmod 600 ~/backups/env-$STAMP
@@ -574,8 +693,8 @@ gunzip < ~/backups/db-STAMP.sql.gz | docker compose exec -T mariadb sh -c 'maria
 # 3. unpack the files into the volumes
 docker run --rm -v lastpope_app-storage:/data -v ~/backups:/backup alpine \
   sh -c 'cd /data && tar xzf /backup/app-storage-STAMP.tgz'
-docker run --rm -v lastpope_flarum-data:/data -v ~/backups:/backup alpine \
-  sh -c 'cd /data && tar xzf /backup/flarum-data-STAMP.tgz'
+docker run --rm -v lastpope_flarum-assets:/data -v ~/backups:/backup alpine \
+  sh -c 'cd /data && tar xzf /backup/flarum-assets-STAMP.tgz'
 
 # 4. start everything
 docker compose up -d
@@ -627,7 +746,7 @@ Prefer not to log in for every update? The server can check GitHub itself, back 
 when the tests are green: see [13. Automatic updates](#13-automatic-updates).
 
 Software versions are pinned in the repository, so nothing changes by itself: MariaDB 11.8, Redis 8.2,
-Caddy 2.11, PHP 8.3 with nginx (serversideup/php v5), Flarum 1.8. A new version arrives only when the
+Caddy 2.11, PHP 8.3 with nginx (serversideup/php v5), Flarum 2.0 (versions of Flarum and its extensions are locked in `docker/flarum/composer.lock`, see [Upgrading Flarum](#upgrading-flarum)). A new version arrives only when the
 repository changes the pinned tag. Do not jump MariaDB across major versions without reading the MariaDB
 upgrade notes.
 
@@ -666,7 +785,7 @@ The visitors' side: the site is unreachable for a few seconds while the app cont
     2 minutes. Failed: do not deploy, tell you once.
   - Backup: both databases to `backups/<time>-<old commit>.sql.gz`. No backup, no deploy.
   - `git merge --ff-only`, `docker compose build`, `docker compose up -d`, `php artisan migrate`, `php artisan db:seed`.
-  - Health check (up to 3 minutes): `app`, `flarum`, `queue`, `scheduler` healthy and the site answers on Caddy's local port.
+  - Health check (up to 3 minutes): `app`, `flarum`, `flarum-scheduler`, `queue`, `scheduler` healthy and the site answers on Caddy's local port.
   - Healthy: notify, remove old images. Unhealthy: `git reset --hard <old commit>`, rebuild, restart, notify.
 
 Only one run happens at a time (a lock), so a long build never overlaps with the next check.
@@ -885,7 +1004,10 @@ docker stats                              # CPU/RAM per container
 | Build stops with `Could not authenticate against github.com` | GitHub limits anonymous downloads. Create a token at <https://github.com/settings/tokens> (a classic token with **no** scopes is enough) and build once with `COMPOSER_AUTH='{"github-oauth":{"github.com":"ghp_yourtoken"}}' docker compose build`. |
 | Build is killed / `npm` or `composer` exits with "Killed" | Out of memory. Add swap (step 4.2) or use a larger server for the build. |
 | `Access denied for user 'lastpope'` after changing a DB password in `.env` | MariaDB only reads passwords when its data volume is created. Change it inside the database: `docker compose exec mariadb mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "ALTER USER 'lastpope'@'%' IDENTIFIED BY 'the-new-password'"`; for the forum user re-run `docker compose exec mariadb bash /docker-entrypoint-initdb.d/10-flarum.sh`. |
-| Forum shows an error page or never gets healthy | `docker compose logs flarum`. The first start installs extensions from packagist.org, so the server needs outbound internet. |
+| Forum shows an error page or never gets healthy | `docker compose logs flarum` shows the install or migration (lines starting with `flarum-start:`); Flarum's own error log is `docker compose exec flarum sh -c 'tail -n 50 storage/logs/*.log'`. The forum needs no internet at run time (everything is in the image); if the **build** fails, see "Could not authenticate against github.com" above, it applies to `docker compose build flarum` too. |
+| Forum update: `flarum-start: ERROR ... cannot connect to the database` | The forum could not reach MariaDB within 3 minutes (is `mariadb` healthy? did you change `FLARUM_DB_PASSWORD`? see the `Access denied` row above). Docker restarts the container and it tries again. |
+| Forum is stuck on an old or half-finished state and you do not need its content | `docker/flarum/reset.sh` ([Resetting the forum](#resetting-the-forum)). |
+| Admin dashboard of the forum warns that the scheduler is not running | `docker compose ps flarum-scheduler` and `docker compose logs flarum-scheduler`; `docker compose up -d flarum-scheduler`. |
 | Forum login / "not logged in to the forum" | `FORUM_ENABLED=true`, `FLARUM_API_KEY` set, and `FLARUM_URL` equals `https://<domain>/forum`. Then `docker compose up -d app queue scheduler`. |
 | Designs/drivers get no forum discussion | `docker compose exec app php artisan forum:setup` shows what is wrong (unreachable forum, rejected API key, missing tag). Details are in `docker compose logs queue`. "The number of primary tags must be 1" means the tag exists but is a secondary tag: in the forum administration, Tags, drag it into the primary list. |
 | Chat shows "offline" / no live updates, browser WS request fails or is `4009` | `docker compose ps reverb` and `docker compose logs reverb`. `4009 Origin not allowed`: the page is not served from `APP_DOMAIN` (add the host to `REVERB_ALLOWED_ORIGINS`). Request ends with `400`/`500`/`502` and you use your own nginx: the `location /ws/app/` block with the `Upgrade` headers is missing or not inside the HTTPS server (see [Behind an existing web server](#behind-an-existing-web-server-nginx-apache-webmin)). |
@@ -893,7 +1015,9 @@ docker stats                              # CPU/RAM per container
 | Uploads fail for big files | Raise `UPLOAD_MAX_SIZE` in `.env` and `docker compose up -d app`. (Caddy allows up to 1 GB per request.) |
 | Disk is full | `docker system df`, then `docker image prune -f` and `docker builder prune -f`. Logs are rotated automatically (10 MB x 5 per container). |
 
-**Starting from scratch** (this deletes the database, uploads and certificates; only do it on a test setup):
+**Starting the forum from scratch** (only the forum; the site is untouched): `docker/flarum/reset.sh`, see [Resetting the forum](#resetting-the-forum).
+
+**Starting everything from scratch** (this deletes the database, uploads and certificates; only do it on a test setup):
 
 ```bash
 docker compose down -v
@@ -959,10 +1083,11 @@ The Stripe CLI forwards `/stripe/marketplace/webhook` and `/stripe/connect/webho
 | `reverb` | same image | `php artisan reverb:start`, internal port 8080, WebSocket server for live chat (Caddy: `/ws/app/*`) |
 | `mariadb` | `mariadb:11.8.9` | databases: app (`MARIADB_DATABASE`) and forum (`FLARUM_DB_DATABASE`) |
 | `redis` | `redis:8.2.10-alpine` | password protected, append-only persistence |
-| `flarum` | built from `docker/flarum/Dockerfile` on `crazymax/flarum:1.8.20` | internal port 8000 |
+| `flarum` | built from `docker/flarum/Dockerfile` (tag `lastpope-flarum:2.0.2`) on `serversideup/php:8.3-fpm-nginx-v5.0.1`, Flarum 2.0.2 | internal port 8000, served at `/forum` |
+| `flarum-scheduler` | same image as `flarum` | `php flarum schedule:run` every minute |
 
 **Volumes** (prefix `lastpope_`): `mariadb-data`, `redis-data`, `app-storage` (storage/app: uploads, snapshots),
-`app-logs` (storage/logs), `flarum-data`, `caddy-data` (certificates), `caddy-config`.
+`app-logs` (storage/logs), `flarum-assets` (forum avatars, uploads, compiled assets), `flarum-storage` (forum caches and logs), `caddy-data` (certificates), `caddy-config`.
 
 **Variables you may edit in `.env`**
 
@@ -984,7 +1109,7 @@ The Stripe CLI forwards `/stripe/marketplace/webhook` and `/stripe/connect/webho
 | `FORUM_DESIGN_TAG`, `FORUM_DRIVER_TAG`, `FORUM_LISTING_TAG` | forum tag slugs for the automatic discussions |
 | `FLARUM_FORUM_TITLE`, `FLARUM_ADMIN_USER`, `FLARUM_ADMIN_EMAIL`, `FLARUM_ADMIN_PASSWORD` | first forum install |
 | `FLARUM_DB_DATABASE`, `FLARUM_DB_USERNAME`, `FLARUM_DB_PASSWORD` | the forum's own database and user |
-| `FLARUM_EXTENSIONS` | extra Flarum extensions to install |
+| `FLARUM_EXTENSIONS` | extra installed Flarum extensions to switch on (ids or composer names); installing one is done in `docker/flarum/composer.json`, see [Adding an extension](#adding-an-extension) |
 | `MAIL_*` | outgoing mail |
 | `STRIPE_*` | Stripe keys and webhook secrets |
 | `MARKETPLACE_*` | fee, payout timing, problem-report windows and stock reservation, see [section 10.4](#10-stripe-setup) and `.env.example` |

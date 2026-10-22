@@ -113,6 +113,30 @@ it('adopts an existing forum account when the e-mail is already registered there
     expect(flarum()->ensureUser(User::factory()->create()))->toBe(55);
 });
 
+it('trusts the stored forum id only while that account still exists, and keeps the pin otherwise', function () {
+    Http::fake([FORUM_API.'/users/42' => Http::response(['data' => ['id' => '42']])]);
+
+    $user = User::factory()->create(['forum_user_id' => 42]);
+
+    expect(flarum()->ensureUser($user))->toBe(42);
+
+    // one cheap existence check, no e-mail search and no new account
+    expect(collect(recorded())->map(fn ($r) => $r[0].' '.parse_url($r[1], PHP_URL_PATH))->all())->toBe(['GET /forum/api/users/42']);
+});
+
+it('looks the account up again when the stored forum id is gone (forum was reset)', function () {
+    Http::fake([
+        FORUM_API.'/users/42' => Http::response(['errors' => [['status' => '404', 'code' => 'not_found']]], 404),
+        FORUM_API.'/users?*' => Http::response(['data' => []]),
+        FORUM_API.'/users' => Http::response(['data' => ['id' => '7']], 201),
+    ]);
+
+    $user = User::factory()->create(['forum_user_id' => 42]);
+
+    expect(flarum()->ensureUser($user))->toBe(7)
+        ->and($user->refresh()->forum_user_id)->toBe(7);
+});
+
 it('returns the remember token on the first try for a known member', function () {
     Http::fake([FORUM_API.'/token' => Http::response(['token' => 'abc123', 'userId' => 7])]);
 
@@ -243,8 +267,8 @@ it('lists tags by slug and creates new ones', function () {
     Http::fake([
         FORUM_API.'/tags' => Http::sequence()
             ->push(['data' => [
-                ['id' => '2', 'attributes' => ['slug' => 'designs', 'position' => 0, 'isChild' => false]],
-                ['id' => '4', 'attributes' => ['slug' => 'misc', 'position' => null, 'isChild' => false]],
+                ['id' => '2', 'attributes' => ['slug' => 'designs', 'isPrimary' => true, 'position' => 0, 'isChild' => false]],
+                ['id' => '4', 'attributes' => ['slug' => 'misc', 'isPrimary' => false, 'position' => null, 'isChild' => false]],
             ]])
             ->push(['data' => ['id' => '9', 'attributes' => ['slug' => 'drivers']]], 201),
     ]);
@@ -254,26 +278,38 @@ it('lists tags by slug and creates new ones', function () {
         'misc' => ['id' => 4, 'primary' => false],
     ])->and(flarum()->createTag('drivers', 'Drivers', 'About drivers', '#2F7FBF'))->toBe(9);
 
-    // Flarum only accepts a discussion with exactly one *primary* tag, so new tags must be primary.
+    // Flarum only accepts a discussion with exactly one *primary* tag, so new tags must be primary. (Flarum 2 names
+    // the attribute isPrimary and rejects unknown attributes with a 400, so "primary" would fail.)
     Http::assertSent(fn (Request $request) => $request->method() === 'POST'
-        && $request['data']['attributes']['primary'] === true
+        && $request['data']['attributes']['isPrimary'] === true
         && $request['data']['attributes']['slug'] === 'drivers'
         && $request['data']['attributes']['name'] === 'Drivers'
         && $request['data']['attributes']['color'] === '#2F7FBF');
 });
 
-it('checks the connection and the API key', function () {
+it('checks the connection and the API key, and reads the Flarum version from the system info', function () {
     Http::fake([
-        FORUM_API => Http::response(['data' => ['attributes' => ['title' => 'My Forum', 'version' => '1.8.20']]]),
+        FORUM_API => Http::response(['data' => ['attributes' => ['title' => 'My Forum']]]),
         FORUM_API.'/users/1' => Http::response(['data' => ['attributes' => ['username' => 'forumadmin', 'email' => 'a@b.test']]]),
+        FORUM_API.'/system-info/system' => Http::response(['data' => ['attributes' => ['content' => "Flarum core: 2.0.2\nPHP version: CLI: 8.3.35\n"]]]),
     ]);
 
     expect(flarum()->checkConnection())->toMatchArray([
         'reachable' => true,
         'authorized' => true,
         'title' => 'My Forum',
-        'version' => '1.8.20',
+        'version' => '2.0.2',
     ]);
+});
+
+it('still reports a working connection when the version cannot be read', function () {
+    Http::fake([
+        FORUM_API => Http::response(['data' => ['attributes' => ['title' => 'My Forum']]]),
+        FORUM_API.'/users/1' => Http::response(['data' => ['attributes' => ['email' => 'a@b.test']]]),
+        FORUM_API.'/system-info/system' => Http::response(['errors' => []], 404),
+    ]);
+
+    expect(flarum()->checkConnection())->toMatchArray(['reachable' => true, 'authorized' => true, 'version' => null]);
 });
 
 it('detects a rejected API key (no e-mail visible = guest)', function () {

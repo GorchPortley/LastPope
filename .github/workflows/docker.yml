@@ -1,7 +1,10 @@
 name: Docker stack
 
-# Builds the production images and boots the whole compose stack (caddy, app, queue, scheduler,
-# mariadb, redis, flarum) on a runner, then checks that the site and the forum answer over HTTPS.
+# Builds the production images (app and the Flarum 2 forum from docker/flarum) and boots the whole compose
+# stack (caddy, app, queue, scheduler, mariadb, redis, flarum, flarum-scheduler) on a runner, then checks that
+# the site and the forum answer over HTTPS, that the app can talk to the real Flarum API (tags, user,
+# discussion, remember token) and that the embed page of a discussion renders. Finally it runs the forum
+# reset script. The Flarum image installs ~160 Composer packages from the committed lock file at build time.
 # The unit/feature tests live in tests.yml; this job catches what they cannot: a broken image build,
 # a migration that only fails on MariaDB, a mis-wired Caddyfile or a forum that does not start.
 
@@ -20,6 +23,8 @@ on:
       - 'config/**'
       - 'database/**'
       - 'app/Services/Forum/**'
+      - 'app/Console/Commands/Forum*.php'
+      - 'app/Jobs/CreateForumDiscussion.php'
       - '.github/workflows/docker.yml'
   pull_request:
     paths:
@@ -34,6 +39,8 @@ on:
       - 'config/**'
       - 'database/**'
       - 'app/Services/Forum/**'
+      - 'app/Console/Commands/Forum*.php'
+      - 'app/Jobs/CreateForumDiscussion.php'
       - '.github/workflows/docker.yml'
   workflow_dispatch:
   schedule:
@@ -95,11 +102,57 @@ jobs:
       - name: Forum assets are served under /forum
         run: |
           html=$(curl -ksS https://localhost/forum)
-          echo "${html}" | grep -o 'https://localhost/forum/assets/[^"]*' | sort -u | head -5 | while read -r url; do
+          urls=$(echo "${html}" | grep -o 'https://localhost/forum/assets/[^"]*' | sort -u | head -5)
+          [ -n "${urls}" ] || { echo "no /forum/assets/ URLs in the forum page"; exit 1; }
+          echo "${urls}" | while read -r url; do
             code=$(curl -ksS -o /dev/null -w '%{http_code}' "${url}")
             echo "${code} ${url}"
             [ "${code}" = "200" ]
           done
+
+      - name: Create a discussion through the app (real Flarum API) and open its embed page
+        # What the site does for a new design: a forum account for the owner, a discussion in the "designs" tag,
+        # a remember token for the single sign-on cookie. The embed page is what the iframe on the design page loads.
+        run: |
+          php_code=$(cat <<'PHP'
+          $user = App\Models\User::forceCreate([
+              'name' => 'CI Member', 'username' => 'ci_member', 'email' => 'ci-member@example.test',
+              'password' => bcrypt(Illuminate\Support\Str::random(24)), 'verified' => 1,
+          ]);
+          $forum = app(App\Services\Forum\ForumClient::class);
+          $slug = $forum->createDiscussion('CI embed check', 'Created by the CI smoke test.', 'designs', $user);
+          echo 'SLUG='.$slug.PHP_EOL;
+          echo 'EMBED='.$forum->embedUrl($slug).PHP_EOL;
+          echo 'TOKEN='.($forum->issueRememberToken($user) ? 'issued' : 'MISSING').PHP_EOL;
+          PHP
+          )
+          out=$(docker compose exec -T app php artisan tinker --execute="${php_code}")
+          echo "${out}"
+          slug=$(echo "${out}" | sed -n 's/^SLUG=//p' | tr -d '\r')
+          embed=$(echo "${out}" | sed -n 's/^EMBED=//p' | tr -d '\r')
+          [ -n "${slug}" ] || { echo "the app could not create a discussion"; exit 1; }
+          echo "${out}" | grep -q '^TOKEN=issued' || { echo "no remember token issued"; exit 1; }
+          echo "${slug}" > forum-slug.txt
+          # the URL the app builds, and the same discussion under /forum/d/<id>
+          for url in "${embed}" "https://localhost/forum/d/${slug}"; do
+            code=$(curl -ksS --retry 5 --retry-delay 2 --retry-all-errors -o /dev/null -w '%{http_code}' "${url}")
+            echo "GET ${url} -> ${code}"
+            [ "${code}" = "200" ]
+          done
+          # the embed page carries the discussion and loads the embed frontend (assets/embed.css hides the forum header)
+          page=$(curl -ksS "${embed}")
+          echo "${page}" | grep -q 'CI embed check' || { echo "the embed page does not contain the discussion"; exit 1; }
+          echo "${page}" | grep -q 'assets/embed.css' || { echo "the embed page does not load the embed frontend (is flarum/embed enabled?)"; exit 1; }
+
+      - name: Reset the forum with docker/flarum/reset.sh
+        # Wipes the forum database and volumes, installs Flarum again and clears the stored links in the app.
+        run: |
+          echo localhost | docker/flarum/reset.sh
+          slug=$(cat forum-slug.txt)
+          code=$(curl -ksS --retry 10 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' "https://localhost/forum/embed/${slug}")
+          echo "GET /forum/embed/${slug} after the reset -> ${code} (expected 404: the discussion is gone)"
+          [ "${code}" = "404" ]
+          docker compose exec -T app php artisan forum:setup
 
       - name: Dump logs (on failure)
         if: failure()

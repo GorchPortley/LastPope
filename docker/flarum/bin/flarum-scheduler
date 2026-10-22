@@ -1,0 +1,24 @@
+#!/bin/sh
+# Flarum's scheduler: Flarum has no daemon for it, `php flarum schedule:run` has to be started once a
+# minute (cleanups, digests, extension jobs). This loop does that at the start of every minute; the
+# compose service "flarum-scheduler" runs it from the same image as the forum.
+#
+# After every run it touches /tmp/flarum-scheduler.alive, which the container healthcheck looks at.
+
+cd "${FLARUM_ROOT:-/var/www/html}" || exit 1
+
+nap_pid=""
+trap '[ -z "$nap_pid" ] || kill "$nap_pid" 2>/dev/null; exit 0' TERM INT
+
+while :; do
+    php flarum schedule:run || echo "flarum-scheduler: schedule:run exited with status $?" >&2
+    touch /tmp/flarum-scheduler.alive
+
+    # seconds until the next full minute (08 and 09 are not octal numbers: strip the zero)
+    now=$(date +%S)
+    now=${now#0}
+    sleep "$((60 - ${now:-0}))" &
+    nap_pid=$!
+    wait "$nap_pid"
+    nap_pid=""
+done

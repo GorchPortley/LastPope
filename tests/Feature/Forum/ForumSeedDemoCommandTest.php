@@ -263,10 +263,13 @@ it('seeds a forum through the real client: authors act as themselves, throttled 
         }
 
         return match (true) {
-            $route === '' => $json(['data' => ['attributes' => ['title' => 'Pretend Forum', 'version' => '1.8.0']]]),
+            $route === '' => $json(['data' => ['attributes' => ['title' => 'Pretend Forum']]]),
             $route === '/users/1' => $json(['data' => ['attributes' => ['email' => 'forumadmin@forum.test']]]),
+            $route === '/system-info/system' => $json(['data' => ['attributes' => ['content' => "Flarum core: 2.0.2\n"]]]),
+            // the client checks that a stored forum id still exists before it acts as that account
+            (bool) preg_match('#^/users/(\d+)$#', $route, $m) => $json(['data' => ['id' => $m[1]]]),
             $route === '/tags' => $json(['data' => collect(['designs', 'drivers', 'marketplace'])->map(fn ($slug, $i) => [
-                'id' => (string) ($i + 1), 'attributes' => ['slug' => $slug, 'position' => $i, 'isChild' => false],
+                'id' => (string) ($i + 1), 'attributes' => ['slug' => $slug, 'isPrimary' => true, 'position' => $i, 'isChild' => false],
             ])->all()]),
             $route === '/users' && $method === 'GET' => (function () use ($request, $json) {
                 parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);

@@ -228,9 +228,9 @@ a resonance peak at fs and voice-coil inductance rise) written to the private di
 
 - `docker/app/Dockerfile`: multi-stage (node → Vite build; composer `--no-dev`), runtime on a pinned
   `serversideup/php:8.3-fpm-nginx` tag. Compose services: `app` (web), `queue`, `scheduler`, `mariadb` (app DB + a
-  `flarum` DB), `redis`, `flarum` (pinned `crazymax/flarum`), `reverb` (Laravel Reverb WebSocket server for Chatify's live chat,
+  `flarum` DB), `redis`, `flarum` (own image from `docker/flarum`, Flarum 2) with its `flarum-scheduler`, `reverb` (Laravel Reverb WebSocket server for Chatify's live chat,
   replaces pusher.com; `php artisan reverb:start`, internal port 8080), `caddy` (automatic HTTPS for `${APP_DOMAIN}`,
-  `/forum` → flarum, `/ws/app/*` → reverb, everything else → app). Named volumes for db, redis, app storage, flarum data, caddy data.
+  `/forum` → flarum, `/ws/app/*` → reverb, everything else → app). Named volumes for db, redis, app storage, flarum assets and storage, caddy data.
 - `compose.dev.yaml` override: bind-mounted code, Vite dev server, Mailpit, `stripe-cli` forwarding webhooks.
 - `.env.example` documents every variable. `docs/DEPLOY.md`: VPS, DNS, install Docker, clone, `.env`,
   `docker compose up -d`, admin user, forum setup, Stripe setup (Connect settings, both webhook endpoints and their
@@ -552,6 +552,19 @@ products**. Marketplace (user) listings are unchanged. Migration policy §7 appl
   against a real Flarum 2.0 and adapted. Remove the unused maicol07/flarum-sso-plugin package.
 - The embed page (flarum/embed 2.x) must show the discussion without Flarum's top bar; the
   composer and fof/upload work inside the iframe.
+
+### R5.1 implementation notes (where things live; done)
+- `docker/flarum/`: `Dockerfile` (php-base, vendor via `composer install`, runtime), `composer.json` + `composer.lock` (Flarum
+  core 2.0.2, exact extension versions, `platform.php` 8.3.0), `skeleton/` (launcher files of flarum/flarum 2.0.0),
+  `nginx/http.conf.template` (replaces the base image's site template: `/forum/assets/` as files, everything else under `/forum` to
+  `public/index.php`; Caddy forwards `/forum*` unchanged), `entrypoint.d/60-flarum.sh` -> `lib/start.php` (wait for DB, install or
+  `migrate`, API key, enable extensions once each, assets, caches; `config.php` is written from the env at every start), `bin/flarum-scheduler`
+  (`schedule:run` every minute, the `flarum-scheduler` service), `reset.sh`.
+- Extensions: tags, embed, fof/upload, polls, reactions, best-answer, byobu plus Flarum's defaults; **fof/byobu stays installed and enabled**
+  (R5.2 builds on it). Flarum 2 needs `database.driver = mariadb` in config.php on MariaDB (`mysql` sends `CAST(.. AS JSON)`).
+- Laravel side: `FlarumClient` uses `isPrimary` for tags, reads the version from `/api/system-info/system`, re-checks a stored
+  `users.forum_user_id` before trusting it; `forum:unlink` forgets `forum_slug` / `forum_user_id` after a reset. The API key is not
+  throttled by Flarum 2, so `forum:seed-demo` takes about a minute. Removed: maicol07/flarum-sso-plugin.
 
 ### R5.2 Discussion visibility with Byobu (follow-up agent)
 | Design state           | Discussion visible to                                   |

@@ -1,0 +1,83 @@
+# nginx site for Flarum, served under the /forum sub-path.
+#
+# This file replaces serversideup/php's own site-opts.d/http.conf.template; the image's start-up
+# script (10-init-webserver-config.sh) fills in the ${NGINX_*} / ${PHP_*} / ${TRUSTED_PROXY} placeholders
+# from the container environment, exactly as it does for the stock file. Everything else in the stock
+# setup (nginx.conf, the security headers, real-IP handling for Caddy) is kept via the includes at the end.
+#
+# Flarum is configured with its public URL https://DOMAIN/forum (FLARUM_BASE_URL) and expects to see the
+# complete /forum/... path on every request: Caddy forwards it unchanged and Flarum strips the prefix
+# itself. The document root is Flarum's public/ directory, which only holds index.php and assets/, so
+# the URL /forum/assets/... maps to public/assets/...  Nothing outside public/ is reachable.
+
+listen ${NGINX_HTTP_PORT} default_server;
+listen [::]:${NGINX_HTTP_PORT} default_server;
+
+root $NGINX_WEBROOT;
+
+index index.php;
+
+server_name _;
+
+charset utf-8;
+
+absolute_redirect off;
+
+# Healthcheck: serversideup's static php-fpm ping (the compose healthcheck asks /forum/api instead,
+# which also proves that Flarum can reach the database).
+location /healthcheck {
+    access_log off;
+
+    # set max 5 seconds for healthcheck
+    fastcgi_read_timeout 5s;
+
+    include        fastcgi_params;
+    fastcgi_param  SCRIPT_NAME     /healthcheck;
+    fastcgi_param  SCRIPT_FILENAME /healthcheck;
+    fastcgi_pass   127.0.0.1:9000;
+}
+
+# Files Flarum writes at runtime: compiled forum/admin JS and CSS, extension assets, fonts, logo, avatars
+# and uploads (fof/upload). Plain files, served at /forum/assets/<path>. A missing file is a plain 404
+# (Flarum does not generate any of them on demand).
+location ^~ /forum/assets/ {
+    alias $NGINX_WEBROOT/assets/;
+    expires 30d;
+    access_log off;
+    log_not_found off;
+}
+
+# Member uploads (fof/upload) live on the same web address as the shop, so a browser must never run
+# anything from them: no scripts in an uploaded HTML/SVG file, no content-type guessing. Images in
+# posts are not affected (the policy only matters when a file is opened as a page of its own).
+location ^~ /forum/assets/files/ {
+    alias $NGINX_WEBROOT/assets/files/;
+    expires 30d;
+    access_log off;
+    log_not_found off;
+    add_header Content-Security-Policy "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+}
+
+# Everything else under /forum (pages, /forum/api, /forum/embed/<id>, /forum/admin, ...) is Flarum's
+# front controller. REQUEST_URI stays untouched so that Flarum sees the /forum prefix it expects.
+location ~ ^/forum(?:/|$) {
+    include        fastcgi_params;
+    fastcgi_pass   127.0.0.1:9000;
+    fastcgi_param  SCRIPT_FILENAME $document_root/index.php;
+    fastcgi_param  SCRIPT_NAME     /index.php;
+    fastcgi_buffers $NGINX_FASTCGI_BUFFERS;
+    fastcgi_buffer_size $NGINX_FASTCGI_BUFFER_SIZE;
+    fastcgi_read_timeout $PHP_MAX_EXECUTION_TIME;
+}
+
+# This container serves the forum only; the shop is another container behind Caddy.
+location / {
+    return 404;
+}
+
+# trusted proxy configuration (Caddy sends X-Forwarded-For)
+include /etc/nginx/trusted-proxy/${TRUSTED_PROXY}.conf;
+
+# additional config (security headers, dot-file rules)
+include /etc/nginx/server-opts.d/*.conf;

@@ -1,0 +1,45 @@
+{
+    "name": "lastpope/flarum",
+    "description": "The LastPope forum: Flarum 2 and its extensions, installed once at image build time.",
+    "type": "project",
+    "homepage": "https://flarum.org/",
+    "license": "MIT",
+    "require": {
+        "flarum/approval": "2.0.1",
+        "flarum/audit": "2.0.2",
+        "flarum/bbcode": "2.0.1",
+        "flarum/core": "2.0.2",
+        "flarum/deck": "2.0.2",
+        "flarum/embed": "2.0.1",
+        "flarum/emoji": "2.0.1",
+        "flarum/flags": "2.0.1",
+        "flarum/gdpr": "2.0.1",
+        "flarum/lang-english": "2.0.0",
+        "flarum/likes": "2.0.2",
+        "flarum/lock": "2.0.1",
+        "flarum/markdown": "2.0.1",
+        "flarum/mentions": "2.0.2",
+        "flarum/messages": "2.0.2",
+        "flarum/nicknames": "2.0.1",
+        "flarum/statistics": "2.0.1",
+        "flarum/sticky": "2.0.2",
+        "flarum/subscriptions": "2.0.1",
+        "flarum/suspend": "2.0.2",
+        "flarum/tags": "2.0.2",
+        "fof/best-answer": "2.0.0",
+        "fof/byobu": "2.0.0",
+        "fof/polls": "3.0.1",
+        "fof/reactions": "2.0.0",
+        "fof/upload": "2.0.2"
+    },
+    "config": {
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "8.3.0"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

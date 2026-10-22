@@ -28,10 +28,9 @@ use Throwable;
  * Idempotent: threads that exist are kept, threads that already have replies are skipped, so a second run
  * adds nothing. Which comment and which user goes where is derived from the item, not random.
  *
- * Flarum lets a member start only one discussion or post per 10 seconds (HTTP 429). The command takes turns
- * between members and, when Flarum says "slow down", waits (forum.throttle_wait seconds) and carries on, so
- * the first run against a real forum takes a few minutes. Giving the Members group the "post without
- * throttling" permission in the forum administration makes it fast.
+ * Flarum 2 does not throttle requests made with the master API key, so a run takes about a minute. Should a forum
+ * answer "slow down" (HTTP 429, e.g. older Flarum or a rate limit added by an extension), the command takes turns
+ * between members and waits (forum.throttle_wait seconds) before it carries on.
  */
 class ForumSeedDemo extends Command
 {

@@ -1,54 +1,95 @@
-# Flarum for LastPope: the upstream crazymax/flarum image plus a few small
-# provisioning scripts so that `docker compose up -d` gives a ready-to-use forum
-# without clicking through an installer.
+# syntax=docker/dockerfile:1.7
 #
-# What we add on top of upstream (see docker/flarum/cont-init.d/ and the RUN step below):
-#   * the first admin account comes from FLARUM_ADMIN_* instead of the
-#     well-known default login flarum/flarum (patch-installer.sh)
-#   * extra extensions (default: flarum/embed) are installed from FLARUM_EXTENSIONS
-#   * the master API key FLARUM_API_KEY is written to the database, so the
-#     Laravel app can talk to the forum API without any manual step
-#   * Flarum's default extensions plus flarum/embed are enabled once, and Flarum's
-#     mail settings are copied from MAIL_* on the very first start
+# LastPope forum image: Flarum 2 and its extensions on the same pinned serversideup/php 8.3 (nginx + PHP-FPM)
+# base as the app image. Build context: docker/flarum (compose.yaml does this for you).
 #
-# crazymax/flarum ships Flarum 1.8.x (PHP 8.5). Flarum 2.x is not available in
-# this image yet, so extensions must be Flarum 1.x compatible.
-# Pinned by digest: crazymax re-publishes the same tag (1.8.20 was rebuilt on 2026-10-21 with a
-# different init system), which would otherwise change the image under us without warning.
-# To update: pull the new tag, run `docker image inspect crazymax/flarum:<tag> --format '{{index .RepoDigests 0}}'`
-# and paste the digest here, then rebuild and check `docker compose logs flarum`.
-FROM crazymax/flarum:1.8.20@sha256:69bbe8f7f80078162058cb166dca52090b93e79751ca3c2ff1614688e7122185
+#   php-base  pinned serversideup/php plus the extra PHP extension Flarum needs
+#   vendor    composer install of docker/flarum/composer.json + composer.lock (exact versions, no network
+#             access to packagist needed at run time; nothing is ever installed by the running container)
+#   runtime   php-base + Flarum's launcher files + vendor/ + nginx site for /forum + start-up scripts
+#
+# Layout inside the image (/var/www/html is Flarum's root):
+#   flarum, site.php, extend.php, public/index.php   launcher files of flarum/flarum 2.0.0 (skeleton/)
+#   vendor/                                          from composer.lock
+#   config.php                                       written at every start from the environment
+#   storage/        volume flarum-storage            caches, logs, sessions, GDPR exports
+#   public/assets/  volume flarum-assets             compiled JS/CSS, avatars, uploads, logo
+#
+# Start-up (entrypoint.d/60-flarum.sh -> lib/start.php): wait for the database, install on an empty
+# database or `php flarum migrate` on an existing one, API key, extensions, assets, caches.
+# The scheduler container uses this image too, with the command `flarum-scheduler`.
+#
+# To change what is installed (a new extension, a newer Flarum): edit composer.json, run
+# `composer update --no-install --no-scripts` in this directory to refresh composer.lock, rebuild.
+# See "Forum" in docs/DEPLOY.md.
 
-# FLARUM_AUTO_ENABLE: upstream leaves *every* extension disabled after the install, so we
-# switch on Flarum's usual default set (the same list the official installer uses) plus the
-# embed extension, once. Tags is required by the Laravel integration (design/driver/listing tags).
-ENV FLARUM_ADMIN_USER=forumadmin \
-    FLARUM_EXTENSIONS="flarum/embed:^1.8" \
-    FLARUM_AUTO_ENABLE="flarum-tags flarum-embed flarum-approval flarum-bbcode flarum-emoji flarum-lang-english flarum-flags flarum-likes flarum-lock flarum-markdown flarum-mentions flarum-statistics flarum-sticky flarum-subscriptions flarum-suspend"
+ARG PHP_IMAGE=serversideup/php:8.3-fpm-nginx-v5.0.1
 
-COPY patch-installer.sh /tmp/patch-installer.sh
-COPY cont-init.d/02-zz-extensions.sh /etc/cont-init.d/02-zz-extensions.sh
-COPY cont-init.d/03-zz-provision.sh /usr/local/share/lastpope/provision.sh
-COPY enable-extensions.php /usr/local/share/lastpope/enable-extensions.php
+# ---------------------------------------------------------------------------
+FROM ${PHP_IMAGE} AS php-base
 
-# 02-zz-extensions only appends to /data/extensions/list, so it must run BEFORE upstream installs
-# Flarum; legacy /etc/cont-init.d scripts still do that under s6-overlay v3.
-# provision (API key, enabling extensions, mail settings) must run AFTER the install:
-#   * s6-overlay v3 layout: a oneshot service that depends on upstream's `config` service, and
-#     nginx / php-fpm wait for it, so the forum is never served half set up. A provisioning
-#     failure is logged but does not keep the forum down (same as before).
-#   * older cont-init.d layout: it simply runs after 03-config.sh.
-RUN sh /tmp/patch-installer.sh \
-    && rm /tmp/patch-installer.sh \
-    && chmod 0755 /etc/cont-init.d/02-zz-extensions.sh /usr/local/share/lastpope/provision.sh \
-    && if [ -d /etc/s6-overlay/s6-rc.d/config ]; then \
-         d=/etc/s6-overlay/s6-rc.d/lastpope-provision \
-         && mkdir -p "$d/dependencies.d" \
-         && echo oneshot > "$d/type" \
-         && touch "$d/dependencies.d/config" \
-         && echo 'foreground { /usr/local/share/lastpope/provision.sh } exit 0' > "$d/up" \
-         && touch /etc/s6-overlay/s6-rc.d/nginx/dependencies.d/lastpope-provision \
-                  /etc/s6-overlay/s6-rc.d/php-fpm/dependencies.d/lastpope-provision; \
-       else \
-         cp /usr/local/share/lastpope/provision.sh /etc/cont-init.d/03-zz-provision.sh; \
-       fi
+USER root
+
+# Already in the base image: pdo_mysql, zip, dom, fileinfo, mbstring, openssl, tokenizer, curl, opcache, ...
+# Added here: gd (Flarum refuses to install without it: avatars, image uploads), exif (rotates photos by
+# their camera orientation) and intl (proper plural forms in the translations; Flarum falls back to a
+# polyfill without it).
+RUN install-php-extensions gd exif intl \
+    && php -m | grep -i -x -E 'gd|exif|intl|zip|pdo_mysql|dom|fileinfo|mbstring' | sort | tr '\n' ' ' && echo
+
+WORKDIR /var/www/html
+
+# ---------------------------------------------------------------------------
+FROM php-base AS vendor
+
+# GitHub limits anonymous downloads (~60/hour per IP) and Flarum + extensions is ~160 packages. If the build
+# stops with "Could not authenticate against github.com", build with a GitHub token (no scopes needed):
+#   COMPOSER_AUTH='{"github-oauth":{"github.com":"ghp_yourtoken"}}' docker compose build flarum
+# compose passes it as a build secret, so it never ends up in the image.
+COPY composer.json composer.lock ./
+RUN --mount=type=secret,id=composer_auth \
+    --mount=type=cache,target=/composer/cache \
+    if [ -s /run/secrets/composer_auth ]; then export COMPOSER_AUTH="$(cat /run/secrets/composer_auth)"; fi; \
+    composer install --no-dev --no-scripts --no-interaction --prefer-dist --optimize-autoloader \
+    && test -f vendor/flarum/core/composer.json
+
+# ---------------------------------------------------------------------------
+FROM php-base AS runtime
+
+# OPcache keeps checking file times (the default of this base image is to never look again): Flarum rewrites
+# compiled templates at run time, for example after an extension is switched on in the administration.
+# Caddy is the only thing in front of nginx and sends X-Forwarded-For (TRUSTED_PROXY=local trusts private ranges).
+ENV PHP_OPCACHE_ENABLE=1 \
+    PHP_OPCACHE_VALIDATE_TIMESTAMPS=1 \
+    PHP_OPCACHE_REVALIDATE_FREQ=2 \
+    PHP_MEMORY_LIMIT=512M \
+    PHP_FPM_PM_MAX_CHILDREN=10 \
+    TRUSTED_PROXY=local \
+    NGINX_HTTP_PORT=8000 \
+    NGINX_LISTEN_IP_PROTOCOL=ipv4 \
+    LOG_OUTPUT_LEVEL=warn
+
+COPY --from=vendor --chown=www-data:www-data /var/www/html/vendor ./vendor
+COPY --chown=www-data:www-data skeleton/ ./
+
+# nginx: serve Flarum under /forum (replaces the stock site template of the base image, whose own
+# start-up script fills in the placeholders).
+COPY nginx/http.conf.template /etc/nginx/site-opts.d/http.conf.template
+
+# Start-up scripts and the scheduler loop.
+COPY --chmod=0755 entrypoint.d/ /etc/entrypoint.d/
+COPY --chmod=0755 lib/ /usr/local/lib/lastpope/
+COPY --chmod=0755 bin/flarum-scheduler /usr/local/bin/flarum-scheduler
+
+# Writable runtime directories. storage/ and public/assets/ are mounted from named volumes by compose.yaml
+# (a new volume starts with this content and ownership); start.php re-creates anything missing.
+RUN mkdir -p \
+        storage/cache storage/formatter storage/less storage/locale storage/logs storage/sessions storage/tmp storage/views \
+        public/assets/avatars \
+    && chown www-data:www-data /var/www/html \
+    && chown -R www-data:www-data storage public \
+    && chmod -R ug+rwX storage public/assets
+
+USER www-data
+
+EXPOSE 8000

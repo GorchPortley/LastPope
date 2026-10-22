@@ -142,7 +142,7 @@ main() {
   : "${BACKUP_KEEP:=10}"
   : "${HEALTH_TIMEOUT:=180}"
   : "${HEALTH_INTERVAL:=5}"
-  : "${HEALTH_SERVICES:=app flarum queue scheduler}"
+  : "${HEALTH_SERVICES:=app flarum flarum-scheduler queue scheduler}"
   : "${ROLLBACK_ON_FAILURE:=true}"
   : "${DEPLOY_LOG:=/var/log/lastpope-deploy.log}"
   # Optional GitHub token for `composer install` inside the image build (compose.yaml passes it on

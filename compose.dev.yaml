@@ -77,6 +77,17 @@ services:
     environment:
       <<: *dev-env
 
+  # The forum's mail also goes to Mailpit (copied into Flarum's settings at its first install; after that
+  # change it in the forum administration, or reset the forum with docker/flarum/reset.sh).
+  flarum:
+    environment:
+      FLARUM_MAIL_DRIVER: smtp
+      FLARUM_MAIL_HOST: mailpit
+      FLARUM_MAIL_PORT: "1025"
+      FLARUM_MAIL_ENCRYPTION: ""
+      FLARUM_MAIL_USERNAME: ""
+      FLARUM_MAIL_PASSWORD: ""
+
   mariadb:
     ports:
       - "127.0.0.1:3307:3306"

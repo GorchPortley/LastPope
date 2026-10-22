@@ -35,9 +35,4 @@ return [
         'secret' => env('SPARKPOST_SECRET'),
     ],
 
-    'flarum' => [
-        'api_key' => env('API_KEY'),
-        'host' => env('FLARUM_HOST')
-    ]
-
 ];

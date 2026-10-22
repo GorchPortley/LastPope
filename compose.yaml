@@ -8,7 +8,8 @@
 #            through Caddy at wss://APP_DOMAIN/ws
 #   mariadb  database for the app AND for the forum (two databases, two users)
 #   redis    cache, sessions, queue
-#   flarum   the forum, reached through Caddy at https://APP_DOMAIN/forum
+#   flarum   the forum (Flarum 2), reached through Caddy at https://APP_DOMAIN/forum
+#   flarum-scheduler  runs Flarum's scheduler (`php flarum schedule:run`) every minute
 #
 # All settings come from `.env` (create it with `docker/setup.sh`). See docs/DEPLOY.md.
 # For local development add the override file:  docker compose -f compose.yaml -f compose.dev.yaml up
@@ -258,12 +259,19 @@ services:
     logging: *default-logging
 
   # -------------------------------------------------------------------------
+  # The forum: Flarum 2 + extensions, built from docker/flarum (nginx + PHP-FPM, served under /forum).
+  # First start on an empty forum database installs it; on an existing one (for example the old Flarum 1.8
+  # forum) it runs `php flarum migrate`. Details: docker/flarum/lib/start.php and docs/DEPLOY.md.
   flarum:
     build:
       context: docker/flarum
-    image: lastpope-flarum:1.8.20
+      secrets:
+        - composer_auth # optional, see docs/DEPLOY.md ("Could not authenticate against github.com")
+    image: lastpope-flarum:2.0.2
     restart: unless-stopped
     environment:
+      # The start-up scripts of the image: install / migrate / API key / extensions. Only this container does that.
+      FLARUM_AUTORUN: "true"
       # Public URL including the /forum sub-path. Flarum builds every link from this.
       FLARUM_BASE_URL: https://${APP_DOMAIN:?APP_DOMAIN is empty - run docker/setup.sh first}/forum
       FLARUM_FORUM_TITLE: ${FLARUM_FORUM_TITLE:-Community Forum}
@@ -272,15 +280,16 @@ services:
       FLARUM_ADMIN_EMAIL: ${FLARUM_ADMIN_EMAIL:-${ACME_EMAIL}}
       FLARUM_ADMIN_PASSWORD: ${FLARUM_ADMIN_PASSWORD:?FLARUM_ADMIN_PASSWORD is empty - run docker/setup.sh first}
       FLARUM_API_KEY: ${FLARUM_API_KEY:-}
-      FLARUM_EXTENSIONS: ${FLARUM_EXTENSIONS:-flarum/embed:^1.8}
+      # Extensions to switch on in addition to the ones the image enables (ids or composer names, see DEPLOY.md).
+      FLARUM_EXTENSIONS: ${FLARUM_EXTENSIONS:-}
       FLARUM_DEBUG: "false"
-      DB_HOST: mariadb
-      DB_NAME: ${FLARUM_DB_DATABASE:-flarum}
-      DB_USER: ${FLARUM_DB_USERNAME:-flarum}
-      DB_PASSWORD: ${FLARUM_DB_PASSWORD:?FLARUM_DB_PASSWORD is empty - run docker/setup.sh first}
-      DB_PREFIX: flarum_
-      DB_TIMEOUT: "120"
-      # Flarum's own mail settings are copied from the app's MAIL_* once, on first start.
+      FLARUM_DB_HOST: mariadb
+      FLARUM_DB_PORT: "3306"
+      FLARUM_DB_DATABASE: ${FLARUM_DB_DATABASE:-flarum}
+      FLARUM_DB_USERNAME: ${FLARUM_DB_USERNAME:-flarum}
+      FLARUM_DB_PASSWORD: ${FLARUM_DB_PASSWORD:?FLARUM_DB_PASSWORD is empty - run docker/setup.sh first}
+      FLARUM_DB_PREFIX: flarum_ # do not change: it is the table prefix of existing forum databases
+      # Flarum's own mail settings are copied from the app's MAIL_* once, at the first install.
       FLARUM_MAIL_DRIVER: ${MAIL_MAILER:-}
       FLARUM_MAIL_HOST: ${MAIL_HOST:-}
       FLARUM_MAIL_PORT: ${MAIL_PORT:-587}
@@ -288,21 +297,54 @@ services:
       FLARUM_MAIL_USERNAME: ${MAIL_USERNAME:-}
       FLARUM_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       FLARUM_MAIL_FROM: ${MAIL_FROM_ADDRESS:-}
-      # Caddy is the only thing talking to this container; trust its X-Forwarded-For.
-      REAL_IP_FROM: 172.16.0.0/12
-      REAL_IP_HEADER: X-Forwarded-For
-      LISTEN_IPV6: "false" # containers only talk IPv4 to each other
+      # Uploads (fof/upload, avatars): PHP and nginx limits come from UPLOAD_MAX_SIZE in .env.
+      PHP_UPLOAD_MAX_FILE_SIZE: ${UPLOAD_MAX_SIZE:-256M}
+      PHP_POST_MAX_SIZE: ${UPLOAD_MAX_SIZE:-256M}
+      NGINX_CLIENT_MAX_BODY_SIZE: ${UPLOAD_MAX_SIZE:-256M}
+      PHP_MAX_EXECUTION_TIME: "120"
       TZ: ${TZ:-UTC}
     volumes:
-      - flarum-data:/data # assets, extensions, storage
+      - flarum-storage:/var/www/html/storage # caches, logs, sessions, GDPR exports
+      - flarum-assets:/var/www/html/public/assets # compiled JS/CSS, avatars, uploads (fof/upload), logo
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8000/forum/api"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 180s # first start: install + composer require extensions
+      start_period: 180s # first start: install; upgrade of a 1.x forum: migrations
     depends_on:
       mariadb:
+        condition: service_healthy
+    logging: *default-logging
+
+  # Flarum has no scheduler daemon: this runs `php flarum schedule:run` at the start of every minute
+  # (same image, no web server; see docker/flarum/bin/flarum-scheduler). It shares the storage volume
+  # with the forum, so the administration can see that the scheduler is alive.
+  flarum-scheduler:
+    image: lastpope-flarum:2.0.2
+    restart: unless-stopped
+    command: ["flarum-scheduler"]
+    stop_signal: SIGTERM
+    environment:
+      # no FLARUM_AUTORUN: this container only waits for the forum and writes config.php
+      FLARUM_BASE_URL: https://${APP_DOMAIN:?APP_DOMAIN is empty - run docker/setup.sh first}/forum
+      FLARUM_DB_HOST: mariadb
+      FLARUM_DB_PORT: "3306"
+      FLARUM_DB_DATABASE: ${FLARUM_DB_DATABASE:-flarum}
+      FLARUM_DB_USERNAME: ${FLARUM_DB_USERNAME:-flarum}
+      FLARUM_DB_PASSWORD: ${FLARUM_DB_PASSWORD:?FLARUM_DB_PASSWORD is empty - run docker/setup.sh first}
+      FLARUM_DB_PREFIX: flarum_
+      TZ: ${TZ:-UTC}
+    volumes:
+      - flarum-storage:/var/www/html/storage
+    healthcheck:
+      test: ["CMD-SHELL", "find /tmp/flarum-scheduler.alive -mmin -3 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    depends_on:
+      flarum:
         condition: service_healthy
     logging: *default-logging
 
@@ -315,6 +357,7 @@ volumes:
   redis-data:
   app-storage: # storage/app: uploads, snapshots, private files
   app-logs: # storage/logs
-  flarum-data:
+  flarum-storage: # forum: storage/ (caches, logs, sessions)
+  flarum-assets: # forum: public/assets/ (compiled JS/CSS, avatars, uploads)
   caddy-data:
   caddy-config:

@@ -1,6 +1,6 @@
 # Routing shared by both Caddy front-ends (imported inside their site block):
 #
-#   /forum*      ->  flarum:8000   (the forum, served under the /forum sub-path)
+#   /forum*      ->  flarum:8000   (the forum, Flarum 2, served under the /forum sub-path)
 #   /ws/app/*    ->  reverb:8080   (live chat: Laravel Reverb WebSocket server)
 #   /*           ->  app:8080      (the Laravel app)
 #
@@ -40,17 +40,11 @@ header {
 }
 
 # --- Flarum, served under /forum --------------------------------------
-# Flarum is configured with its public URL https://{$APP_DOMAIN}/forum and expects to see
-# the full /forum/... path on every request, so the prefix is NOT stripped, except for
-# /forum/assets/* (compiled JS/CSS, avatars): those are plain files that live in the
-# document root of the Flarum container, i.e. at /assets/..., not /forum/assets/...
-handle /forum/assets/* {
-	uri strip_prefix /forum
-	reverse_proxy flarum:8000 {
-		lb_try_duration 5s
-	}
-}
-
+# Flarum is configured with its public URL https://{$APP_DOMAIN}/forum and expects to see the full
+# /forum/... path on every request, so the prefix is NOT stripped. The nginx in the flarum container
+# understands it: /forum/assets/* (compiled JS/CSS, avatars, uploads) are plain files in Flarum's
+# public/assets directory, everything else under /forum (pages, /forum/api, /forum/embed/<id>, ...) goes to
+# Flarum's front controller. Nothing special is needed here.
 @forum path /forum /forum/*
 handle @forum {
 	reverse_proxy flarum:8000 {

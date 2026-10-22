@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Flarum 1.x over its REST API.
+ * Flarum 2.x over its REST API (JSON:API, Flarum's flarum/json-api-server).
  *
  *  - server calls go to FLARUM_INTERNAL_URL (container to container, e.g. http://flarum:8000/forum)
  *  - links for browsers are built from FLARUM_URL (e.g. https://example.com/forum)
@@ -72,7 +72,16 @@ class FlarumClient implements ForumClient
         }
 
         try {
-            $id = $this->knownForumId($user) ?? $this->findUserId((string) $user->email);
+            $id = $this->knownForumId($user);
+
+            // The stored id is only a shortcut. After a forum reset or a restore of an older forum database it points
+            // at nothing (or at somebody else's new account): look the account up again instead of acting as a ghost.
+            if ($id !== null && ! $this->forumUserExists($id)) {
+                $this->forgetForumId($user);
+                $id = null;
+            }
+
+            $id ??= $this->findUserId((string) $user->email);
 
             if ($id === null) {
                 try {
@@ -276,12 +285,27 @@ class FlarumClient implements ForumClient
         if ($me->successful() && filled($me->json('data.attributes.email'))) {
             $status['authorized'] = true;
             $status['message'] = 'OK';
+            $status['version'] ??= $this->flarumVersion();
         } else {
             $status['message'] = "The forum rejected FLARUM_API_KEY (acting as user #{$this->adminUserId}, HTTP {$me->status()}). "
                 .'The flarum container stores the key at start; check FLARUM_API_KEY in .env and restart it.';
         }
 
         return $status;
+    }
+
+    /** The installed Flarum version ("2.0.2"), read from the admin-only system info; null when it cannot be told. */
+    private function flarumVersion(): ?string
+    {
+        try {
+            $info = $this->request()->get('system-info/system');
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        return $info->successful() && preg_match('/^Flarum core: (\S+)/m', (string) $info->json('data.attributes.content'), $matches)
+            ? $matches[1]
+            : null;
     }
 
     public function tags(): array
@@ -300,7 +324,8 @@ class FlarumClient implements ForumClient
             if (is_string($slug) && isset($tag['id'])) {
                 $tags[$slug] = [
                     'id' => (int) $tag['id'],
-                    'primary' => ($attributes['position'] ?? null) !== null && empty($attributes['isChild']),
+                    // Flarum 2 reports isPrimary; a primary tag is one with a position that is not a child tag.
+                    'primary' => (bool) ($attributes['isPrimary'] ?? (($attributes['position'] ?? null) !== null && empty($attributes['isChild']))),
                 ];
             }
         }
@@ -312,7 +337,7 @@ class FlarumClient implements ForumClient
     {
         $this->assertConfigured();
 
-        $attributes = ['name' => $name, 'slug' => $slug, 'isHidden' => false, 'primary' => true];
+        $attributes = ['name' => $name, 'slug' => $slug, 'isHidden' => false, 'isPrimary' => true];
 
         if ($description !== null) {
             $attributes['description'] = $description;
@@ -500,6 +525,26 @@ class FlarumClient implements ForumClient
         return $this->hasForumUserIdColumn() && $user->getAttribute('forum_user_id')
             ? (int) $user->getAttribute('forum_user_id')
             : null;
+    }
+
+    private function forgetForumId(User $user): void
+    {
+        if ($this->hasForumUserIdColumn() && $user->getAttribute('forum_user_id') !== null) {
+            $user->forceFill(['forum_user_id' => null])->saveQuietly();
+        }
+    }
+
+    private function forumUserExists(int $id): bool
+    {
+        $response = $this->request()->get('users/'.$id);
+
+        if ($response->status() === 404) {
+            return false;
+        }
+
+        $this->throwUnlessSuccessful($response, 'look up the forum account');
+
+        return true;
     }
 
     private function rememberForumId(User $user, int $id): void

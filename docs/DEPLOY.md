@@ -591,6 +591,12 @@ edited, so a running site with data keeps working. Visitors may see a short inte
 
 Housekeeping: `docker image prune -f` removes old image layers after an update.
 
+**An update that changes the Caddy configuration** (anything in `docker/caddy/`, e.g. the live-chat `/ws/app/`
+route) also needs `docker compose restart caddy`: Caddy reads those files only when it starts, and
+`docker compose up -d` does not restart it just because a file it reads changed. Symptom when forgotten: the new
+route answers with the site's own "404 Not Found" page. The [automatic updater](#13-automatic-updates) restarts
+Caddy by itself when `docker/caddy/` changed.
+
 **An update that adds a secret** (the live-chat `REVERB_*` ones were the first) makes `docker compose` stop with
 `REVERB_APP_ID is empty - run docker/setup.sh first`. Run `docker/setup.sh --secrets-only` once: it adds only
 what is missing and leaves every other line of `.env` exactly as it is (plain `docker/setup.sh` also does it, but

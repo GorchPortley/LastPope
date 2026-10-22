@@ -517,7 +517,7 @@ echo ($r["status"] ?? "-"), " ", ($r["conclusion"] ?? "-"), " ", ($r["html_url"]
     log "[dry-run] $LOCAL_SHORT -> $REMOTE_SHORT is ready to deploy: $SUBJECT"
     git log -n 15 --oneline --no-decorate "$LOCAL_SHA..$REMOTE_SHA" | log_block "[dry-run]   "
     log "[dry-run] would back up both databases to $BACKUP_FILE (keeping the newest $BACKUP_KEEP)"
-    log "[dry-run] would run: git merge --ff-only; docker/setup.sh --secrets-only (adds secrets missing from .env, changes nothing else); docker compose build; docker compose up -d --remove-orphans"
+    log "[dry-run] would run: git merge --ff-only; docker/setup.sh --secrets-only (adds secrets missing from .env, changes nothing else); docker compose build; docker compose up -d --remove-orphans; restart caddy if docker/caddy changed"
     if [ "$SEED_DB" = 1 ]; then
       log "[dry-run] would run: php artisan migrate --force; php artisan db:seed --force"
     else
@@ -643,6 +643,17 @@ echo ($r["status"] ?? "-"), " ", ($r["conclusion"] ?? "-"), " ", ($r["html_url"]
   local APP_IN_STACK=0
   grep -qx app <<<"$all_services" && APP_IN_STACK=1
 
+  # Caddy reads docker/caddy/* (a bind mount) only when it starts, and `docker compose up -d` does not
+  # recreate a container just because a mounted file changed, so a new route would never take effect.
+  # restart_caddy_if_changed FROM TO: restart caddy when docker/caddy differs between the two commits.
+  local CADDY_IN_STACK=0
+  grep -qx caddy <<<"$all_services" && CADDY_IN_STACK=1
+  restart_caddy_if_changed() {
+    [ "$CADDY_IN_STACK" = 1 ] || return 0
+    git diff --quiet "$1" "$2" -- docker/caddy && return 0
+    step "restart caddy (its configuration in docker/caddy changed)" dc restart caddy
+  }
+
   # mark_failed: remember this commit as bad (no retry until a new commit or --force).
   mark_failed() { state_add "failed:$REMOTE_SHA"; }
 
@@ -686,7 +697,8 @@ echo ($r["status"] ?? "-"), " ", ($r["conclusion"] ?? "-"), " ", ($r["html_url"]
       return 1
     fi
     if step "rebuild the previous version" dc build &&
-      step "start the previous version" dc up -d --remove-orphans; then
+      step "start the previous version" dc up -d --remove-orphans &&
+      restart_caddy_if_changed "$REMOTE_SHA" "$LOCAL_SHA"; then
       if wait_ready $((SECONDS + HEALTH_TIMEOUT)) --url "${CHECK_LIST[@]}"; then
         msg="Deploy of $REMOTE_SHORT FAILED ($reason). Rolled back to $LOCAL_SHORT, the site is running the old code again. $backup_note"
         finish_failed fail "$msg"
@@ -727,6 +739,10 @@ echo ($r["status"] ?? "-"), " ", ($r["conclusion"] ?? "-"), " ", ($r["html_url"]
   local DEADLINE
   if ! step "start containers" dc up -d --remove-orphans; then
     rollback "docker compose up failed" || true
+    return 1
+  fi
+  if ! restart_caddy_if_changed "$LOCAL_SHA" "$REMOTE_SHA"; then
+    rollback "caddy could not be restarted with its new configuration" || true
     return 1
   fi
   DEADLINE=$((SECONDS + HEALTH_TIMEOUT))

@@ -59,3 +59,7 @@ docker/caddy
 docker/flarum
 docker/mariadb
 docker/setup.sh
+# the auto-deploy scripts and settings (deploy.env may hold a GitHub token) never belong in the image
+docker/deploy
+# database dumps made by the auto-deploy (they contain user data)
+backups

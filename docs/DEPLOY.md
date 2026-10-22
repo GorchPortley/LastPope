@@ -15,10 +15,11 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 - [10. Stripe setup](#10-stripe-setup)
 - [11. Backups and restore](#11-backups-and-restore)
 - [12. Updating](#12-updating)
-- [13. Logs and troubleshooting](#13-logs-and-troubleshooting)
-- [14. Local development](#14-local-development)
-- [15. Reference](#15-reference)
-- [16. Seasonal themes](#16-seasonal-themes)
+- [13. Automatic updates](#13-automatic-updates)
+- [14. Logs and troubleshooting](#14-logs-and-troubleshooting)
+- [15. Local development](#15-local-development)
+- [16. Reference](#16-reference)
+- [17. Seasonal themes](#17-seasonal-themes)
 
 ---
 
@@ -56,7 +57,7 @@ downloads (`app-storage`), the forum's files, Redis, and Caddy's certificates.
 | **A Stripe account** | Only for the marketplace payments: see [Stripe setup](#10-stripe-setup). You can launch without it. |
 
 Optional but recommended: a GitHub token, in case the build complains about GitHub rate limits (see
-[Troubleshooting](#13-logs-and-troubleshooting)).
+[Troubleshooting](#14-logs-and-troubleshooting)).
 
 ## 3. Point your domain at the server
 
@@ -405,7 +406,7 @@ set of keys serves both. Order e-mails go through the `queue` container and the 
 job (completes parcels that were shipped more than `MARKETPLACE_AUTO_COMPLETE_DAYS` ago, **releases the payouts that
 are due** and retries failed ones) through the `scheduler` container, so keep both running.
 
-**When sellers are paid** (`.env`, see also [section 15](#15-reference)):
+**When sellers are paid** (`.env`, see also [section 16](#16-reference)):
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -441,7 +442,7 @@ docker compose up -d app queue scheduler        # re-read .env
 
 In the Stripe dashboard use *Send test webhook* on each endpoint; the response must be `200`. Then make
 a test purchase with card `4242 4242 4242 4242` (any future date, any CVC). To test locally without a public URL
-use the Stripe CLI container, see [Local development](#14-local-development).
+use the Stripe CLI container, see [Local development](#15-local-development).
 
 **Going live:** switch the dashboard to live mode, create the same two endpoints again (live endpoints
 have new signing secrets), put the live keys and secrets in `.env`, and run `docker compose up -d app queue scheduler`.
@@ -525,6 +526,9 @@ edited, so a running site with data keeps working. Visitors may see a short inte
 
 Housekeeping: `docker image prune -f` removes old image layers after an update.
 
+Prefer not to log in for every update? The server can check GitHub itself, back up the database and update
+when the tests are green: see [13. Automatic updates](#13-automatic-updates).
+
 Software versions are pinned in the repository, so nothing changes by itself: MariaDB 11.8, Redis 8.2,
 Caddy 2.11, PHP 8.3 with nginx (serversideup/php v5), Flarum 1.8. A new version arrives only when the
 repository changes the pinned tag. Do not jump MariaDB across major versions without reading the MariaDB
@@ -533,7 +537,230 @@ upgrade notes.
 Apply operating-system security updates on the server regularly (`sudo apt update && sudo apt upgrade`, or enable
 `unattended-upgrades`).
 
-## 13. Logs and troubleshooting
+## 13. Automatic updates
+
+Instead of logging in and typing `git pull` after every change, the server can look after itself: **every
+2 minutes it asks GitHub whether there is new code, and deploys it once the tests have passed.** It *pulls*;
+GitHub never connects to your server, so you open no port on your router and give GitHub no SSH key.
+
+### What happens on each push
+
+1. You push a commit to your branch on GitHub.
+2. GitHub Actions runs the tests (`.github/workflows/tests.yml`; it runs on every branch). This takes a few minutes.
+3. At most 2 minutes after the tests turn green, the server notices the commit.
+4. It dumps both databases to a backup file, pulls the code, rebuilds the images, restarts what changed, runs
+   the database migrations and the (harmless, repeatable) base-data seeding.
+5. It waits until the site and the forum answer. Then you get a message: `Deployed 1a2b3c4: <your commit title>`.
+6. If the new version does **not** become healthy, the old code is put back automatically and you get
+   `Deploy of ... FAILED ... Rolled back`. If the tests fail, nothing is deployed and you are told once.
+
+The visitors' side: the site is unreachable for a few seconds while the app container is replaced.
+
+### How it works
+
+- `systemd timer` (`lastpope-deploy.timer`): every 2 minutes it starts
+- `docker/deploy/auto-deploy.sh` (as root, so it may use Docker):
+  - `git fetch`: nothing new? Stop, silently. This is what happens almost every time.
+  - Is the server's copy untouched (no hand edits, no commits that GitHub lacks)? If not: refuse and tell you once.
+  - Did the GitHub **Tests** workflow succeed for exactly this commit? Still running or not started: look again in
+    2 minutes. Failed: do not deploy, tell you once.
+  - Backup: both databases to `backups/<time>-<old commit>.sql.gz`. No backup, no deploy.
+  - `git merge --ff-only`, `docker compose build`, `docker compose up -d`, `php artisan migrate`, `php artisan db:seed`.
+  - Health check (up to 3 minutes): `app`, `flarum`, `queue`, `scheduler` healthy and the site answers on Caddy's local port.
+  - Healthy: notify, remove old images. Unhealthy: `git reset --hard <old commit>`, rebuild, restart, notify.
+
+Only one run happens at a time (a lock), so a long build never overlaps with the next check.
+
+### Install (once)
+
+You need the stack running already (sections 5 to 7) from a `git clone`, on the branch you want to follow
+(`git branch --show-current` shows it). In the project folder (here `/SDLabs`):
+
+```bash
+cd /SDLabs
+git pull                                  # get the updater scripts
+sudo docker/deploy/install.sh             # creates the timer and docker/deploy/deploy.env
+sudo docker/deploy/auto-deploy.sh --dry-run   # shows what it would do right now; changes nothing
+```
+
+`install.sh` runs the updater as root, because you use `sudo` for Docker anyway. To use a normal user
+instead: `sudo docker/deploy/install.sh --user alice` (the user must be in the `docker` group and own the folder).
+
+Watch it work:
+
+```bash
+journalctl -u lastpope-deploy -f          # live (Ctrl+C stops watching, not the updater)
+systemctl list-timers lastpope-deploy.timer   # when it ran last, when it runs next
+less /var/log/lastpope-deploy.log         # history of everything it did
+```
+
+Pause and resume: `sudo systemctl stop lastpope-deploy.timer` / `sudo systemctl start lastpope-deploy.timer`.
+Remove it: `sudo docker/deploy/install.sh --uninstall` (your settings and backups stay).
+Check right now, without waiting: `sudo docker/deploy/auto-deploy.sh`.
+
+It needs `git`, `curl`, `gzip`, `flock` (all standard) and `python3` (standard on Ubuntu and Debian; used only to read
+GitHub's answer; `jq` or `php` work too).
+
+### The golden rule: the server's copy of the code is read-only
+
+> **Server-only changes go in `.env` or `compose.override.yaml`. Never edit tracked files on the server.**
+
+Every deploy is a fast-forward of the server's checkout to the commit on GitHub. If you edit a tracked file by
+hand, or commit on the server, the updater refuses to deploy (and tells you once) instead of overwriting your work.
+
+- Passwords, domain, limits: `.env` (not in git).
+- A different setting for compose that only this server needs: create `compose.override.yaml` next to `compose.yaml`.
+  Docker Compose merges it automatically; git ignores it. Example for a small home server:
+
+  ```yaml
+  services:
+    app:
+      environment:
+        PHP_FPM_PM_MAX_CHILDREN: "4"
+  ```
+- Got the "changed by hand" warning? See what changed with `git status` and `git diff`, then either move it into
+  `.env` / `compose.override.yaml` and `git checkout -- <file>`, or park it with `git stash`.
+- Got the "commits that are not on origin" warning? `git log origin/main..HEAD` shows them. Push them from your
+  computer if they are wanted, otherwise `git reset --hard origin/main`.
+
+### Database changes must be new migration files
+
+Every deploy runs `php artisan migrate --force` on the live data. So (see `docs/PLAN.md`, section 7): **never edit a
+migration that already exists; every schema change is a new migration file.** An edited old migration is not run
+again, so the live database would silently differ from your test one. Also remember that a rollback restores the old
+*code* only. Migrations are **not** undone, so keep changes additive (add columns and tables first; remove old ones in
+a later release when no running code needs them).
+
+### Settings (`docker/deploy/deploy.env`)
+
+All optional; the defaults work. `install.sh` creates the file from `deploy.env.example`, which explains every line.
+Changes apply on the next run (every 2 minutes), no restart needed.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `DEPLOY_BRANCH` | the branch checked out on the server | branch to follow |
+| `REQUIRE_CI` | `true` | only deploy commits whose GitHub tests passed (`false`: deploy every push at once) |
+| `CI_WORKFLOW` | `tests.yml` | workflow file under `.github/workflows/` that must pass |
+| `GITHUB_REPO` | from `git remote get-url origin` | `owner/name` |
+| `GITHUB_TOKEN` | empty | only for a private repository, see below |
+| `NOTIFY_URL` | empty | where to send messages, see below |
+| `BACKUP_DIR`, `BACKUP_KEEP` | `<project>/backups`, `10` | where the pre-deploy database dumps go and how many to keep |
+| `HEALTH_URL` | `http://127.0.0.1:<Caddy port from .env>/` | must answer 200 to 399 after a deploy (Host header = `APP_DOMAIN`) |
+| `HEALTH_TIMEOUT` | `180` | seconds to wait for the containers to become healthy |
+| `ROLLBACK_ON_FAILURE` | `true` | put the old code back when the new version is unhealthy |
+
+If `STACK_ENV` in `.env` is `demo` (or `local`), the updater skips `db:seed`, because there it would add demo users
+and content. On a normal production server it runs on every deploy and only inserts base data that is missing.
+
+### Private repository: letting the server see the test results
+
+For a public repository you need nothing. For a private one GitHub hides the test results from anonymous visitors, so
+create a read-only token:
+
+1. On GitHub: your profile picture, **Settings**, **Developer settings**, **Personal access tokens**, **Fine-grained tokens**,
+   **Generate new token**.
+2. Name it `lastpope-server`, pick an expiry (a year is fine; the updater tells you when it stops working).
+3. **Repository access**: *Only select repositories*, and choose this one repository.
+4. **Permissions**, **Repository permissions**, **Actions**: set **Read-only**. Leave everything else at *No access*
+   (GitHub adds "Metadata: read-only" itself).
+5. **Generate token** and copy it (it is shown once). Put it in `docker/deploy/deploy.env`:
+   `GITHUB_TOKEN=github_pat_...`. The file is readable by root only and never committed.
+
+The token can only read test results. To *fetch the code* of a private repository the server also needs read access.
+The usual way is a read-only deploy key, created as root because the updater runs as root:
+
+```bash
+sudo ssh-keygen -t ed25519 -N '' -f /root/.ssh/lastpope_deploy
+sudo cat /root/.ssh/lastpope_deploy.pub     # GitHub: the repository, Settings, Deploy keys, Add (leave "write" off)
+printf 'Host github.com\n  IdentityFile /root/.ssh/lastpope_deploy\n  IdentitiesOnly yes\n' | sudo tee -a /root/.ssh/config
+sudo ssh-keyscan github.com | sudo tee -a /root/.ssh/known_hosts
+sudo git -C /SDLabs remote set-url origin git@github.com:YOURNAME/LastPope.git
+sudo git -C /SDLabs fetch                   # must work without asking anything
+```
+
+### Messages on your phone (ntfy)
+
+[ntfy](https://ntfy.sh) is a free service that turns an HTTP request into a phone notification. No account needed.
+
+1. Install the **ntfy** app (Android: Google Play or F-Droid; iPhone: App Store).
+2. Choose a topic name that nobody can guess, for example `lastpope-` plus random letters:
+   `echo lastpope-$(openssl rand -hex 8)`. Anyone who knows the name can read and post to it.
+3. In the app: **+**, subscribe to that topic on `ntfy.sh`.
+4. In `docker/deploy/deploy.env`: `NOTIFY_URL=https://ntfy.sh/lastpope-3f9a2c1d8b7e4a65` (your topic).
+5. Test it: `curl -d "hello from the server" https://ntfy.sh/lastpope-3f9a2c1d8b7e4a65`.
+
+For Discord, create a webhook (channel settings, Integrations, Webhooks) and use its URL as `NOTIFY_URL`; the updater
+detects `discord.com/api/webhooks` and sends the format Discord expects.
+
+You are messaged when: a deploy succeeded, a deploy failed or was rolled back, the tests failed for a new commit, the
+server's copy has hand edits or local commits (deploy refused), the backup failed, or no test run showed up. Each
+problem is reported **once** per commit, not every 2 minutes.
+
+### Deploy a specific commit, or go back
+
+- **Normal way back (recommended):** on your computer `git revert <bad commit>` and push. The revert goes through the
+  tests, the backup and the deploy like any other change, and your history shows what happened.
+- **Right now, without the tests:** `sudo docker/deploy/auto-deploy.sh --force` deploys the newest commit even if its
+  tests have not passed (or failed). It also retries a commit that failed before.
+- **Pin an exact commit on the server** (emergency):
+
+  ```bash
+  cd /SDLabs
+  sudo systemctl stop lastpope-deploy.timer
+  sudo git fetch origin
+  sudo git checkout --detach 1a2b3c4          # the commit you want; auto-deploy now stays paused by itself
+  sudo docker compose up -d --build
+  ```
+
+  To resume automatic updates: `sudo git checkout main` (your branch) and `sudo systemctl start lastpope-deploy.timer`.
+
+### Backups made by the updater, and restoring one
+
+Before every deploy the updater writes `backups/YYYYMMDD-HHMMSS-<previous commit>.sql.gz` (in `/SDLabs/backups` unless
+you set `BACKUP_DIR`): both databases, readable by root only. The newest `BACKUP_KEEP` (10) are kept, which with
+frequent pushes is only the last few deploys. It is **not** the full backup of [section 11](#11-backups-and-restore):
+uploaded files, forum files and `.env` are not included. Copy the folder off the server now and then.
+
+To go back to the state before a deploy (this **replaces** the site and forum databases with the dump; changes made on
+the site since then are lost):
+
+```bash
+cd /SDLabs
+sudo systemctl stop lastpope-deploy.timer                   # no updates while you work
+ls -1 backups/                                              # pick the file; the commit in its name is the code that matches it
+sudo git checkout --detach 1a2b3c4                          # that commit (rebuild below)
+
+# empty both databases, then load the dump (it recreates them)
+sudo docker compose exec -T mariadb sh -c \
+  'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$MARIADB_DATABASE\`; DROP DATABASE IF EXISTS \`$FLARUM_DB_DATABASE\`"'
+gunzip < backups/20261022-031502-1a2b3c4.sql.gz | sudo docker compose exec -T mariadb sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'
+
+sudo docker compose up -d --build
+```
+
+Then, when you are ready for updates again: `sudo git checkout main` and `sudo systemctl start lastpope-deploy.timer`.
+
+### Problems
+
+| You see (journal, log or message) | What it means and what to do |
+|---|---|
+| `Waiting for CI ...` | Normal: the tests are queued or running. It tries again in 2 minutes. |
+| `No CI run appeared for ... within 45 minutes` | The Tests workflow did not start. Open the repository's **Actions** tab (are Actions enabled? is `tests.yml` there?). Deploy by hand with `--force` if you must. |
+| `NOT deploying ...: CI failed` | The tests failed. Fix and push; the next commit is picked up automatically. |
+| `Could not check CI ... HTTP 404` | Wrong `GITHUB_REPO`/`CI_WORKFLOW`, or a private repository without `GITHUB_TOKEN`. `HTTP 401`: the token expired or is wrong. `HTTP 403`: rate limit, or the token lacks *Actions: read*. |
+| `tracked files were changed by hand` / `not on origin` | See the golden rule above. |
+| `git fetch failed` | No internet, GitHub down, or the server has no access to the repository. Try `sudo git -C /SDLabs fetch`. It keeps trying. |
+| `database backup failed, nothing was changed` | The stack is not running (`docker compose ps`) or the disk is full (`df -h`). Nothing was touched; it retries every 2 minutes. |
+| `the image build failed` | Details are in the log and in `.git/lastpope-deploy/last-deploy.log`. The running site was not touched. Common cause: GitHub download limits during `composer install` ("Could not authenticate against github.com"): put a token in `COMPOSER_AUTH` in `deploy.env` (see `deploy.env.example`) or see [Troubleshooting](#14-logs-and-troubleshooting). Fix and push, or `--force` to retry the same commit. |
+| `FAILED ... Rolled back` | The new version did not become healthy; the old code runs again. Read `docker compose logs app` for the reason. The commit is skipped until you push a new one. |
+| `... NOT healthy either. The site may be down` | Even the old code does not start. Look at `docker compose ps` and `docker compose logs`, then restore the backup named in the message if the database is the problem. |
+| Nothing happens at all | `systemctl list-timers lastpope-deploy.timer` (is it listed?), `journalctl -u lastpope-deploy -n 50`, and `sudo docker/deploy/auto-deploy.sh --dry-run`. |
+
+**Security:** whatever lands on the followed branch and passes the tests runs on your server with root rights over Docker.
+Protect your GitHub account with two-factor authentication, give push access only to people you trust, and keep
+`REQUIRE_CI=true`. The updater itself only talks to GitHub (and your `NOTIFY_URL`); the image builds download packages from the usual places.
+
+## 14. Logs and troubleshooting
 
 Useful commands (run in the project folder):
 
@@ -570,7 +797,7 @@ docker stats                              # CPU/RAM per container
 docker compose down -v
 ```
 
-## 14. Local development
+## 15. Local development
 
 `compose.dev.yaml` is an optional extra layer for working on the code on your own computer. It is never
 used on the server.
@@ -613,7 +840,7 @@ The Stripe CLI forwards `/stripe/marketplace/webhook` and `/stripe/connect/webho
 `whsec_...` it printed into **both** `STRIPE_MARKETPLACE_WEBHOOK_SECRET` and `STRIPE_CONNECT_WEBHOOK_SECRET`
 (the CLI signs all forwarded events with that one secret), then `docker compose up -d app queue`.
 
-## 15. Reference
+## 16. Reference
 
 **Services**
 
@@ -653,7 +880,7 @@ The Stripe CLI forwards `/stripe/marketplace/webhook` and `/stripe/connect/webho
 | `MARKETPLACE_*` | fee, payout timing, problem-report windows and stock reservation, see [section 10.4](#10-stripe-setup) and `.env.example` |
 | `DEV_UID`, `DEV_GID`, `COMPOSE_FILE` | development only |
 
-## 16. Seasonal themes
+## 17. Seasonal themes
 
 The public site (not the admin panel) can wear a seasonal look: re-coloured header, footer, buttons, badges
 and links, plus a small decoration along the header and, for winter, gently falling snow. **An admin switches it

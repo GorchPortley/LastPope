@@ -62,3 +62,8 @@ resources/themes/.gitignore
 
 # Private files (design/driver source files and snapshot ZIPs; never public)
 /storage/app/private
+
+# Server-only files (never committed): local compose tweaks, auto-deploy settings, database dumps
+/compose.override.yaml
+/docker/deploy/deploy.env
+/backups/

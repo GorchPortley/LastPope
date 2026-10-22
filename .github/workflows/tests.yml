@@ -2,7 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main, master]
+    # Every branch, so every pushed commit gets a result. The server's auto-deploy
+    # (docker/deploy/auto-deploy.sh) only deploys a commit once this workflow passed for it.
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 

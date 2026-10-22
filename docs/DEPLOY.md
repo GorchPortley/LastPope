@@ -20,6 +20,7 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 - [15. Local development](#15-local-development)
 - [16. Reference](#16-reference)
 - [17. Seasonal themes](#17-seasonal-themes)
+- [18. Dropshipping](#18-dropshipping)
 
 ---
 
@@ -1027,3 +1028,64 @@ plugin are installed from npm with pinned versions (`package.json`) and built by
 longer load them from a CDN, so the charts and icons also work offline or behind a strict firewall. (Paddle, Stripe,
 and the profile page's cropper still use their own hosts.) After changing a version, run `npm install` and
 `npm run build`.
+
+## 18. Dropshipping
+
+The SDLabs store (the new drivers sold from the driver pages) can sell a mix of its own stock and products that a
+**supplier ships straight to the buyer**. Marketplace listings from members are not affected. Nothing needs to be
+installed: `php artisan migrate --force` (the updater does it) adds the tables, and every existing store listing stays
+"own stock" until you change it.
+
+**How it works**
+
+1. **Suppliers** (admin): one record per company, with the e-mail their purchase orders go to, the lead time
+   they promise (shown to buyers as "Ships in 5-8 business days", never with the supplier's name), the shipping you
+   charge the buyer for their parcel, the fee they charge you per order, and whether it is a *blind* dropship (no
+   branding or prices in the parcel).
+2. **Store listings** choose how they are fulfilled: *own stock*, *dropship* (the supplier has the stock), or *own
+   stock, then dropship* (own units first; a line that own stock cannot cover goes to the supplier as a whole).
+   Dropshipped listings carry the supplier's SKU and what a unit costs you (`cost_cents`).
+3. **Checkout** decides, per line, where it comes from and stores that on the order. Shipping is priced per parcel:
+   one for own stock, one per supplier, each as its own line on the Stripe page.
+4. **Purchase orders (POs)**: when a store order is paid, one PO per supplier is created (`PO-7KQ2M9`). If the supplier
+   is set to *send purchase orders automatically* the PO is e-mailed (to their order e-mail, reply-to
+   `MARKETPLACE_STORE_EMAIL`, CSV attached); otherwise the admins get a notification "New store order: 2 purchase
+   orders to send", and an admin sends it, or places the order in the supplier's web portal and marks it *placed
+   manually* with their order number. Then: *confirmed*, costs entered when the supplier invoices (shipping,
+   per-unit), and finally the supplier's tracking number, which creates a shipment and e-mails the buyer
+   ("parcel 2 of 3"). The order counts as shipped (and the payout, problem-window and auto-complete clocks start)
+   when its last parcel is out.
+5. **Refunds**: a PO that was not sent yet drops the refunded lines; one the supplier already has is flagged
+   *problem* with the note "Cancel with supplier" so you cancel it there.
+6. **Margin report** (admin): revenue, costs (unit costs, supplier shipping, fees), an estimate of Stripe's fee and
+   refunds per paid store order, per date range, with CSV export.
+
+**Stock feed** (optional, per supplier): a CSV that the supplier publishes (a URL) or that you upload, with one row per
+product. The first row must name the columns; which columns hold the SKU, the quantity and (optionally) your cost is
+set on the supplier (defaults `sku`, `quantity`, no cost column). Anything a spreadsheet exports works: a byte order
+mark, `,` `;` tab or `|` as separator, any upper/lower case in the header, quantities like `1,200` or `12.0`, costs like
+`$1,299.00` or `12,50`. Example:
+
+```
+sku,quantity,cost
+NW-KX8-001,14,103.50
+NW-CD14-002,6,70.85
+```
+
+Rows are matched to listings by the listing's *supplier SKU* (case and spaces do not matter); the quantity becomes the
+listing's supplier stock, and the cost (when a cost column is set) its `cost_cents`. Listings that are not in the
+feed are left as they are, and nothing is ever deleted. A feed that cannot be read (HTTP error, missing column, empty
+file) changes nothing; the error is shown on the supplier. A product whose supplier stock is not known counts as
+available (at most `MARKETPLACE_DROPSHIP_UNKNOWN_STOCK_MAX` units per order).
+
+**Schedule**: `php artisan marketplace:sync-supplier-stock` runs **every hour** from the scheduler container (like
+`marketplace:auto-complete`); run it by hand any time, or for one supplier with `--supplier=<id>`. It needs outbound
+HTTPS for URL feeds.
+
+**Settings** (`.env`, all optional, see `.env.example`): `MARKETPLACE_STORE_NAME` / `MARKETPLACE_STORE_EMAIL` (how the
+store names itself; the reply-to of purchase orders), `MARKETPLACE_PURCHASE_ORDER_PREFIX`,
+`MARKETPLACE_DROPSHIP_UNKNOWN_STOCK_MAX`, `MARKETPLACE_SUPPLIER_FEED_TIMEOUT` / `_MAX_KB`,
+`MARKETPLACE_STRIPE_FEE_BPS` / `_FIXED_CENTS` (the Stripe fee estimate of the margin report, 2.9 % + 30 cents) and
+`MARKETPLACE_MIN_MARGIN_BPS` (the store listing form warns below this margin; 1500 = 15 %).
+Purchase-order e-mails use the normal mail settings ([section 9](#9-mail)) and the **queue** container, so make sure it
+is running.

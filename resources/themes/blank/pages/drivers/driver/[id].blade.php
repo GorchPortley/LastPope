@@ -31,7 +31,7 @@ new class extends Component {
         // latest one, so the page can say "Out of stock at SDLabs" instead of staying silent.
         $store = $this->driver->storeListing();
         $latest = $store ?? $this->driver->latestStoreListing();
-        $inStock = $store !== null && $store->quantity > 0;
+        $inStock = $store !== null && $store->inStock();
 
         // What members sell of this driver in the marketplace (used units, see Listing::channelRuleViolations()).
         $used = $this->driver->listings()->marketplace()->forSale();

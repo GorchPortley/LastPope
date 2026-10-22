@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\EntitlementSource;
+use App\Enums\FulfillmentMode;
 use App\Enums\IssueReason;
 use App\Enums\IssueResolution;
 use App\Enums\IssueStatus;
@@ -19,8 +20,17 @@ use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\Order;
 use App\Models\OrderIssue;
+use App\Models\SellerOrder;
 use App\Models\SellerProfile;
+use App\Models\Supplier;
+use App\Models\SupplierOrder;
 use App\Models\User;
+use App\Enums\OrderStatus;
+use App\Enums\SellerOrderStatus;
+use App\Enums\SupplierOrderStatus;
+use App\Services\Marketplace\PurchaseOrderService;
+use App\Services\Marketplace\ShipmentService;
+use App\Services\Marketplace\SupplierFeedSync;
 use App\Services\Snapshots\DesignSnapshotBuilder;
 use App\Services\Snapshots\DriverSnapshotBuilder;
 use App\Services\Forum\ForumClient;
@@ -42,6 +52,10 @@ use Ramsey\Uuid\Uuid;
  * FRD/ZMA measurements, designs with components and built snapshots, listings, entitlements,
  * carts, orders in several states, reviews and banners. Login: admin@sdlabs.test / password
  * (every demo user has the password "password", or DEMO_PASSWORD when that is set).
+ *
+ * R3: two suppliers (one with a CSV stock feed file, one a web portal), some store listings that a supplier ships
+ * (dropship, own stock first), costs on all of them, and store orders with purchase orders in several states and
+ * parcels from several sources.
  *
  * Listings come in two channels: a dozen STORE listings (SDLabs sells new catalogue drivers; seller = the
  * demo admin) and a marketplace of kits, completed speakers and used gear sold between members. The seeder
@@ -65,6 +79,9 @@ class DemoSeeder extends Seeder
     /** @var array<string, Listing> */
     private array $listings = [];
 
+    /** @var array<string, Supplier> */
+    private array $suppliers = [];
+
     public function run(): void
     {
         if (! app()->environment(['local', 'demo', 'testing'])) {
@@ -76,6 +93,7 @@ class DemoSeeder extends Seeder
         if (User::where('email', 'admin@sdlabs.test')->exists()) {
             $this->command?->info('Demo data is already present.');
             $this->seedIssuesOnExistingData();
+            $this->seedDropshippingOnExistingData();
             $this->seedForum();
 
             return;
@@ -90,6 +108,7 @@ class DemoSeeder extends Seeder
             $this->seedReviews();
             $this->seedBanners();
             $this->seedCommerce();
+            $this->seedDropshipping();
         });
 
         $this->seedForum();
@@ -721,6 +740,171 @@ class DemoSeeder extends Seeder
                 'unit_price_cents' => $item->purchasablePriceCents(),
             ]);
         }
+    }
+
+    // --- Dropshipping (R3) -----------------------------------------------------------------------
+
+    /**
+     * A demo site seeded before dropshipping existed (docs/PLAN.md 8): add the suppliers, the dropshipped store listings
+     * and the store orders on top of its demo users and store listings, once. Nothing happens when it has suppliers
+     * already or when the demo catalogue is not complete.
+     */
+    private function seedDropshippingOnExistingData(): void
+    {
+        if (Supplier::query()->exists()) {
+            return;
+        }
+
+        foreach (DemoCatalog::users() as $key => $data) {
+            $user = User::where('email', $data['email'])->first();
+            if ($user === null) {
+                return;
+            }
+            $this->users[$key] = $user;
+        }
+
+        foreach (DemoCatalog::storeListings() as $def) {
+            $listing = Listing::where('uuid', $this->key('listing', 'store-'.$def['driver']))->first();
+            if ($listing === null) {
+                return;
+            }
+            $this->listings['store-'.$def['driver']] = $listing;
+        }
+
+        DB::transaction(fn () => $this->seedDropshipping());
+
+        $this->command?->info('Added demo suppliers, dropshipped store listings and store orders with purchase orders.');
+    }
+
+    /**
+     * Two suppliers, some store listings they ship, costs everywhere, the feed read once, and store orders: a paid one
+     * with purchase orders to send and to confirm, a partly shipped one (own parcel and one supplier's out, one still at the
+     * supplier), a fully shipped one in two parcels, and two refunded ones - one after the purchase order was sent
+     * (flagged "cancel with supplier") and one before (dropped).
+     */
+    private function seedDropshipping(): void
+    {
+        foreach (DemoCatalog::suppliers() as $key => $def) {
+            $feed = $def['feed'];
+            unset($def['feed']);
+
+            if (filled($def['feed_file_path'] ?? null)) {
+                $csv = "sku,quantity,cost\n".collect($feed)->map(fn (array $row) => implode(',', $row))->implode("\n")."\n";
+                $this->writePrivate($def['feed_file_path'], $csv);
+            }
+
+            $this->suppliers[$key] = Supplier::create($def);
+        }
+
+        $plans = DemoCatalog::dropshipping();
+
+        foreach (DemoCatalog::storeListings() as $position => $def) {
+            $listing = $this->listings['store-'.$def['driver']];
+            $plan = $plans[$def['driver']] ?? null;
+
+            $listing->forceFill([
+                'cost_cents' => (int) round($def['price'] * DemoCatalog::costShare($def['driver'], $position) / 100),
+                'fulfillment' => $plan['fulfillment'] ?? FulfillmentMode::STOCK->value,
+                'supplier_id' => $plan ? $this->suppliers[$plan['supplier']]->id : null,
+                'supplier_sku' => $plan['sku'] ?? null,
+                'quantity' => $plan['quantity'] ?? $listing->quantity,
+                'supplier_stock' => $plan['supplier_stock'] ?? null,
+                'supplier_stock_synced_at' => isset($plan['supplier_stock']) ? now() : null,
+            ])->saveQuietly();
+
+            $listing->validateChannelRules();
+        }
+
+        // The supplier with a feed file: stock and cost come from it, as the hourly sync would do.
+        foreach ($this->suppliers as $supplier) {
+            if ($supplier->hasFeed()) {
+                app(SupplierFeedSync::class)->sync($supplier);
+            }
+        }
+
+        $this->seedDropshipOrders();
+    }
+
+    private function seedDropshipOrders(): void
+    {
+        $u = $this->users;
+        $l = $this->listings;
+        $purchaseOrders = app(PurchaseOrderService::class);
+        $shipments = app(ShipmentService::class);
+
+        $build = function (string $buyer, string $stage, array $items, int $paidDaysAgo, ?string $orderStage = null): Order {
+            $order = $this->order($buyer, $orderStage ?? ($stage === 'shipped' ? 'paid' : $stage), $this->users[$buyer]->addresses()->first());
+            $order->update(['paid_at' => now()->subDays($paidDaysAgo)]);
+            OrderBuilder::build($order, $items, $stage);
+
+            return $order->fresh(['sellerOrders.items', 'supplierOrders.items']);
+        };
+
+        // 1. Paid yesterday: own stock + Northwind (purchase order e-mailed automatically, confirmed) + a Harbor Pro line
+        //    that own stock cannot cover (purchase order waits for an admin to place it in their portal).
+        $order = $build('buyer1', 'paid', [[$l['store-k65'], 1], [$l['store-kx8'], 1], [$l['store-a30'], 3]], 1);
+        $this->advancePurchaseOrder($order->supplierOrders->firstWhere('supplier_id', $this->suppliers['northwind']->id), 'confirmed', 'NW-48121');
+
+        // 2. Paid six days ago, in three parcels: the own-stock parcel and Northwind's shipped, Harbor Pro's still to come
+        //    (the order is partially shipped, no payout clock and no problem window yet).
+        $order = $build('buyer2', 'paid', [[$l['store-pr8'], 2], [$l['store-h8'], 1], [$l['store-ht28'], 1], [$l['store-a30'], 3]], 6);
+        $sellerOrder = $order->sellerOrders->first();
+        $northwind = $order->supplierOrders->firstWhere('supplier_id', $this->suppliers['northwind']->id);
+        $harbor = $order->supplierOrders->firstWhere('supplier_id', $this->suppliers['harbor']->id);
+
+        $shipments->recordShipment($sellerOrder, null, ['carrier' => 'USPS', 'tracking_number' => '9400111899223100'.$sellerOrder->id, 'shipped_at' => now()->subDays(5)], restrictToOwn: true, notify: false);
+        $this->advancePurchaseOrder($northwind, 'confirmed', 'NW-47990');
+        $shipments->recordShipment(
+            $sellerOrder->fresh(),
+            $northwind->items->mapWithKeys(fn ($line) => [$line->order_item_id => $line->quantity])->all(),
+            ['carrier' => 'UPS', 'tracking_number' => '1ZNW'.str_pad((string) $northwind->id, 12, '0', STR_PAD_LEFT), 'tracking_url' => null, 'shipped_at' => now()->subDays(2)],
+            $northwind,
+            notify: false,
+        );
+        $northwind->forceFill(['status' => SupplierOrderStatus::SHIPPED, 'shipped_at' => now()->subDays(2), 'shipping_cost_cents' => 999])->save();
+        $this->advancePurchaseOrder($harbor, 'placed', 'HP-PORTAL-90412');
+        $harbor->forceFill(['notes' => '['.now()->subDays(4)->format('Y-m-d H:i').'] Supplier says this is on back-order for about a week.'])->save();
+
+        // 3. Fully shipped in two parcels (own stock first, Northwind's a day later): the order is shipped with the time of the last parcel.
+        $build('buyer3', 'shipped', [[$l['store-at25'], 1], [$l['store-cd14'], 1]], 3);
+
+        // 4. Refunded after the purchase order was sent: the purchase order is flagged "cancel with supplier".
+        $order = $build('buyer5', 'paid', [[$l['store-kx8'], 1]], 4);
+        $this->advancePurchaseOrder($order->supplierOrders->first(), 'confirmed', 'NW-47875');
+        $this->refundSellerOrder($order->sellerOrders->first(), 'The buyer changed their mind.', $purchaseOrders);
+
+        // 5. Refunded before the purchase order was sent: it is dropped, nothing goes to the supplier.
+        $order = $build('buyer4', 'paid', [[$l['store-a30'], 3]], 2);
+        $this->refundSellerOrder($order->sellerOrders->first(), 'Out of stock at the supplier.', $purchaseOrders);
+    }
+
+    /** Move a purchase order along without sending any e-mail: sent (automatically), placed by hand, or confirmed. */
+    private function advancePurchaseOrder(?SupplierOrder $po, string $state, ?string $reference = null): void
+    {
+        if ($po === null) {
+            return;
+        }
+
+        $paidAt = $po->order->paid_at ?? now();
+
+        $po->forceFill(match ($state) {
+            'placed' => ['status' => SupplierOrderStatus::SENT, 'sent_at' => $paidAt->copy()->addHours(2), 'placed_manually' => true, 'supplier_reference' => $reference],
+            'confirmed' => ['status' => SupplierOrderStatus::CONFIRMED, 'sent_at' => $paidAt->copy()->addMinutes(5), 'confirmed_at' => $paidAt->copy()->addHours(3), 'supplier_reference' => $reference],
+            default => ['status' => SupplierOrderStatus::SENT, 'sent_at' => $paidAt->copy()->addMinutes(5)],
+        })->save();
+    }
+
+    /** What RefundService does to a store order, without Stripe: the seller order and the order are refunded, the purchase orders react. */
+    private function refundSellerOrder(SellerOrder $sellerOrder, string $reason, PurchaseOrderService $purchaseOrders): void
+    {
+        $sellerOrder->forceFill([
+            'status' => SellerOrderStatus::REFUNDED,
+            'refunded_cents' => $sellerOrder->grossCents(),
+            'refunded_at' => now(),
+        ])->save();
+        $sellerOrder->order->forceFill(['status' => OrderStatus::REFUNDED])->save();
+
+        $purchaseOrders->handleRefund($sellerOrder->fresh(), $reason);
     }
 
     // --- Files ---------------------------------------------------------------------------------

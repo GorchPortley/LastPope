@@ -41,6 +41,7 @@ class RefundService
     public function __construct(
         private readonly PaymentGateway $gateway,
         private readonly OrderStatusSynchronizer $statuses,
+        private readonly PurchaseOrderService $purchaseOrders,
     ) {
     }
 
@@ -281,7 +282,7 @@ class RefundService
 
             $failed = [];
             foreach ($targets as $sellerOrder) {
-                if (! $this->applyRefund($sellerOrder, $refundId, (int) $amounts[$sellerOrder->getKey()])) {
+                if (! $this->applyRefund($sellerOrder, $refundId, (int) $amounts[$sellerOrder->getKey()], $reason)) {
                     $failed[] = $sellerOrder;
                 }
             }
@@ -299,12 +300,12 @@ class RefundService
     }
 
     /**
-     * Record a refund of $amountCents of a seller order: the money flow (see the class comment), entitlements and status.
-     * A refund that covers what is left of the seller order is a full one (status refunded).
+     * Record a refund of $amountCents of a seller order: the money flow (see the class comment), entitlements, purchase
+     * orders of dropshipped lines and status. A refund that covers what is left of the seller order is a full one (status refunded).
      *
      * @return bool false when the payout transfer could not be reversed
      */
-    private function applyRefund(SellerOrder $sellerOrder, ?string $refundId, int $amountCents): bool
+    private function applyRefund(SellerOrder $sellerOrder, ?string $refundId, int $amountCents, ?string $reason = null): bool
     {
         $full = $amountCents >= $sellerOrder->refundableCents();
         $transferred = $sellerOrder->isTransferred() && filled($sellerOrder->stripe_transfer_id);
@@ -354,6 +355,10 @@ class RefundService
         if (! $full) {
             return $reversed;
         }
+
+        // Dropshipped lines (docs/PLAN.md 8.3): a purchase order not sent yet drops them, one the supplier already has is
+        // flagged "cancel with supplier" for an admin.
+        $this->purchaseOrders->handleRefund($sellerOrder, $reason);
 
         $buyer = $sellerOrder->order()->first()?->user;
         foreach ($sellerOrder->items as $item) {

@@ -32,6 +32,29 @@ final class CartSummary
     ) {
     }
 
+    /**
+     * Every parcel of the cart, seller by seller (own stock first, then each supplier's parcel).
+     *
+     * @return array<int, ShippingGroup>
+     */
+    public function shippingGroups(): array
+    {
+        $groups = [];
+        foreach ($this->sellers as $seller) {
+            foreach ($seller->shippingGroups as $group) {
+                $groups[] = $group;
+            }
+        }
+
+        return $groups;
+    }
+
+    /** The cart ships in more than one parcel (a store order with dropshipped items, or several sellers). */
+    public function hasMultipleParcels(): bool
+    {
+        return count($this->shippingGroups()) > 1;
+    }
+
     public function isEmpty(): bool
     {
         return $this->lines === [];

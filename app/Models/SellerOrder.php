@@ -72,6 +72,35 @@ class SellerOrder extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    /** The parcels of this seller order, oldest first. */
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class)->orderBy('shipped_at')->orderBy('id');
+    }
+
+    /** Purchase orders to suppliers for the dropshipped lines (store orders only). */
+    public function supplierOrders(): HasMany
+    {
+        return $this->hasMany(SupplierOrder::class);
+    }
+
+    /**
+     * The parcels as the buyer sees them (carrier, tracking, items; no supplier), oldest first, each with its number
+     * and the expected parcel count: "parcel 2 of 3".
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public function shipmentSummaries(): \Illuminate\Support\Collection
+    {
+        $this->loadMissing('shipments.items.orderItem');
+        $count = app(\App\Services\Marketplace\ParcelPlanner::class)->expectedParcelCount($this);
+
+        return $this->shipments->values()->map(fn (Shipment $shipment, int $index) => $shipment->summary() + [
+            'parcel' => $index + 1,
+            'parcels' => $count,
+        ]);
+    }
+
     /** Every problem report ever opened for this seller order, newest first. */
     public function issues(): HasMany
     {

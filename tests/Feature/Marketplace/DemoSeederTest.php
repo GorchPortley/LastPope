@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FulfillmentMode;
 use App\Enums\ListingCategory;
 use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
@@ -115,7 +116,12 @@ it('has a store: one active listing per ~12 catalogue drivers, sold by the demo 
         ->and($store->pluck('driver_id')->unique()->count())->toBe($store->count()) // one per driver
         ->and($store->every(fn ($l) => $l->seller_id === $admin->id))->toBeTrue()
         ->and($store->every(fn ($l) => $l->category === ListingCategory::DRIVER && $l->condition === ListingCondition::NEW))->toBeTrue()
-        ->and($store->every(fn ($l) => $l->status === ListingStatus::ACTIVE && $l->quantity >= 5 && $l->quantity <= 40))->toBeTrue()
+        // own stock for the plain ones; a dropshipped product has none (a supplier ships it), a hybrid one a few units
+        ->and($store->every(fn ($l) => $l->status === ListingStatus::ACTIVE && match ($l->fulfillment) {
+            FulfillmentMode::STOCK => $l->quantity >= 5 && $l->quantity <= 40,
+            FulfillmentMode::DROPSHIP => $l->quantity === 0,
+            FulfillmentMode::STOCK_THEN_DROPSHIP => $l->quantity >= 1 && $l->quantity <= 40,
+        }))->toBeTrue()
         ->and($store->every(fn ($l) => $l->price_cents > 0 && $l->ships_from_country === strtoupper(config('marketplace.default_country', 'US'))))->toBeTrue()
         ->and($store->every(fn ($l) => $l->shipping_domestic_cents > 0 && $l->shipping_international_cents > $l->shipping_domestic_cents))->toBeTrue();
 

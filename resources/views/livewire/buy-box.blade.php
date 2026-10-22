@@ -22,7 +22,7 @@
             @endif
         </p>
         @if (! $state['digital'] && in_array($state['status'], ['add', 'login', 'owner'], true))
-            <p class="text-sm font-medium {{ $state['max'] <= 3 ? 'text-amber-700' : 'text-green-700' }}" data-buy-box-stock>{{ $state['max'] }} available</p>
+            <p class="text-sm font-medium {{ $state['max'] <= 3 ? 'text-amber-700' : 'text-green-700' }}" data-buy-box-stock>{{ $state['stockText'] }}</p>
         @endif
     </div>
 

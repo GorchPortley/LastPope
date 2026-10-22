@@ -95,6 +95,7 @@ class IssueService
 
         if (! in_array($sellerOrder->status, [
             SellerOrderStatus::AWAITING_SHIPMENT,
+            SellerOrderStatus::PARTIALLY_SHIPPED,
             SellerOrderStatus::SHIPPED,
             SellerOrderStatus::DELIVERED,
             SellerOrderStatus::COMPLETED,

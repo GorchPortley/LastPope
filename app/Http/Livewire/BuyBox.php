@@ -3,6 +3,7 @@
 namespace App\Http\Livewire;
 
 use App\Contracts\Purchasable;
+use App\Enums\FulfillmentMode;
 use App\Enums\ListingStatus;
 use App\Models\CartItem;
 use App\Models\Design;
@@ -72,7 +73,7 @@ class BuyBox extends Component
     /**
      * What the box shows for the current visitor.
      *
-     * @return array{status: string, price: int, free: bool, digital: bool, reason: ?string, max: int, inCart: int, downloadUrl: ?string, lot: ?string, kind: string, shipping: ?array{from: string, domestic: string, international: string, handling: string}}
+     * @return array{status: string, price: int, free: bool, digital: bool, reason: ?string, max: int, stockText: string, inCart: int, downloadUrl: ?string, lot: ?string, kind: string, shipping: ?array{from: string, domestic: string, international: string, handling: string}}
      */
     public function state(): array
     {
@@ -90,6 +91,7 @@ class BuyBox extends Component
             'digital' => $digital,
             'reason' => null,
             'max' => 1,
+            'stockText' => '',
             'inCart' => 0,
             'downloadUrl' => null,
             'lot' => $p instanceof Listing && $p->isLot() ? ($p->units_per_lot === 2 ? 'pair' : 'set') : null,
@@ -133,6 +135,10 @@ class BuyBox extends Component
 
         if ($p instanceof Listing) {
             $state['max'] = max(1, $p->availableQuantity($user));
+            // Own stock shows its count; a product a supplier ships says when it ships (docs/PLAN.md 8.2).
+            $state['stockText'] = $p->fulfillmentMode() === FulfillmentMode::STOCK
+                ? $state['max'].' available'
+                : $p->shippingTextFor(1, $user);
         }
 
         if (! $available) {
@@ -179,11 +185,17 @@ class BuyBox extends Component
     {
         $price = fn (?int $cents): string => $cents === null ? 'not available' : ($cents > 0 ? money($cents) : 'free');
 
+        // A line a supplier ships is priced with the supplier's rules and takes the supplier's lead time (never named).
+        $quote = $listing->fulfillmentFor(1, auth()->user());
+        $supplier = $quote->isSupplier() ? $quote->supplier : null;
+
         return [
-            'from' => Countries::name($listing->ships_from_country),
-            'domestic' => $price($listing->shipping_domestic_cents),
-            'international' => $price($listing->shipping_international_cents),
-            'handling' => $listing->handling_days.' '.Str::plural('day', $listing->handling_days),
+            'from' => Countries::name($supplier?->ships_from_country ?? $listing->ships_from_country),
+            'domestic' => $price($supplier ? $supplier->shipping_domestic_cents : $listing->shipping_domestic_cents),
+            'international' => $price($supplier ? $supplier->shipping_international_cents : $listing->shipping_international_cents),
+            'handling' => $supplier
+                ? ($quote->leadTimeText() ?: 'a few days')
+                : $listing->handling_days.' '.Str::plural('day', $listing->handling_days),
         ];
     }
 
@@ -206,7 +218,7 @@ class BuyBox extends Component
     private function unavailableReason(Model $p, ?User $user): string
     {
         if ($p instanceof Listing) {
-            if (in_array($p->status, [ListingStatus::SOLD_OUT], true) || ($p->status === ListingStatus::ACTIVE && $p->quantity < 1)) {
+            if (in_array($p->status, [ListingStatus::SOLD_OUT], true) || ($p->status === ListingStatus::ACTIVE && ! $p->inStock())) {
                 return 'Sold out.';
             }
 

@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Enums\SellerOrderStatus;
 use App\Models\Order;
 use App\Models\SellerOrder;
+use App\Models\Shipment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -47,7 +48,16 @@ class SellerOrderFactory extends Factory
             'shipped_at' => now()->subDay(),
             'stripe_transfer_id' => 'tr_'.Str::random(20),
             'transferred_at' => now(),
-        ]);
+        ])->afterCreating(function (SellerOrder $sellerOrder) {
+            // Every shipped seller order has a shipment (R3); a bare one carries no items.
+            Shipment::create([
+                'seller_order_id' => $sellerOrder->getKey(),
+                'carrier' => $sellerOrder->carrier,
+                'tracking_number' => $sellerOrder->tracking_number,
+                'tracking_url' => $sellerOrder->tracking_url,
+                'shipped_at' => $sellerOrder->shipped_at,
+            ]);
+        });
     }
 
     public function completed(): static

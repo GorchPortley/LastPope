@@ -74,7 +74,7 @@ class SellerOrdersRelationManager extends RelationManager
                     ->label(fn (SellerOrder $record): string => $record->status === SellerOrderStatus::SHIPPED ? 'Update tracking' : 'Mark shipped')
                     ->icon('heroicon-m-truck')
                     ->color('primary')
-                    ->visible(fn (SellerOrder $record): bool => in_array($record->status, [SellerOrderStatus::AWAITING_SHIPMENT, SellerOrderStatus::SHIPPED], true)
+                    ->visible(fn (SellerOrder $record): bool => in_array($record->status, [SellerOrderStatus::AWAITING_SHIPMENT, SellerOrderStatus::PARTIALLY_SHIPPED, SellerOrderStatus::SHIPPED], true)
                         && Gate::allows('ship', $record))
                     ->modalHeading(fn (SellerOrder $record): string => 'Ship '.$record->order->number)
                     ->modalDescription('The buyer gets an e-mail with these details.')

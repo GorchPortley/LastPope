@@ -8,12 +8,18 @@ use App\Models\Listing;
 use App\Models\Order;
 use App\Models\OrderIssue;
 use App\Models\SellerOrder;
+use App\Models\Shipment;
+use App\Models\Supplier;
+use App\Models\SupplierOrder;
 use App\Policies\DesignPolicy;
 use App\Policies\DriverPolicy;
 use App\Policies\ListingPolicy;
 use App\Policies\OrderIssuePolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\SellerOrderPolicy;
+use App\Policies\ShipmentPolicy;
+use App\Policies\SupplierOrderPolicy;
+use App\Policies\SupplierPolicy;
 use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\PaymentGateway;
 use App\Services\Payments\StripeGateway;
@@ -60,5 +66,8 @@ class MarketplaceServiceProvider extends ServiceProvider
         Gate::policy(Order::class, OrderPolicy::class);
         Gate::policy(OrderIssue::class, OrderIssuePolicy::class);
         Gate::policy(SellerOrder::class, SellerOrderPolicy::class);
+        Gate::policy(Shipment::class, ShipmentPolicy::class);
+        Gate::policy(Supplier::class, SupplierPolicy::class);
+        Gate::policy(SupplierOrder::class, SupplierOrderPolicy::class);
     }
 }

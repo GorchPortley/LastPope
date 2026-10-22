@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\FulfillmentMode;
 use App\Enums\ListingCategory;
 use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
@@ -9,12 +10,14 @@ use App\Enums\ListingStatus;
 use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Listing;
+use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
  * Listings are brand new, active marketplace listings (category kit) sold by an onboarded seller by default.
- * States: inStore($driver?) (SDLabs' own new driver, sold by an admin), kit(), completedSpeaker(), usedGear(),
+ * States: inStore($driver?) (SDLabs' own new driver, sold by an admin), dropship($supplier?) and hybrid($supplier?)
+ * (store listings a supplier ships, see supplierStock() and withCost()), kit(), completedSpeaker(), usedGear(),
  * brandNew(), used(), openBox(), draft(), active(), paused(), soldOut(), pair(), domesticOnly(),
  * shipsInternationally(), forDriver($driver), forDesign($design), forSeller($user).
  * (brandNew rather than new: Factory already has a static new().)
@@ -50,6 +53,7 @@ class ListingFactory extends Factory
             'returns_accepted' => true,
             'return_policy' => '30 days, buyer pays return shipping.',
             'status' => ListingStatus::ACTIVE,
+            'fulfillment' => FulfillmentMode::STOCK,
         ];
     }
 
@@ -84,6 +88,43 @@ class ListingFactory extends Factory
             'quantity' => $this->faker->numberBetween(5, 40),
             'units_per_lot' => 1,
         ]);
+    }
+
+    /**
+     * A store listing the supplier ships: no own stock, cost 60 % of the price, a SKU, supplier stock unknown (set it
+     * with supplierStock()). Pass the supplier (a new one is created otherwise).
+     */
+    public function dropship(?Supplier $supplier = null, ?Driver $driver = null, ?User $admin = null): static
+    {
+        return $this->inStore($driver, $admin)->state(fn (array $attributes) => [
+            'fulfillment' => FulfillmentMode::DROPSHIP,
+            'supplier_id' => $supplier?->getKey() ?? Supplier::factory(),
+            'supplier_sku' => strtoupper($this->faker->bothify('SKU-????-####')),
+            'cost_cents' => (int) round($this->priceOf($attributes) * 0.6),
+            'quantity' => 0,
+            'supplier_stock' => null,
+        ]);
+    }
+
+    /** A store listing that sells its own stock first and lets the supplier ship what own stock cannot cover. */
+    public function hybrid(?Supplier $supplier = null, int $ownStock = 3, ?Driver $driver = null, ?User $admin = null): static
+    {
+        return $this->dropship($supplier, $driver, $admin)->state(fn () => [
+            'fulfillment' => FulfillmentMode::STOCK_THEN_DROPSHIP,
+            'quantity' => $ownStock,
+        ]);
+    }
+
+    /** What the supplier's feed says it has (null = unknown, which counts as available). */
+    public function supplierStock(?int $units): static
+    {
+        return $this->state(fn () => ['supplier_stock' => $units, 'supplier_stock_synced_at' => $units === null ? null : now()]);
+    }
+
+    /** What one unit costs us. */
+    public function withCost(?int $cents): static
+    {
+        return $this->state(fn () => ['cost_cents' => $cents]);
     }
 
     public function kit(): static
@@ -159,5 +200,11 @@ class ListingFactory extends Factory
     public function shipsInternationally(?int $cents = null): static
     {
         return $this->state(fn () => ['shipping_international_cents' => $cents ?? 2499]);
+    }
+
+    /** @param  array<string, mixed>  $attributes */
+    private function priceOf(array $attributes): int
+    {
+        return (int) ($attributes['price_cents'] ?? 10000);
     }
 }

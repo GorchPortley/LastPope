@@ -71,6 +71,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dropshipping (SDLabs store)
+    |--------------------------------------------------------------------------
+    |
+    | The store sells own stock and products that suppliers ship (docs/PLAN.md 8).
+    |   store_name / store_email   how the store names itself to buyers ("Ships from SDLabs") and to suppliers;
+    |                              store_email is the reply-to of purchase order e-mails (defaults to MAIL_FROM_ADDRESS).
+    |   purchase_order_prefix      PO-7KQ2M9
+    |   dropship_unknown_stock_max most units one order may hold of a dropshipped product whose supplier stock is not
+    |                              known (a known supplier_stock is the limit otherwise)
+    |   supplier_feed_*            stock feed downloads: timeout in seconds, biggest accepted file in KB
+    |   stripe_fee_bps / _fixed    the estimate of Stripe's fee in the margin report (2.9 % + 30 cents)
+    |   min_margin_bps             store listings below this margin (1500 = 15 %) get a warning in the admin form
+    |
+    */
+
+    'store_name' => env('MARKETPLACE_STORE_NAME') ?: env('APP_NAME', 'SDLabs'),
+    'store_email' => env('MARKETPLACE_STORE_EMAIL') ?: env('MAIL_FROM_ADDRESS'),
+    'purchase_order_prefix' => env('MARKETPLACE_PURCHASE_ORDER_PREFIX', 'PO'),
+    'dropship_unknown_stock_max' => (int) env('MARKETPLACE_DROPSHIP_UNKNOWN_STOCK_MAX', 25),
+    'supplier_feed_timeout_seconds' => (int) env('MARKETPLACE_SUPPLIER_FEED_TIMEOUT', 20),
+    'supplier_feed_max_kb' => (int) env('MARKETPLACE_SUPPLIER_FEED_MAX_KB', 5120),
+    'stripe_fee_bps' => (int) env('MARKETPLACE_STRIPE_FEE_BPS', 290),
+    'stripe_fee_fixed_cents' => (int) env('MARKETPLACE_STRIPE_FEE_FIXED_CENTS', 30),
+    'min_margin_bps' => (int) env('MARKETPLACE_MIN_MARGIN_BPS', 1500),
+
+    /*
+    |--------------------------------------------------------------------------
     | Stock reservation
     |--------------------------------------------------------------------------
     |

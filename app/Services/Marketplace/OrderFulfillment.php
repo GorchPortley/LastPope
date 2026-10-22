@@ -3,6 +3,8 @@
 namespace App\Services\Marketplace;
 
 use App\Enums\EntitlementSource;
+use App\Enums\FulfillmentMode;
+use App\Enums\FulfillmentSource;
 use App\Enums\ListingStatus;
 use App\Enums\OrderStatus;
 use App\Enums\SellerOrderStatus;
@@ -30,6 +32,7 @@ class OrderFulfillment
         private readonly PayoutService $payouts,
         private readonly OrderStatusSynchronizer $statuses,
         private readonly RefundService $refunds,
+        private readonly PurchaseOrderService $purchaseOrders,
     ) {
     }
 
@@ -39,10 +42,13 @@ class OrderFulfillment
      * async_payment_succeeded). Returns true when this call did the fulfilment.
      *
      *  - digital items: entitlement for the buyer (source: purchase)
-     *  - listings: stock decremented, the listing becomes sold_out at zero. If a listing can no longer cover a
-     *    paid line (the seller lowered the stock, or another buyer got the last unit after this reservation
-     *    expired), that seller order is not fulfilled: it is refunded automatically and the seller and buyer
-     *    are told, while the rest of the order is fulfilled as usual
+     *  - listings: stock decremented, the listing becomes sold_out at zero (own stock only; a line a supplier ships
+     *    lowers the supplier stock instead, when it is known). If a listing can no longer cover a paid line (the seller
+     *    lowered the stock, or another buyer got the last unit after this reservation expired), that seller order is
+     *    not fulfilled: it is refunded automatically and the seller and buyer are told, while the rest of the order is
+     *    fulfilled as usual. A stock-then-dropship line that own stock cannot cover any more goes to the supplier instead
+     *  - purchase orders: one per supplier for the lines a supplier ships (idempotent); suppliers set to auto-send get
+     *    the e-mail, for the others the admins are told how many purchase orders wait
      *  - seller orders: digital-only -> completed, with physical items -> awaiting_shipment
      *  - buyer's cart: the ordered items are removed
      *  - payouts: due seller orders are transferred (digital now; physical on shipment unless the
@@ -51,7 +57,9 @@ class OrderFulfillment
      */
     public function markPaid(Order $order, string $chargeId, string $paymentIntentId): bool
     {
-        $fulfilled = DB::transaction(function () use ($order, $chargeId, $paymentIntentId) {
+        $newPurchaseOrders = collect();
+
+        $fulfilled = DB::transaction(function () use ($order, $chargeId, $paymentIntentId, &$newPurchaseOrders) {
             /** @var Order $locked */
             $locked = Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
 
@@ -74,6 +82,8 @@ class OrderFulfillment
             $listings = $this->lockListings($locked);
 
             foreach ($locked->sellerOrders as $sellerOrder) {
+                $this->moveShortHybridLinesToSupplier($sellerOrder, $listings);
+
                 if ($this->outOfStock($sellerOrder, $listings)) {
                     // Paid, but the goods are gone: PAID marks it for refundUnfulfillable() right after this transaction.
                     $sellerOrder->forceFill(['status' => SellerOrderStatus::PAID])->save();
@@ -93,6 +103,8 @@ class OrderFulfillment
                 ])->save();
             }
 
+            $newPurchaseOrders = $this->purchaseOrders->createForOrder($locked);
+
             $this->removeFromCart($locked);
             $this->statuses->sync($locked);
 
@@ -103,6 +115,7 @@ class OrderFulfillment
 
         if ($fulfilled) {
             $this->notify($order);
+            $this->purchaseOrders->processNew($newPurchaseOrders);
         }
 
         // Also on a redelivered event: retries refunds and payouts that failed the first time.
@@ -242,6 +255,11 @@ class OrderFulfillment
                 continue;
             }
 
+            // A line a supplier ships does not need our stock; the purchase order takes care of it.
+            if ($item->isFromSupplier()) {
+                continue;
+            }
+
             $listing = $listings->get($item->purchasable_id);
 
             if ($listing === null || $listing->quantity < $item->quantity) {
@@ -250,6 +268,34 @@ class OrderFulfillment
         }
 
         return false;
+    }
+
+    /**
+     * A stock-then-dropship line was decided to come from own stock at checkout, but the stock does not cover it any
+     * more (it was sold in between, or the stock was corrected): the supplier ships it instead of refunding the buyer.
+     * The shipping the buyer paid stays as charged.
+     *
+     * @param  Collection<int, Listing>  $listings
+     */
+    private function moveShortHybridLinesToSupplier(SellerOrder $sellerOrder, Collection $listings): void
+    {
+        foreach ($sellerOrder->items as $item) {
+            if ($item->is_digital || $item->isFromSupplier()) {
+                continue;
+            }
+
+            $listing = $listings->get($item->purchasable_id);
+
+            if ($listing === null
+                || $listing->fulfillmentMode() !== FulfillmentMode::STOCK_THEN_DROPSHIP
+                || $listing->quantity >= $item->quantity
+                || ! $listing->supplierUsable()) {
+                continue;
+            }
+
+            $item->forceFill(['fulfillment_source' => FulfillmentSource::SUPPLIER, 'supplier_id' => $listing->supplier_id])->save();
+            Log::notice('A stock-then-dropship line moved to the supplier at payment: own stock no longer covers it.', ['order_item_id' => $item->getKey()]);
+        }
     }
 
     /** @param  Collection<int, Listing>  $listings */
@@ -269,11 +315,22 @@ class OrderFulfillment
             return;
         }
 
-        // outOfStock() already checked that the listing exists and covers this line.
+        // outOfStock() already checked that the listing exists and covers a line from own stock.
         $listing = $listings->get($item->purchasable_id);
 
+        if ($item->isFromSupplier()) {
+            // Never touches our own quantity; a known supplier stock goes down until the next feed sync corrects it.
+            if ($listing !== null && $listing->supplier_stock !== null) {
+                $listing->supplier_stock = max(0, $listing->supplier_stock - $item->quantity);
+                $listing->save();
+            }
+
+            return;
+        }
+
         $listing->quantity = max(0, $listing->quantity - $item->quantity);
-        if ($listing->quantity === 0 && $listing->status === ListingStatus::ACTIVE) {
+        // Only a listing that depends on its own stock sells out; one a supplier can cover stays on sale.
+        if ($listing->quantity === 0 && $listing->status === ListingStatus::ACTIVE && $listing->fulfillmentMode() === FulfillmentMode::STOCK) {
             $listing->status = ListingStatus::SOLD_OUT;
         }
         $listing->save();

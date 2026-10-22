@@ -213,6 +213,92 @@ final class DemoCatalog
     }
 
     /**
+     * The two suppliers behind the store (docs/PLAN.md 8): one with a CSV stock feed (a file on the private disk) whose
+     * purchase orders go out automatically, one that is a web portal (no order e-mail, orders are placed by hand).
+     * `feed` is the CSV, one row per supplier SKU: sku, quantity, cost in dollars.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public static function suppliers(): array
+    {
+        return [
+            'northwind' => [
+                'name' => 'Northwind Audio Wholesale',
+                'contact_name' => 'Dana Whitfield',
+                'contact_email' => 'dana@northwind-audio.example.test',
+                'contact_phone' => '555-0142',
+                'order_email' => 'orders@northwind-audio.example.test',
+                'website' => 'https://northwind-audio.example.test',
+                'account_number' => 'SDL-20417',
+                'ships_from_country' => 'US',
+                'lead_time_min_days' => 4,
+                'lead_time_max_days' => 6,
+                'dropship_fee_cents' => 300,
+                'blind_dropship' => true,
+                'auto_send_purchase_orders' => true,
+                'shipping_domestic_cents' => 999,
+                'shipping_international_cents' => 3499,
+                'additional_item_shipping_cents' => 399,
+                'free_shipping_over_cents' => 25000,
+                'notes' => 'Stock list is e-mailed as a CSV every morning; we upload it into the stock feed.',
+                'feed_file_path' => 'suppliers/demo/northwind-stock.csv',
+                'feed_sku_column' => 'sku',
+                'feed_quantity_column' => 'quantity',
+                'feed_cost_column' => 'cost',
+                'feed' => [['NW-KX8-001', 14, '103.50'], ['NW-CD14-002', 6, '70.85'], ['NW-HT28-003', 40, '27.30'], ['NW-ZZ99-999', 5, '12.00']],
+            ],
+            'harbor' => [
+                'name' => 'Harbor Pro Audio',
+                'contact_name' => 'Luis Ortega',
+                'contact_email' => 'luis@harborpro.example.test',
+                'contact_phone' => '555-0177',
+                'order_email' => null,
+                'website' => 'https://portal.harborpro.example.test',
+                'account_number' => 'HP-88120',
+                'ships_from_country' => 'US',
+                'lead_time_min_days' => 5,
+                'lead_time_max_days' => 8,
+                'dropship_fee_cents' => 0,
+                'blind_dropship' => true,
+                'auto_send_purchase_orders' => false,
+                'shipping_domestic_cents' => 1299,
+                'shipping_international_cents' => null,
+                'additional_item_shipping_cents' => 599,
+                'free_shipping_over_cents' => null,
+                'notes' => 'Web portal only: place the order there and enter their order number on the purchase order.',
+                'feed_file_path' => null,
+                'feed' => [],
+            ],
+        ];
+    }
+
+    /**
+     * How some store listings are fulfilled: `driver` is a drivers() slug (see storeListings()). Every store listing
+     * not listed here is plain own stock; all of them get a cost (`cost` = share of the price, in per cent).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public static function dropshipping(): array
+    {
+        return [
+            'kx8' => ['fulfillment' => 'dropship', 'supplier' => 'northwind', 'sku' => 'NW-KX8-001', 'quantity' => 0],
+            'cd14' => ['fulfillment' => 'dropship', 'supplier' => 'northwind', 'sku' => 'NW-CD14-002', 'quantity' => 0],
+            'ht28' => ['fulfillment' => 'dropship', 'supplier' => 'northwind', 'sku' => 'NW-HT28-003', 'quantity' => 0],
+            'pr8' => ['fulfillment' => 'stock_then_dropship', 'supplier' => 'harbor', 'sku' => 'HP-PR8-1010', 'quantity' => 6, 'supplier_stock' => null],
+            'a30' => ['fulfillment' => 'stock_then_dropship', 'supplier' => 'harbor', 'sku' => 'HP-A30-2205', 'quantity' => 2, 'supplier_stock' => 8],
+        ];
+    }
+
+    /** Purchase cost as a share of the price for the store listings, in per cent. bt25 is a thin one on purpose (the margin warning). */
+    public static function costShare(string $driver, int $position): int
+    {
+        return match ($driver) {
+            'bt25' => 88,
+            default => 66 + 3 * ($position % 5),
+        };
+    }
+
+    /**
      * Marketplace listings (what members sell to each other): kits, completed speakers and used gear.
      * `design` and `driver` are optional links to designs() / drivers() slugs; `kind` picks the product photo.
      * Used gear is never condition NEW (Listing::channelRuleViolations()).

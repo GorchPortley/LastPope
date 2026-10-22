@@ -13,6 +13,8 @@ final class SellerGroup
     /**
      * @param  array<int, CartLine>  $lines
      * @param  bool  $shippingPending  physical lines exist but the shipping cost is not known yet
+     * @param  array<int, ShippingGroup>  $shippingGroups  the parcels: one for a marketplace seller, for the store one for its own
+     *                                                      stock and one per supplier (empty when nothing physical is in the cart)
      */
     public function __construct(
         public readonly ?User $seller,
@@ -24,6 +26,7 @@ final class SellerGroup
         public readonly int $feeCents,
         public readonly int $payoutCents,
         public readonly bool $isPlatform,
+        public readonly array $shippingGroups = [],
     ) {
     }
 
@@ -42,5 +45,11 @@ final class SellerGroup
         }
 
         return false;
+    }
+
+    /** The seller's part ships in more than one parcel. */
+    public function hasMultipleParcels(): bool
+    {
+        return count($this->shippingGroups) > 1;
     }
 }

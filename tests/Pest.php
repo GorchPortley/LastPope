@@ -288,3 +288,51 @@ function issuePhoto(string $name = 'photo.jpg', int $kb = 10): Illuminate\Http\U
 {
     return Illuminate\Http\UploadedFile::fake()->image($name, 40, 30)->size($kb);
 }
+
+/*
+|--------------------------------------------------------------------------
+| Dropshipping (docs/PLAN.md 8)
+|--------------------------------------------------------------------------
+*/
+
+/** An active supplier (3-7 business days, $8.99 domestic shipping, +$3 per further unit, blind dropship, no feed). */
+function supplier(array $attributes = []): App\Models\Supplier
+{
+    return App\Models\Supplier::factory()->create($attributes);
+}
+
+/**
+ * An active store listing a supplier ships: $100 price, $60 cost, no own stock, supplier stock unknown unless given
+ * (pass `supplier_stock` in $attributes).
+ */
+function dropshipListing(?App\Models\Supplier $supplier = null, array $attributes = [], ?App\Models\User $admin = null): App\Models\Listing
+{
+    return App\Models\Listing::factory()->dropship($supplier ?? supplier(), null, $admin)->create(array_merge(['price_cents' => 10000, 'cost_cents' => 6000], $attributes));
+}
+
+/** An active store listing that sells $ownStock units itself and lets the supplier ship the rest. */
+function hybridListing(?App\Models\Supplier $supplier = null, int $ownStock = 3, array $attributes = [], ?App\Models\User $admin = null): App\Models\Listing
+{
+    return App\Models\Listing::factory()->hybrid($supplier ?? supplier(), $ownStock, null, $admin)->create(array_merge(['price_cents' => 10000, 'cost_cents' => 6000], $attributes));
+}
+
+/**
+ * A paid order of $buyer for $items ([Purchasable, qty] or Purchasable), through the real cart, checkout and payment
+ * (the buyer gets a US address). Returns the order, fresh.
+ */
+function paidOrderOf(App\Models\User $buyer, array $items): App\Models\Order
+{
+    $order = pendingOrder($buyer, $items, addressFor($buyer));
+    payOrder($order, 'pi_'.Illuminate\Support\Str::random(10), 'ch_'.Illuminate\Support\Str::random(10));
+
+    return $order->fresh();
+}
+
+/** The purchase order of $order for $supplier (the first one when null). */
+function purchaseOrderOf(App\Models\Order $order, ?App\Models\Supplier $supplier = null): App\Models\SupplierOrder
+{
+    return App\Models\SupplierOrder::query()
+        ->where('order_id', $order->getKey())
+        ->when($supplier, fn ($q) => $q->where('supplier_id', $supplier->getKey()))
+        ->firstOrFail();
+}

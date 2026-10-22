@@ -16,7 +16,9 @@ use App\Services\Marketplace\Data\CartLine;
 use App\Services\Marketplace\Data\CartOutcome;
 use App\Services\Marketplace\Data\CartResult;
 use App\Services\Marketplace\Data\CartSummary;
+use App\Services\Marketplace\Data\FulfillmentQuote;
 use App\Services\Marketplace\Data\SellerGroup;
+use App\Services\Marketplace\Data\ShippingGroup;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 
@@ -166,18 +168,23 @@ class CartService
         $items = $cart ? $cart->items()->with('purchasable')->orderBy('id')->get() : collect();
         $country = $address?->country ? strtoupper($address->country) : null;
 
+        // Where each physical listing line would come from (own stock or a supplier, docs/PLAN.md 8.1): the decision
+        // CheckoutService stores on the order item, and the one that prices its shipping.
+        $fulfillment = [];
         $shippingInput = [];
         foreach ($items as $item) {
             $purchasable = $item->purchasable;
             if ($purchasable instanceof Purchasable) {
-                $shippingInput[$item->getKey()] = [$purchasable, $this->quantityFor($purchasable, $item)];
+                $quantity = $this->quantityFor($purchasable, $item);
+                $fulfillment[$item->getKey()] = $purchasable instanceof Listing ? $purchasable->fulfillmentFor($quantity, $user) : null;
+                $shippingInput[$item->getKey()] = [$purchasable, $quantity, $fulfillment[$item->getKey()]];
             }
         }
         $quote = $this->shipping->quote($shippingInput, $country);
 
         $lines = [];
         foreach ($items as $item) {
-            $lines[] = $this->buildLine($user, $item, $quote->lines[$item->getKey()] ?? null, $country);
+            $lines[] = $this->buildLine($user, $item, $quote->lines[$item->getKey()] ?? null, $country, $fulfillment[$item->getKey()] ?? null);
         }
 
         return $this->assemble($lines, $address);
@@ -309,7 +316,7 @@ class CartService
         return $purchasable->isDigital() ? 1 : max(1, (int) $item->quantity);
     }
 
-    private function buildLine(User $user, CartItem $item, ?int $shippingCents, ?string $country): CartLine
+    private function buildLine(User $user, CartItem $item, ?int $shippingCents, ?string $country, ?FulfillmentQuote $fulfillment = null): CartLine
     {
         $purchasable = $item->purchasable;
 
@@ -369,6 +376,7 @@ class CartService
             shippingCents: $shippingCents,
             maxQuantity: $digital ? 1 : $stock,
             issues: $issues,
+            fulfillment: $fulfillment,
         );
     }
 
@@ -409,10 +417,11 @@ class CartService
 
             $groupFee = $this->fees->feeCents($groupSubtotal, $seller);
             $isPlatform = $seller?->isPlatformSeller() ?? false;
+            $displayName = $seller?->sellerProfile?->shop_name ?: ($seller?->name ?? 'Unknown seller');
 
             $groups[] = new SellerGroup(
                 seller: $seller,
-                displayName: $seller?->sellerProfile?->shop_name ?: ($seller?->name ?? 'Unknown seller'),
+                displayName: $displayName,
                 lines: $sellerLines,
                 subtotalCents: $groupSubtotal,
                 shippingCents: $groupShipping,
@@ -420,6 +429,7 @@ class CartService
                 feeCents: $groupFee,
                 payoutCents: $isPlatform ? 0 : max(0, $groupSubtotal + $groupShipping - $groupFee),
                 isPlatform: $isPlatform,
+                shippingGroups: $this->shippingGroups($sellerLines, $isPlatform, $displayName, $address),
             );
 
             $subtotal += $groupSubtotal;
@@ -440,5 +450,68 @@ class CartService
             needsAddress: $needsAddress,
             shippingPending: $shippingPending,
         );
+    }
+
+    /**
+     * The parcels of one seller's lines. A marketplace seller ships everything in one parcel. The store (platform seller)
+     * ships its own-stock lines together ("Ships from SDLabs") and every supplier's lines as a parcel of their own
+     * ("Ships separately (5–8 business days)"); the supplier is never named. Digital lines are in no parcel.
+     *
+     * @param  array<int, CartLine>  $lines
+     * @return array<int, ShippingGroup>
+     */
+    private function shippingGroups(array $lines, bool $isPlatform, string $displayName, ?Address $address): array
+    {
+        $buckets = [];
+        foreach ($lines as $line) {
+            if ($line->purchasable === null || $line->isDigital) {
+                continue;
+            }
+
+            $buckets[$isPlatform ? $line->shippingGroupKey() : 'seller'][] = $line;
+        }
+
+        // Own stock first, then the suppliers in cart order.
+        uksort($buckets, fn (string $a, string $b) => ($a === 'stock' ? 0 : 1) <=> ($b === 'stock' ? 0 : 1));
+
+        $storeName = (string) config('marketplace.store_name', 'SDLabs');
+        $groups = [];
+
+        foreach ($buckets as $key => $groupLines) {
+            $subtotal = $shipping = 0;
+            $pending = false;
+
+            foreach ($groupLines as $line) {
+                $subtotal += $line->lineTotalCents();
+
+                if ($line->shippingCents === null) {
+                    $pending = $pending || $address === null;
+                } else {
+                    $shipping += $line->shippingCents;
+                }
+            }
+
+            $supplier = str_starts_with($key, 'supplier:') ? $groupLines[0]->fulfillment?->supplier : null;
+
+            $groups[] = match (true) {
+                $key === 'seller' => new ShippingGroup('seller', ShippingGroup::KIND_SELLER, 'Ships from '.$displayName, '', $groupLines, $subtotal, $shipping, $pending),
+                $supplier !== null => new ShippingGroup(
+                    $key,
+                    ShippingGroup::KIND_SUPPLIER,
+                    'Ships separately',
+                    $supplier->leadTimeText(),
+                    $groupLines,
+                    $subtotal,
+                    $shipping,
+                    $pending,
+                    $supplier->getKey(),
+                    (int) $supplier->lead_time_min_days,
+                    (int) $supplier->lead_time_max_days,
+                ),
+                default => new ShippingGroup('stock', ShippingGroup::KIND_STOCK, 'Ships from '.$storeName, '', $groupLines, $subtotal, $shipping, $pending),
+            };
+        }
+
+        return $groups;
     }
 }

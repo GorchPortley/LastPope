@@ -24,6 +24,9 @@ class Kernel extends ConsoleKernel
 
         // Cancel abandoned pending orders and retry failed automatic refunds.
         $schedule->command('marketplace:cleanup-orders')->hourly()->withoutOverlapping();
+
+        // Read the suppliers' stock feeds into the dropshipped store listings (docs/PLAN.md 8.4).
+        $schedule->command('marketplace:sync-supplier-stock')->hourly()->withoutOverlapping();
     }
 
     /**

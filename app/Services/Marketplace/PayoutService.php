@@ -43,6 +43,7 @@ class PayoutService
         // Not PAID: that marks a paid seller order whose goods could not be delivered (awaiting its automatic refund).
         if (! in_array($sellerOrder->status, [
             SellerOrderStatus::AWAITING_SHIPMENT,
+            SellerOrderStatus::PARTIALLY_SHIPPED,
             SellerOrderStatus::SHIPPED,
             SellerOrderStatus::DELIVERED,
             SellerOrderStatus::COMPLETED,
@@ -160,7 +161,7 @@ class PayoutService
         }
 
         if ($sellerOrder->payout_cents <= 0 || $sellerOrder->seller?->isPlatformSeller()
-            || ! in_array($sellerOrder->status, [SellerOrderStatus::AWAITING_SHIPMENT, SellerOrderStatus::SHIPPED, SellerOrderStatus::DELIVERED, SellerOrderStatus::COMPLETED], true)) {
+            || ! in_array($sellerOrder->status, [SellerOrderStatus::AWAITING_SHIPMENT, SellerOrderStatus::PARTIALLY_SHIPPED, SellerOrderStatus::SHIPPED, SellerOrderStatus::DELIVERED, SellerOrderStatus::COMPLETED], true)) {
             return ['state' => 'none', 'at' => null, 'reason' => null];
         }
 
@@ -256,6 +257,7 @@ class PayoutService
             ->whereDoesntHave('issues', fn ($issues) => $issues->unresolved())
             ->whereIn('status', [
                 SellerOrderStatus::AWAITING_SHIPMENT->value,
+                SellerOrderStatus::PARTIALLY_SHIPPED->value,
                 SellerOrderStatus::SHIPPED->value,
                 SellerOrderStatus::DELIVERED->value,
                 SellerOrderStatus::COMPLETED->value,

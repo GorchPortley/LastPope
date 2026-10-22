@@ -16,7 +16,7 @@ new class extends Component {
             ->where('active', 1)
             ->withCount('designs')  // Add count of designs
             ->with('designs')       // Eager load designs
-            ->with('activeStoreListing'); // SDLabs' store listing, for the "In stock at SDLabs" line on the cards
+            ->with('activeStoreListing.supplier'); // SDLabs' store listing, for the "In stock at SDLabs" line on the cards
 
         // Filter by manufacturer (the filter form submits `manufacturer`; `brand` still works for old links)
         $manufacturer = $request->input('manufacturer', $request->input('brand'));

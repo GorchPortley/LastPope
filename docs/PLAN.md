@@ -444,3 +444,31 @@ products**. Marketplace (user) listings are unchanged. Migration policy §7 appl
   (`marketplace.stripe_fee_bps` default 290 + `stripe_fee_fixed_cents` default 30), refunds, margin and
   margin %; CSV export. Store listing form shows the unit margin at the entered price and warns below
   `marketplace.min_margin_bps` (default 1500).
+
+### R3 implementation notes (backend, part 1; the admin screens and buyer pages are part 2)
+- Migrations (new files only, `2026_10_23_00000x`): `create_suppliers_table`, `add_dropshipping_columns_to_listings`
+  (`fulfillment` default `stock`, `supplier_id`, `supplier_sku`, `cost_cents`, `supplier_stock`, `supplier_stock_synced_at`),
+  `add_fulfillment_columns_to_order_items` (`fulfillment_source` stock|supplier, `supplier_id`, `unit_cost_cents` snapshot),
+  `create_supplier_orders_tables` (`supplier_orders` unique on seller order + supplier, `supplier_order_items`),
+  `create_shipments_tables` (`shipments`, `shipment_items`), `backfill_shipments_from_seller_orders` (one shipment per
+  shipped/delivered/completed seller order with a carrier or tracking, carrying all its physical items). Seller orders get a new
+  status `partially_shipped` (a string column: no schema change); `seller_orders.carrier/tracking_*` mirror the latest shipment.
+- Models/enums: `Supplier`, `SupplierOrder`, `SupplierOrderItem`, `Shipment`, `ShipmentItem`; `FulfillmentMode`,
+  `FulfillmentSource`, `SupplierOrderStatus`. Policies `SupplierPolicy`, `SupplierOrderPolicy` (admins only), `ShipmentPolicy`.
+- Availability: `Listing::availableQuantity()` is mode-aware (stock: own minus held; dropship: supplier stock, or
+  `dropship_unknown_stock_max` when unknown; hybrid: the larger). `Listing::fulfillmentFor($qty, $buyer)` returns a
+  `FulfillmentQuote` (source, available, maxQuantity, lead time, supplier [internal]); `shippingTextFor()`, `inStock()`,
+  `supplierUsable()`, `ownAvailableQuantity()`, `unitMarginCents()/marginBps()/lowMarginWarning()`; scopes `forSale()` (mode-aware) and `dropshipped()`.
+  Only lines from own stock hold stock (orders.reserved_until). The source is stored on `order_items` at checkout and a line is never split.
+- Shipping: `ShippingCalculator::quote()` prices a supplier's lines as one parcel; `SellerGroup::$shippingGroups` / `CartSummary::shippingGroups()`
+  (`ShippingGroup`: label() "Ships from SDLabs" / "Ships separately (5–8 business days)", shippingLabel(), shippingCents). Checkout sends one
+  Stripe shipping line per parcel for the platform seller and keeps one per marketplace seller.
+- Purchase orders: `PurchaseOrderService` (createForOrder, processNew, send, markPlacedManually, confirm, recordSupplierCosts, markShipped, cancel,
+  cancelLines, handleRefund, flagProblem, toCsv, toSendCount), `PurchaseOrderMail` (queued), `PurchaseOrdersToSend` (admins). Created by
+  `OrderFulfillment::markPaid`; refunds go through `RefundService::applyRefund` -> `handleRefund`.
+- Shipments: `ShipmentService` (markShipped = one shipment with everything we ship ourselves; shipItems; updateShipment; recordShipment;
+  addShipment/afterShipment for the PO flow), `ParcelPlanner` (parcels(), remaining(), expectedParcelCount()), `OrderShipped` per shipment
+  ("parcel k of n"), `SellerOrder::shipmentSummaries()`, `Order::shipments`.
+- Feed + margin: `SupplierFeedSync` + `marketplace:sync-supplier-stock` (hourly), `MarginReport` (rows(), forRange(), toCsv(), unitMargin(),
+  lowMarginWarning()). Config keys in `config/marketplace.php` (`store_name`, `store_email`, `purchase_order_prefix`, `dropship_unknown_stock_max`,
+  `supplier_feed_timeout_seconds`, `supplier_feed_max_kb`, `stripe_fee_bps`, `stripe_fee_fixed_cents`, `min_margin_bps`).

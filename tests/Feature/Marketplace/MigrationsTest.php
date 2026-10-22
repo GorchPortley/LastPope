@@ -16,6 +16,8 @@ beforeEach(function () {
     config(['database.connections.r2_migrate' => ['driver' => 'sqlite', 'database' => $this->file, 'prefix' => '', 'foreign_key_constraints' => true]]);
     $this->migrate = fn (string $command, array $options = []) => Artisan::call($command, ['--database' => 'r2_migrate', '--force' => true] + $options);
     $this->db = fn () => DB::connection('r2_migrate');
+    // Every migration file newer than the last one of before R2: the two R2 migrations and whatever was added after them (R3...).
+    $this->sinceR2 = collect(glob(database_path('migrations/*.php')))->map(fn ($file) => basename($file))->filter(fn ($name) => $name > '2026_10_21_000001_insert_default_theme.php')->count();
 });
 
 afterEach(function () {
@@ -26,8 +28,8 @@ afterEach(function () {
 it('adds the problem report tables and seller order columns to a database that has the schema and data of before R2', function () {
     ($this->migrate)('migrate');
 
-    // Back to the schema the dev server has: everything but the two R2 migrations.
-    expect(($this->migrate)('migrate:rollback', ['--step' => 2]))->toBe(0);
+    // Back to the schema the dev server has: everything but the R2 migrations (and those after them).
+    expect(($this->migrate)('migrate:rollback', ['--step' => $this->sinceR2]))->toBe(0);
     $schema = Schema::connection('r2_migrate');
     expect($schema->hasTable('order_issues'))->toBeFalse()
         ->and($schema->hasTable('order_issue_messages'))->toBeFalse()
@@ -83,7 +85,7 @@ it('adds the problem report tables and seller order columns to a database that h
 it('rolls the R2 migrations back cleanly', function () {
     ($this->migrate)('migrate');
 
-    expect(($this->migrate)('migrate:rollback', ['--step' => 2]))->toBe(0);
+    expect(($this->migrate)('migrate:rollback', ['--step' => $this->sinceR2]))->toBe(0);
     $schema = Schema::connection('r2_migrate');
 
     expect($schema->hasTable('order_issues'))->toBeFalse()

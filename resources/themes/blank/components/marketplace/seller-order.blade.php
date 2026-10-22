@@ -67,10 +67,34 @@
         </div>
     </dl>
 
-    @if ($so->status === \App\Enums\SellerOrderStatus::AWAITING_SHIPMENT)
+    @php($parcels = $so->shipments()->with('items.orderItem')->get())
+    @if ($so->status->awaitsShipment())
         <p class="mt-3 border-t border-gray-100 pt-3 text-sm text-gray-600">
-            <x-phosphor-package class="mr-1 inline h-4 w-4 align-text-bottom" /> Waiting for the seller to ship. You get an e-mail with the tracking details.
+            <x-phosphor-package class="mr-1 inline h-4 w-4 align-text-bottom" />
+            @if ($parcels->isEmpty())
+                Waiting for the seller to ship. You get an e-mail with the tracking details.
+            @else
+                {{ $parcels->count() }} {{ \Illuminate\Support\Str::plural('parcel', $parcels->count()) }} shipped; the rest of this part ships separately. You get an e-mail for every parcel.
+            @endif
         </p>
+    @endif
+    @if ($parcels->count() > 1 || ($so->status === \App\Enums\SellerOrderStatus::PARTIALLY_SHIPPED && $parcels->isNotEmpty()))
+        <ul class="mt-3 divide-y divide-gray-100 border-t border-gray-100 text-sm" data-parcels>
+            @foreach ($parcels as $parcel)
+                <li class="flex flex-wrap items-center justify-between gap-3 py-2">
+                    <p class="min-w-0 text-gray-700">
+                        <x-phosphor-truck class="mr-1 inline h-4 w-4 align-text-bottom" />
+                        Parcel {{ $loop->iteration }}: shipped {{ $parcel->shipped_at?->format('M j') }}
+                        @if (filled($parcel->carrier)) with <strong>{{ $parcel->carrier }}</strong>@endif
+                        @if (filled($parcel->tracking_number)), tracking <span class="font-mono">{{ $parcel->tracking_number }}</span>@endif
+                        <span class="block text-gray-500">{{ $parcel->items->map(fn ($row) => ($row->quantity > 1 ? $row->quantity.' x ' : '').$row->orderItem?->title)->implode(', ') }}</span>
+                    </p>
+                    @if (filled($parcel->tracking_url))
+                        <a href="{{ $parcel->tracking_url }}" target="_blank" rel="noopener nofollow" class="font-medium text-brand-700 underline hover:text-brand-900">Track parcel</a>
+                    @endif
+                </li>
+            @endforeach
+        </ul>
     @elseif (in_array($so->status, [\App\Enums\SellerOrderStatus::SHIPPED, \App\Enums\SellerOrderStatus::DELIVERED, \App\Enums\SellerOrderStatus::COMPLETED], true) && filled($so->tracking_number))
         <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3 text-sm">
             <p class="min-w-0 text-gray-700">

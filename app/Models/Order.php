@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Support\Str;
 
 class Order extends Model
@@ -104,6 +105,18 @@ class Order extends Model
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    /** Every parcel of every seller order of this order. */
+    public function shipments(): HasManyThrough
+    {
+        return $this->hasManyThrough(Shipment::class, SellerOrder::class);
+    }
+
+    /** Purchase orders to suppliers for this order's dropshipped lines. */
+    public function supplierOrders(): HasMany
+    {
+        return $this->hasMany(SupplierOrder::class);
     }
 
     /** Problem reports on any seller order of this order. */

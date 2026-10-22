@@ -28,7 +28,7 @@ class MarketplaceStats extends StatsOverviewWidget
         $pending = SellerOrder::query()
             ->whereNull('transferred_at')
             ->whereIn('status', [
-                SellerOrderStatus::PAID->value, SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::SHIPPED->value,
+                SellerOrderStatus::PAID->value, SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::PARTIALLY_SHIPPED->value, SellerOrderStatus::SHIPPED->value,
                 SellerOrderStatus::DELIVERED->value, SellerOrderStatus::COMPLETED->value,
             ]);
 

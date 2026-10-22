@@ -19,6 +19,7 @@ use App\Services\Marketplace\Data\CartLine;
 use App\Services\Marketplace\Data\CartSummary;
 use App\Services\Marketplace\Data\CheckoutResult;
 use App\Services\Marketplace\Data\SellerGroup;
+use App\Services\Marketplace\Data\ShippingGroup;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
 use App\Services\Payments\PaymentGateway;
 use Illuminate\Support\Facades\DB;
@@ -141,6 +142,7 @@ class CheckoutService
             ->keyBy('id');
 
         $issues = [];
+        $sourceChanged = false;
 
         foreach ($lines as $line) {
             $listing = $listings->get($line->purchasable->getKey());
@@ -150,11 +152,19 @@ class CheckoutService
                 $issues[] = new CartIssue(CartIssueType::INSUFFICIENT_STOCK, "{$line->title} is sold out or on hold for another buyer.", $line->id(), 0);
             } elseif ($line->quantity > $available) {
                 $issues[] = new CartIssue(CartIssueType::INSUFFICIENT_STOCK, "Only {$available} available of {$line->title}.", $line->id(), $available);
+            } elseif ($listing->fulfillmentFor($line->quantity, $user)->source !== $line->fulfillmentSource()) {
+                // The last own units went to somebody else (or came back) since the buyer saw the cart: the line now
+                // ships from the other source, which changes the shipping. Never charge a total the buyer has not seen.
+                $sourceChanged = true;
             }
         }
 
         if ($issues !== []) {
             throw new CheckoutException(CheckoutError::INSUFFICIENT_STOCK, $issues);
+        }
+
+        if ($sourceChanged) {
+            throw new CheckoutException(CheckoutError::PRICE_CHANGED);
         }
     }
 
@@ -195,6 +205,8 @@ class CheckoutService
                 ]);
 
                 foreach ($group->lines as $line) {
+                    $listing = $line->purchasable instanceof Listing ? $line->purchasable : null;
+
                     $item = OrderItem::create([
                         'order_id' => $order->getKey(),
                         'seller_order_id' => $sellerOrder->getKey(),
@@ -202,8 +214,12 @@ class CheckoutService
                         'purchasable_id' => $line->purchasable->getKey(),
                         'title' => $line->title,
                         'is_digital' => $line->isDigital,
+                        // Decided here, once, and never split: the whole line comes from own stock or from the supplier.
+                        'fulfillment_source' => $line->isDigital ? null : $line->fulfillmentSource()->value,
+                        'supplier_id' => $line->isDropshipped() ? $line->fulfillment?->supplier?->getKey() : null,
                         'quantity' => $line->quantity,
                         'unit_price_cents' => $line->unitPriceCents,
+                        'unit_cost_cents' => $listing?->cost_cents,
                         'shipping_cents' => $line->shippingCents ?? 0,
                         'line_total_cents' => $line->lineTotalCents(),
                     ]);
@@ -211,7 +227,14 @@ class CheckoutService
                     $lineItems[] = $this->stripeLineItem($order, $item, $line, $group);
                 }
 
-                if ($group->shippingCents > 0) {
+                if ($group->isPlatform) {
+                    // The store: one shipping line per parcel (own stock, each supplier), never naming the supplier.
+                    foreach ($group->shippingGroups as $parcel) {
+                        if ($parcel->shippingCents > 0) {
+                            $lineItems[] = $this->stripeParcelShippingLine($order, $group, $parcel);
+                        }
+                    }
+                } elseif ($group->shippingCents > 0) {
                     $lineItems[] = $this->stripeShippingLine($order, $group);
                 }
 
@@ -257,6 +280,29 @@ class CheckoutService
                 'name' => Str::limit('Shipping - '.$group->displayName, 250, ''),
                 'description' => 'Shipping for the items sold by '.$group->displayName,
                 'metadata' => ['shipping_for_seller_id' => (string) ($group->seller?->getKey() ?? 0)],
+            ],
+        ];
+
+        if (config('marketplace.stripe_tax')) {
+            $price['tax_behavior'] = 'exclusive';
+        }
+
+        return ['quantity' => 1, 'price_data' => $price];
+    }
+
+    /** @return array<string, mixed> The shipping of one parcel of the store's order. */
+    private function stripeParcelShippingLine(Order $order, SellerGroup $group, ShippingGroup $parcel): array
+    {
+        $price = [
+            'currency' => $order->currency,
+            'unit_amount' => $parcel->shippingCents,
+            'product_data' => [
+                'name' => Str::limit($parcel->shippingLabel(), 250, ''),
+                'description' => Str::limit('Shipping for the items sold by '.$group->displayName.' that ship '.($parcel->isSupplier() ? 'separately' : 'from the store').'.', 500, ''),
+                'metadata' => [
+                    'shipping_for_seller_id' => (string) ($group->seller?->getKey() ?? 0),
+                    'shipping_group' => $parcel->kind,
+                ],
             ],
         ];
 

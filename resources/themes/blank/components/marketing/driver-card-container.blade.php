@@ -33,7 +33,7 @@
                 <p class="text-gray-600 text-center text-sm mb-1 line-clamp-1">By: {{$driver->brand}}</p>
                 <p class="text-gray-800 text-center text-sm mb-3 line-clamp-1">{{$driver->tag}}</p>
                 {{-- Stocked by the SDLabs store (the active store listing is eager-loaded by the page). --}}
-                @if ($driver->storeListing()?->quantity > 0)
+                @if ($driver->storeListing()?->inStock())
                     <p class="text-center text-sm font-medium text-green-700 mb-3 -mt-1" data-driver-in-stock>In stock at SDLabs &middot; {{ money($driver->storeListing()->price_cents) }}</p>
                 @endif
                 

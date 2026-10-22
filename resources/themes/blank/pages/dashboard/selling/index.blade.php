@@ -178,7 +178,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
         $profile = $user->sellerProfile?->refresh();
 
         $paid = SellerOrder::query()->where('seller_id', $user->getKey())->whereIn('status', [
-            SellerOrderStatus::PAID->value, SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::SHIPPED->value,
+            SellerOrderStatus::PAID->value, SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::PARTIALLY_SHIPPED->value, SellerOrderStatus::SHIPPED->value,
             SellerOrderStatus::DELIVERED->value, SellerOrderStatus::COMPLETED->value,
         ]);
 
@@ -190,7 +190,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->where('seller_id', $user->getKey())
             ->whereNull('transferred_at')
             ->where('payout_cents', '>', 0)
-            ->whereIn('status', [SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::SHIPPED->value, SellerOrderStatus::DELIVERED->value, SellerOrderStatus::COMPLETED->value])
+            ->whereIn('status', [SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::PARTIALLY_SHIPPED->value, SellerOrderStatus::SHIPPED->value, SellerOrderStatus::DELIVERED->value, SellerOrderStatus::COMPLETED->value])
             ->with(['order', 'items', 'seller', 'activeIssue'])
             ->latest('id')
             ->limit(25)

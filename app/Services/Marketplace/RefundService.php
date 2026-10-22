@@ -162,8 +162,9 @@ class RefundService
     /**
      * Webhook `charge.refunded`: bring our records in line with Stripe. A refund made by this service
      * is already recorded and changes nothing. A full refund made in the Stripe dashboard refunds every
-     * remaining seller order here; a partial one is attributed to a seller order only when the amount
-     * matches exactly, otherwise the order is just flagged partially_refunded for the admin to sort out.
+     * remaining seller order here. A partial one goes to the only seller order still open (any amount, at most
+     * what is left of it), else to the seller order whose remainder matches exactly; otherwise the order is
+     * just flagged partially_refunded for the admin to sort out.
      */
     public function syncFromCharge(Order $order, int $chargeAmountCents, int $amountRefundedCents): void
     {
@@ -189,12 +190,22 @@ class RefundService
 
             $delta = $amountRefundedCents - $recorded;
             $open = $sellerOrders->reject(fn (SellerOrder $so) => in_array($so->status, [SellerOrderStatus::REFUNDED, SellerOrderStatus::CANCELLED], true));
+
+            if ($open->isEmpty()) {
+                // Already all refunded here: e.g. the tax part of a whole-order refund made by this service.
+                return;
+            }
+
+            /** @var array<int, array{0: SellerOrder, 1: int}> $refunded seller order + cents */
             $refunded = [];
 
             if ($amountRefundedCents >= $chargeAmountCents) {
-                $refunded = $open->all();
-            } elseif ($match = $open->first(fn (SellerOrder $so) => $so->grossCents() === $delta)) {
-                $refunded = [$match];
+                $refunded = $open->map(fn (SellerOrder $so) => [$so, $so->refundableCents()])->all();
+            } elseif ($open->count() === 1) {
+                $only = $open->first();
+                $refunded = [[$only, min($delta, $only->refundableCents())]];
+            } elseif ($match = $open->first(fn (SellerOrder $so) => $so->refundableCents() === $delta)) {
+                $refunded = [[$match, $delta]];
             } else {
                 Log::warning('Partial refund in Stripe could not be matched to a seller order.', ['order' => $locked->number, 'amount_refunded' => $amountRefundedCents]);
                 if ($locked->status !== OrderStatus::REFUNDED) {
@@ -202,8 +213,8 @@ class RefundService
                 }
             }
 
-            foreach ($refunded as $sellerOrder) {
-                $this->applyRefund($sellerOrder, null, $sellerOrder->refundableCents());
+            foreach ($refunded as [$sellerOrder, $cents]) {
+                $this->applyRefund($sellerOrder, null, $cents);
             }
 
             $this->statuses->sync($locked);

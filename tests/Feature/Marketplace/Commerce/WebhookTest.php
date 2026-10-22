@@ -221,6 +221,42 @@ it('flags an unattributable partial refund without touching seller orders', func
         ->and($order->sellerOrders()->where('status', SellerOrderStatus::REFUNDED->value)->count())->toBe(0);
 });
 
+it('applies a partial dashboard refund of any amount to the only seller order of the order', function () {
+    $design = paidDesign(cents: 2000);
+    $order = pendingOrder($this->buyer, [$design]);
+    payOrder($order, 'pi_one', 'ch_one');
+
+    $charge = ['id' => 'ch_one', 'object' => 'charge', 'payment_intent' => 'pi_one', 'amount' => 2000, 'amount_refunded' => 700];
+    marketplaceHook($this, stripeEventPayload('charge.refunded', $charge))->assertOk()->assertJson(['status' => 'handled']);
+    marketplaceHook($this, stripeEventPayload('charge.refunded', $charge))->assertOk(); // a second event for the same refund state
+
+    $sellerOrder = $order->sellerOrders()->first();
+    expect($order->fresh()->status)->toBe(OrderStatus::PARTIALLY_REFUNDED)
+        ->and($sellerOrder->status)->not->toBe(SellerOrderStatus::REFUNDED)
+        ->and($sellerOrder->refunded_cents)->toBe(700)
+        ->and($sellerOrder->refundableCents())->toBe(1300)
+        ->and($this->buyer->hasAccessTo($design, false))->toBeTrue();
+
+    // the rest refunded in the dashboard later: now a full refund
+    marketplaceHook($this, stripeEventPayload('charge.refunded', [...$charge, 'amount_refunded' => 2000]))->assertOk();
+
+    expect($sellerOrder->fresh()->status)->toBe(SellerOrderStatus::REFUNDED)
+        ->and($sellerOrder->fresh()->refunded_cents)->toBe(2000)
+        ->and($order->fresh()->status)->toBe(OrderStatus::REFUNDED);
+});
+
+it('does not mail the buyer again for the tax part of a whole-order refund made here', function () {
+    Notification::fake();
+    $order = pendingOrder($this->buyer, [paidDesign(cents: 2000)]);
+    payOrder($order, 'pi_tax', 'ch_tax');
+    $order->forceFill(['tax_cents' => 160, 'total_cents' => 2160])->save();
+    app(App\Services\Marketplace\RefundService::class)->refundOrder(User::factory()->admin()->create(), $order->fresh());
+
+    marketplaceHook($this, stripeEventPayload('charge.refunded', ['id' => 'ch_tax', 'object' => 'charge', 'payment_intent' => 'pi_tax', 'amount' => 2160, 'amount_refunded' => 2160]))->assertOk();
+
+    Notification::assertSentToTimes($this->buyer, App\Notifications\OrderRefunded::class, 1);
+});
+
 it('ignores refunds of unknown charges and does nothing for refunds we already recorded', function () {
     $order = pendingOrder($this->buyer, [paidDesign(cents: 2000)]);
     payOrder($order, 'pi_known', 'ch_known');

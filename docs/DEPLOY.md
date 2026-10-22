@@ -462,6 +462,13 @@ STRIPE_SECRET_KEY=sk_test_...
 - Event to send: `account.updated`
 - Copy this endpoint's own signing secret into `.env` as `STRIPE_CONNECT_WEBHOOK_SECRET`.
 
+**Refunds: make them in `/admin`** (an order's *Refund order*, or *Refund* / *Partial refund* on one seller's part).
+That refunds in Stripe and records it here at once (payouts shrunk or taken back, access revoked, buyer e-mailed)
+without waiting for `charge.refunded`. A refund made in the Stripe dashboard is synced by that event: a full refund
+refunds everything; a partial one goes to the seller's part when only one is still open, otherwise only when the amount
+matches one seller's part exactly. If not, the order is just marked *partially refunded* and the seller payouts
+stay as they are, so avoid dashboard partial refunds on orders with several sellers.
+
 The two endpoints have **different** signing secrets. The older `STRIPE_WEBHOOK_SECRET` belongs to the
 template's subscription billing and is separate from both. While a secret is empty its endpoint answers `503`
 and ignores everything, so a mistyped URL or secret never fulfils an order; Stripe retries failed deliveries

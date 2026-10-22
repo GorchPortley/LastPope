@@ -6,10 +6,12 @@ use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\Order;
+use App\Models\OrderIssue;
 use App\Models\SellerOrder;
 use App\Policies\DesignPolicy;
 use App\Policies\DriverPolicy;
 use App\Policies\ListingPolicy;
+use App\Policies\OrderIssuePolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\SellerOrderPolicy;
 use App\Services\Payments\FakePaymentGateway;
@@ -56,6 +58,7 @@ class MarketplaceServiceProvider extends ServiceProvider
         Gate::policy(Driver::class, DriverPolicy::class);
         Gate::policy(Listing::class, ListingPolicy::class);
         Gate::policy(Order::class, OrderPolicy::class);
+        Gate::policy(OrderIssue::class, OrderIssuePolicy::class);
         Gate::policy(SellerOrder::class, SellerOrderPolicy::class);
     }
 }

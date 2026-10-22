@@ -44,7 +44,7 @@ class MarketplaceStats extends StatsOverviewWidget
                 ->description('commission earned'),
             Stat::make('Pending payouts', money((int) $pending->sum('payout_cents')))
                 ->icon('heroicon-o-clock')
-                ->description($pending->count().' seller orders waiting for shipment or release'),
+                ->description($pending->count().' seller orders waiting for shipment, the payout delay or a problem'),
         ];
     }
 }

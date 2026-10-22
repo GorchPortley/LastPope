@@ -243,6 +243,7 @@ it('builds paid orders with consistent totals and fulfils digital items', functi
 });
 
 it('builds shipped, completed, refunded, pending and cancelled orders', function () {
+    config(['marketplace.physical_payout_trigger' => 'shipped']);
     $listing = Listing::factory()->create();
     $design = Design::factory()->for(User::factory()->admin()->create(), 'designer')->paid()->withSnapshot()->create();
 
@@ -278,6 +279,23 @@ it('builds shipped, completed, refunded, pending and cancelled orders', function
         ->and($pending->sellerOrders->first()->status)->toBe(SellerOrderStatus::PENDING)
         ->and($cancelled->status)->toBe(OrderStatus::CANCELLED)
         ->and($cancelled->sellerOrders->first()->status)->toBe(SellerOrderStatus::CANCELLED);
+});
+
+it('builds shipped and completed orders whose payout state follows the payout trigger', function () {
+    config(['marketplace.physical_payout_trigger' => 'shipped_delay', 'marketplace.physical_payout_delay_days' => 14]);
+    $listing = Listing::factory()->create();
+
+    $shipped = Order::factory()->shipped([$listing])->create()->refresh()->sellerOrders->first();
+    $completed = Order::factory()->completed([$listing])->create()->refresh()->sellerOrders->first();
+
+    // shipped yesterday: still within the 14 days; completed: shipped 16 days ago, paid out when the delay ended
+    expect($shipped->status)->toBe(SellerOrderStatus::SHIPPED)
+        ->and($shipped->isTransferred())->toBeFalse()
+        ->and($shipped->stripe_transfer_id)->toBeNull()
+        ->and($completed->isTransferred())->toBeTrue()
+        ->and($completed->shipped_at->diffInDays(now()))->toBeGreaterThanOrEqual(14)
+        ->and($completed->transferred_at->equalTo($completed->shipped_at->copy()->addDays(14)))->toBeTrue()
+        ->and($completed->order->paid_at->lt($completed->shipped_at))->toBeTrue();
 });
 
 it('keeps order items pointing at their products through the morph map', function () {

@@ -3,6 +3,9 @@
 namespace Database\Seeders;
 
 use App\Enums\EntitlementSource;
+use App\Enums\IssueReason;
+use App\Enums\IssueResolution;
+use App\Enums\IssueStatus;
 use App\Enums\ListingCategory;
 use App\Enums\ListingChannel;
 use App\Enums\ListingCondition;
@@ -15,6 +18,7 @@ use App\Models\DesignDriver;
 use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\Order;
+use App\Models\OrderIssue;
 use App\Models\SellerProfile;
 use App\Models\User;
 use App\Services\Snapshots\DesignSnapshotBuilder;
@@ -71,6 +75,7 @@ class DemoSeeder extends Seeder
 
         if (User::where('email', 'admin@sdlabs.test')->exists()) {
             $this->command?->info('Demo data is already present.');
+            $this->seedIssuesOnExistingData();
             $this->seedForum();
 
             return;
@@ -523,10 +528,169 @@ class DemoSeeder extends Seeder
         // Cancelled checkout.
         OrderBuilder::build($this->order('buyer1', 'cancelled', null), [$d['quarry-sub-15']], 'cancelled');
 
+        $this->seedIssues($address);
+
         // Carts with something in them.
         $this->cart('buyer1', [[$l['store-h8'], 1], [$l['two-way-crossover-kit'], 1]]);
         $this->cart('buyer4', [[$d['atlas-four'], 1]]);
         $this->cart('buyer5', [[$l['harbor-2-kit'], 1]]);
+    }
+
+    /**
+     * A site seeded before problem reports existed (docs/PLAN.md 7): add the demo cases on top of its demo users and
+     * listings, once. Nothing happens when it has problem reports already or when the demo catalogue is not complete.
+     */
+    private function seedIssuesOnExistingData(): void
+    {
+        if (OrderIssue::query()->exists()) {
+            return;
+        }
+
+        foreach (DemoCatalog::users() as $key => $data) {
+            $user = User::where('email', $data['email'])->first();
+            if ($user === null) {
+                return;
+            }
+            $this->users[$key] = $user;
+        }
+
+        foreach (['a38-used', 'h8-pair-used', 'two-way-crossover-kit', 'n17-used'] as $slug) {
+            $listing = Listing::where('uuid', $this->key('listing', $slug))->first();
+            if ($listing === null) {
+                return;
+            }
+            $this->listings[$slug] = $listing;
+        }
+
+        DB::transaction(function () {
+            $this->seedIssues(fn (string $buyer) => $this->users[$buyer]->addresses()->first());
+        });
+
+        $this->command?->info('Added demo problem reports.');
+    }
+
+    /**
+     * "Report a problem" cases in every stage, on member-to-member orders whose payout state fits (the payout waits
+     * physical_payout_delay_days after shipping, and while a case is unresolved):
+     *   open            shipped 3 days ago, the buyer and the seller exchanged messages, payout held
+     *   offer pending   shipped 6 days ago, the seller offered a partial refund, payout held
+     *   escalated       shipped 9 days ago, the buyer asked the admins to decide, an internal note, payout held
+     *   resolved        shipped 16 days ago, settled with a partial refund on day 6, payout released on day 14 (reduced)
+     */
+    private function seedIssues(\Closure $address): void
+    {
+        $u = $this->users;
+        $l = $this->listings;
+        $money = fn (int $cents): string => money($cents);
+
+        // 1. Open: not as described.
+        $order = $this->order('buyer2', 'paid', $address('buyer2'));
+        OrderBuilder::build($order, [[$l['a38-used'], 1]], 'shipped', ['shipped_days_ago' => 3]);
+        $so = $order->sellerOrders()->first();
+        $issue = $this->issue($so, IssueReason::NOT_AS_DESCRIBED, IssueStatus::OPEN, daysAgo: 1);
+        $this->thread($issue, [
+            [$u['buyer2'], 'The listing says "tested, good condition" but the surround is cracked on one side and the dust cap has a dent. I can send photos if that helps.', null, 1.0],
+            [$u['shop2'], 'Sorry about that, it was fine when I packed it. Could you send a close-up of the surround? I want to see if it happened in transit.', null, 0.8],
+            [$u['buyer2'], 'Sure, here it is. The crack runs about 4 cm along the edge.', null, 0.5],
+        ]);
+
+        // 2. Offer pending: the seller offers a partial refund.
+        $order = $this->order('buyer5', 'paid', $address('buyer5'));
+        OrderBuilder::build($order, [[$l['h8-pair-used'], 1]], 'shipped', ['shipped_days_ago' => 6]);
+        $so = $order->sellerOrders()->first();
+        $issue = $this->issue($so, IssueReason::NOT_AS_DESCRIBED, IssueStatus::OFFER_PENDING, daysAgo: 4, extra: [
+            'offer_type' => IssueResolution::PARTIAL_REFUND,
+            'offer_cents' => 2000,
+            'offered_at' => now()->subDays(2),
+        ]);
+        $this->thread($issue, [
+            [$u['buyer5'], 'One of the two woofers has a scratched cone. The listing said "like new" for both.', null, 4.0],
+            [$u['shop2'], 'You are right, I missed that one. I would rather you keep the pair than send them back.', null, 2.1],
+            [$u['shop2'], 'Offer: a partial refund of '.$money(2000).'.', 'offer', 2.0],
+        ]);
+
+        // 3. Escalated: nobody agreed, the admins decide.
+        $order = $this->order('buyer1', 'paid', $address('buyer1'));
+        OrderBuilder::build($order, [[$l['two-way-crossover-kit'], 1]], 'shipped', ['shipped_days_ago' => 9]);
+        $so = $order->sellerOrders()->first();
+        $issue = $this->issue($so, IssueReason::NOT_RECEIVED, IssueStatus::ESCALATED, daysAgo: 7, extra: [
+            'escalated_at' => now()->subHours(20),
+            'escalated_by' => $u['buyer1']->id,
+        ]);
+        $this->thread($issue, [
+            [$u['buyer1'], 'The tracking says delivered on Monday but there is nothing at my door and the neighbours have not seen it.', null, 7.0],
+            [$u['shop1'], 'The carrier confirms delivery to your address with a photo. Please check with your household or the carrier.', null, 6.0],
+            [$u['buyer1'], 'I did. Nobody has it. I would like a refund.', null, 4.0],
+            [$u['buyer1'], 'Asked the SDLabs team to step in.', 'escalated', 0.8],
+        ]);
+        $issue->messages()->create(['author_id' => $u['admin']->id, 'body' => 'Carrier photo shows a porch that does not match the buyer\'s address. Leaning towards a refund; waiting for the carrier claim number from the seller.', 'internal' => true]);
+
+        // 4. Resolved with a partial refund before the payout: the seller was paid the reduced amount on day 14.
+        $order = $this->order('buyer3', 'completed', $address('buyer3'));
+        OrderBuilder::build($order, [[$l['n17-used'], 1]], 'completed', ['shipped_days_ago' => 16]);
+        $so = $order->sellerOrders()->first();
+        $refund = 500;
+        $so->forceFill([
+            'refunded_cents' => $refund,
+            'payout_cents' => $so->payout_cents - $refund,
+            'stripe_refund_id' => 're_demo_'.Str::lower(Str::random(14)),
+            'refunded_at' => now()->subDays(10),
+        ])->save();
+        $order->update(['status' => 'partially_refunded']);
+        $issue = $this->issue($so, IssueReason::DAMAGED, IssueStatus::RESOLVED, daysAgo: 12, extra: [
+            'offer_type' => IssueResolution::PARTIAL_REFUND,
+            'offer_cents' => $refund,
+            'offered_at' => now()->subDays(10),
+            'resolution' => IssueResolution::PARTIAL_REFUND,
+            'refunded_cents' => $refund,
+            'resolved_at' => now()->subDays(10),
+            'resolved_by' => $u['buyer3']->id,
+        ]);
+        $this->thread($issue, [
+            [$u['buyer3'], 'The magnet cover has a small dent from shipping. It works, but I would like something for the cosmetic damage.', null, 12.0],
+            [$u['designer2'], 'Thanks for telling me. Is '.$money($refund).' back fair?', null, 10.2],
+            [$u['designer2'], 'Offer: a partial refund of '.$money($refund).'.', 'offer', 10.1],
+            [$u['buyer3'], 'Accepted the offer. '.$money($refund).' is being refunded. Case closed.', 'offer_accepted', 10.0],
+        ]);
+    }
+
+    /** One problem report, created as the service would have left it (timestamps in the past). */
+    private function issue(\App\Models\SellerOrder $sellerOrder, IssueReason $reason, IssueStatus $status, int $daysAgo, array $extra = []): OrderIssue
+    {
+        $created = now()->subDays($daysAgo);
+
+        return OrderIssue::unguarded(fn () => OrderIssue::create($extra + [
+            'order_id' => $sellerOrder->order_id,
+            'seller_order_id' => $sellerOrder->id,
+            'buyer_id' => $sellerOrder->order->user_id,
+            'seller_id' => $sellerOrder->seller_id,
+            'reason' => $reason,
+            'status' => $status,
+            'refunded_cents' => 0,
+            'recovered_cents' => 0,
+            'created_at' => $created,
+            'updated_at' => $created,
+        ]));
+    }
+
+    /**
+     * The thread: [author, text, event, days ago] lines. Photos are not attached to demo messages.
+     *
+     * @param  array<int, array{0: User, 1: string, 2: ?string, 3: float}>  $lines
+     */
+    private function thread(OrderIssue $issue, array $lines): void
+    {
+        $last = null;
+
+        foreach ($lines as $i => [$author, $text, $event, $daysAgo]) {
+            $at = now()->subMinutes((int) round($daysAgo * 1440));
+            $issue->messages()->make(['author_id' => $author->id, 'body' => $text, 'event' => $i === 0 ? 'opened' : $event])
+                ->forceFill(['created_at' => $at, 'updated_at' => $at])
+                ->save();
+            $last = $at;
+        }
+
+        $issue->forceFill(['last_message_at' => $last])->saveQuietly();
     }
 
     private function order(string $buyer, string $stage, ?Address $address): Order

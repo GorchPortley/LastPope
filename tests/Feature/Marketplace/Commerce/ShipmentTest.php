@@ -236,10 +236,10 @@ it('pays the seller on auto-completion if the payout is somehow still pending', 
         ->and($sellerOrder->fresh()->status)->toBe(SellerOrderStatus::COMPLETED);
 });
 
-it('is scheduled daily', function () {
+it('is scheduled hourly, so due payouts are released within the hour', function () {
     $events = collect(app(Illuminate\Console\Scheduling\Schedule::class)->events());
 
-    expect($events->contains(fn ($event) => str_contains($event->command, 'marketplace:auto-complete') && $event->expression === '0 0 * * *'))->toBeTrue();
+    expect($events->contains(fn ($event) => str_contains($event->command, 'marketplace:auto-complete') && $event->expression === '0 * * * *'))->toBeTrue();
 });
 
 // --- platform sellers (SDLabs' store): any admin ships ----------------------------------------------------

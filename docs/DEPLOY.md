@@ -384,6 +384,8 @@ STRIPE_SECRET_KEY=sk_test_...
   - `checkout.session.async_payment_succeeded`
   - `checkout.session.expired`
   - `charge.refunded`
+  - `charge.dispute.created` (a buyer's bank opened a dispute: the order's payouts are put on hold and the admins are told)
+  - `charge.dispute.closed` (the outcome, won or lost, is recorded on the case)
 - Copy the endpoint's *Signing secret* (`whsec_...`) into `.env` as `STRIPE_MARKETPLACE_WEBHOOK_SECRET`.
 
 **10.4 Webhook endpoint 2: connected accounts**
@@ -399,9 +401,37 @@ and ignores everything, so a mistyped URL or secret never fulfils an order; Stri
 for days, and duplicates are harmless.
 
 `STRIPE_PUBLISHABLE_KEY` and `STRIPE_SECRET_KEY` are the same names the template's subscriptions use, so one
-set of keys serves both. Order e-mails go through the `queue` container and the daily `marketplace:auto-complete`
-job (completes parcels that were shipped more than `MARKETPLACE_AUTO_COMPLETE_DAYS` ago and retries failed
-payouts) through the `scheduler` container, so keep both running.
+set of keys serves both. Order e-mails go through the `queue` container and the hourly `marketplace:auto-complete`
+job (completes parcels that were shipped more than `MARKETPLACE_AUTO_COMPLETE_DAYS` ago, **releases the payouts that
+are due** and retries failed ones) through the `scheduler` container, so keep both running.
+
+**When sellers are paid** (`.env`, see also [section 15](#15-reference)):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MARKETPLACE_PHYSICAL_PAYOUT_TRIGGER` | `shipped_delay` | `shipped_delay`: physical items are paid out `MARKETPLACE_PHYSICAL_PAYOUT_DELAY_DAYS` days after the seller marks them shipped (the buyer's protection period). `shipped`: as soon as they are marked shipped. `paid`: as soon as the buyer pays |
+| `MARKETPLACE_PHYSICAL_PAYOUT_DELAY_DAYS` | `14` | the delay of `shipped_delay` |
+| `MARKETPLACE_ISSUE_WINDOW_DAYS` | `14` | buyers can report a problem until this many days after shipping (digital items: after payment); an order that is not shipped yet can be reported at any time |
+| `MARKETPLACE_ISSUE_ESCALATION_DAYS` | `3` | buyer and seller get this long to agree before either may ask the admins to decide |
+
+Digital items (designs) are paid out right after the payment. Confirming receipt does not pay a seller earlier.
+A seller order with an unresolved problem report is never paid out and does not complete by itself; resolving the
+report releases it with the next hourly run (or at once). Restart the `app queue scheduler` containers after you
+change these values.
+
+**Problem reports ("Report a problem")**: buyers open one per seller order from their order page; the seller answers or
+offers a full refund, a partial refund or a return for a refund; if they cannot agree, either side can ask the admins
+to decide. Orders sold by SDLabs itself (store orders) go to the admins straight away. Admins work the queue in
+**Admin > Marketplace > Problem reports** (the badge counts the cases waiting for a decision) and can reply, add
+internal notes, refund fully or partly, or close without action. A refund before the payout shrinks the payout (a full
+refund cancels it; the platform fee stays on partial refunds and is waived on full ones); after the payout that amount is
+taken back from the seller's transfer. Photos attached to a report are stored on the private disk.
+
+**Bank disputes (chargebacks)**: when a buyer's bank disputes a payment, Stripe sends `charge.dispute.created`. Every
+seller order of that order gets an escalated case, their payouts stay on hold and the admins get an e-mail. Send your
+evidence in the Stripe dashboard before the due date; Stripe sends `charge.dispute.closed` with the outcome, which is
+recorded on the case. A lost dispute keeps the payouts blocked until an admin chooses **Recover from seller** (reverses the
+transfer, or cancels a payout that was not made yet).
 
 **10.5 Apply and test**
 
@@ -489,7 +519,8 @@ docker compose up -d --build
 ```
 
 That rebuilds the images, restarts what changed and runs new database migrations automatically (the
-`app` container does it on start). Visitors may see a short interruption (a few seconds). Take a
+`app` container does it on start, `php artisan migrate --force`). Migrations only ever add: existing ones are never
+edited, so a running site with data keeps working. Visitors may see a short interruption (a few seconds). Take a
 [backup](#11-backups-and-restore) first when the update contains database changes.
 
 Housekeeping: `docker image prune -f` removes old image layers after an update.
@@ -619,6 +650,7 @@ The Stripe CLI forwards `/stripe/marketplace/webhook` and `/stripe/connect/webho
 | `FLARUM_EXTENSIONS` | extra Flarum extensions to install |
 | `MAIL_*` | outgoing mail |
 | `STRIPE_*` | Stripe keys and webhook secrets |
+| `MARKETPLACE_*` | fee, payout timing, problem-report windows and stock reservation, see [section 10.4](#10-stripe-setup) and `.env.example` |
 | `DEV_UID`, `DEV_GID`, `COMPOSE_FILE` | development only |
 
 ## 16. Seasonal themes

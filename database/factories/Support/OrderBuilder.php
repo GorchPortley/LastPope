@@ -22,13 +22,19 @@ use Illuminate\Support\Str;
  * Money semantics: order_items.line_total_cents = unit price x quantity (shipping is separate);
  * seller_orders.subtotal_cents = sum of its items; fee = bps of the subtotal (not of shipping);
  * payout = subtotal + shipping - fee; platform sellers (admins) get fee 0 and payout 0.
+ *
+ * Payout state follows marketplace.physical_payout_trigger: digital items are paid out at once; physical ones with
+ * "paid" at once, with "shipped" when shipped, with "shipped_delay" (default) physical_payout_delay_days after the
+ * parcel shipped. So a "shipped" order (shipped yesterday) is not paid out yet under shipped_delay, while a
+ * "completed" one (shipped long enough ago) is. $options['shipped_days_ago'] sets when the parcel shipped.
  */
 final class OrderBuilder
 {
     /**
      * @param  array<int, Purchasable|array{0: Purchasable, 1: int}>  $items
+     * @param  array{shipped_days_ago?: int}  $options
      */
-    public static function build(Order $order, array $items, string $stage): void
+    public static function build(Order $order, array $items, string $stage, array $options = []): void
     {
         $buyer = $order->user;
 
@@ -45,6 +51,10 @@ final class OrderBuilder
         }
 
         $totals = ['subtotal' => 0, 'shipping' => 0, 'fee' => 0];
+        $trigger = (string) config('marketplace.physical_payout_trigger', 'shipped_delay');
+        $delay = max(0, (int) config('marketplace.physical_payout_delay_days', 14));
+        $shippedAt = now()->subDays($options['shipped_days_ago'] ?? ($stage === 'completed' ? ($trigger === 'shipped_delay' ? $delay + 2 : 2) : 1));
+        $earliestShipment = null;
 
         foreach ($bySeller as $sellerId => $lines) {
             $seller = User::findOrFail($sellerId);
@@ -86,9 +96,17 @@ final class OrderBuilder
                 $stage === 'cancelled' => [SellerOrderStatus::CANCELLED, false, false],
                 $stage === 'refunded' => [SellerOrderStatus::REFUNDED, false, false],
                 ! $hasPhysical => [SellerOrderStatus::COMPLETED, true, false],
-                $stage === 'paid' => [SellerOrderStatus::AWAITING_SHIPMENT, config('marketplace.physical_payout_trigger') === 'paid', false],
-                $stage === 'shipped' => [SellerOrderStatus::SHIPPED, true, true],
-                default => [SellerOrderStatus::COMPLETED, true, true],
+                $stage === 'paid' => [SellerOrderStatus::AWAITING_SHIPMENT, $trigger === 'paid', false],
+                $stage === 'shipped' => [SellerOrderStatus::SHIPPED, $trigger !== 'shipped_delay' || $shippedAt->copy()->addDays($delay)->lte(now()), true],
+                default => [SellerOrderStatus::COMPLETED, $trigger !== 'shipped_delay' || $shippedAt->copy()->addDays($delay)->lte(now()), true],
+            };
+
+            // When the transfer happened: at payment / shipment, or physical_payout_delay_days after it.
+            $transferredAt = match (true) {
+                ! $transferred => null,
+                $tracking && $trigger === 'shipped_delay' => $shippedAt->copy()->addDays($delay),
+                $tracking => $shippedAt->copy(),
+                default => now(),
             };
 
             $sellerOrder->update([
@@ -98,13 +116,17 @@ final class OrderBuilder
                 'platform_fee_cents' => $fee,
                 'payout_cents' => $payout,
                 'stripe_transfer_id' => $transferred && ! $platform ? 'tr_'.Str::random(20) : null,
-                'transferred_at' => $transferred && ! $platform ? now() : null,
+                'transferred_at' => $transferred && ! $platform ? $transferredAt : null,
                 'carrier' => $tracking ? 'USPS' : null,
                 'tracking_number' => $tracking ? '9400'.random_int(100000000000, 999999999999) : null,
                 'tracking_url' => null,
-                'shipped_at' => $tracking ? now()->subDay() : null,
-                'delivered_at' => $stage === 'completed' && $hasPhysical ? now() : null,
+                'shipped_at' => $tracking ? $shippedAt : null,
+                'delivered_at' => $stage === 'completed' && $hasPhysical ? $shippedAt->copy()->addDay() : null,
             ]);
+
+            if ($tracking) {
+                $earliestShipment = $earliestShipment === null ? $shippedAt : $earliestShipment->min($shippedAt);
+            }
 
             if (in_array($stage, ['paid', 'shipped', 'completed', 'refunded'], true)) {
                 foreach ($created as [$item, $purchasable]) {
@@ -120,6 +142,11 @@ final class OrderBuilder
             $totals['subtotal'] += $subtotal;
             $totals['shipping'] += $shipping;
             $totals['fee'] += $fee;
+        }
+
+        // An order cannot have been paid after its parcels shipped.
+        if ($earliestShipment !== null && $order->paid_at !== null && $order->paid_at->gt($earliestShipment)) {
+            $order->paid_at = $earliestShipment->copy()->subDay();
         }
 
         $order->update([

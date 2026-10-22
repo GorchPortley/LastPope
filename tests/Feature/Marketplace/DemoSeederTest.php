@@ -188,7 +188,7 @@ it('only lets orders, carts and entitlements point at things that can be bought'
 
 it('has entitlements, carts and orders in several states, plus reviews and banners', function () {
     expect(Order::pluck('status')->map->value->unique()->sort()->values()->all())
-        ->toBe(['cancelled', 'completed', 'paid', 'pending', 'refunded'])
+        ->toBe(['cancelled', 'completed', 'paid', 'partially_refunded', 'pending', 'refunded'])
         ->and(Entitlement::whereNull('revoked_at')->count())->toBeGreaterThan(3)
         ->and(Entitlement::whereNotNull('revoked_at')->count())->toBeGreaterThanOrEqual(1)
         ->and(Cart::count())->toBeGreaterThanOrEqual(3)
@@ -257,4 +257,58 @@ it('only seeds demo data in local, demo and testing environments', function () {
 
     expect(User::where('email', 'admin@sdlabs.test')->exists())->toBeFalse()
         ->and(User::count())->toBe($users);
+});
+
+it('has problem reports in every state on member orders, with payout states that fit', function () {
+    $issues = App\Models\OrderIssue::with(['sellerOrder.order', 'messages'])->get();
+
+    expect($issues->pluck('status')->map->value->sort()->values()->all())->toBe(['escalated', 'offer_pending', 'open', 'resolved']);
+
+    foreach ($issues as $issue) {
+        $so = $issue->sellerOrder;
+
+        expect($issue->buyer_id)->toBe($so->order->user_id)
+            ->and($issue->seller_id)->toBe($so->seller_id)
+            ->and($issue->messages->isNotEmpty())->toBeTrue()
+            ->and($issue->open_seller_order_id)->toBe($issue->isUnresolved() ? $so->id : null);
+
+        if ($issue->isUnresolved()) {
+            // an unresolved case holds the payout: nothing was transferred, the parcel is still within its delay
+            expect($so->isTransferred())->toBeFalse()
+                ->and(app(App\Services\Marketplace\PayoutService::class)->holdReason($so))->toBe('issue');
+        }
+    }
+
+    $resolved = $issues->firstWhere('status', App\Enums\IssueStatus::RESOLVED);
+    $so = $resolved->sellerOrder;
+    expect($resolved->resolution)->toBe(App\Enums\IssueResolution::PARTIAL_REFUND)
+        ->and($so->refunded_cents)->toBe($resolved->refunded_cents)
+        ->and($so->order->status)->toBe(App\Enums\OrderStatus::PARTIALLY_REFUNDED)
+        // paid out when the 14 days after shipping ended, reduced by the refund
+        ->and($so->isTransferred())->toBeTrue()
+        ->and($so->transferred_at->equalTo($so->shipped_at->copy()->addDays(14)))->toBeTrue()
+        // the fee is kept on a partial refund; the payout is what is left after the fee and the refund
+        ->and($so->platform_fee_cents)->toBe((int) round($so->subtotal_cents * config('marketplace.fee_bps') / 10000))
+        ->and($so->payout_cents)->toBe($so->subtotal_cents + $so->shipping_cents - $so->platform_fee_cents - $so->refunded_cents);
+
+    // the one with an internal note keeps it away from the public thread
+    $escalated = $issues->firstWhere('status', App\Enums\IssueStatus::ESCALATED);
+    expect($escalated->messages->where('internal', true))->toHaveCount(1)
+        ->and($escalated->publicMessages()->count())->toBe($escalated->messages->count() - 1);
+});
+
+it('adds the demo problem reports to a demo site that was seeded before they existed', function () {
+    $before = App\Models\OrderIssue::count();
+    $orders = App\Models\Order::count();
+    App\Models\OrderIssue::query()->delete(); // as on a dev server seeded before R2
+
+    $this->seed(DemoSeeder::class);
+
+    expect(App\Models\OrderIssue::count())->toBe($before)
+        ->and(App\Models\Order::count())->toBe($orders + 4)
+        ->and(User::where('email', 'admin@sdlabs.test')->count())->toBe(1);
+
+    // and only once
+    $this->seed(DemoSeeder::class);
+    expect(App\Models\OrderIssue::count())->toBe($before)->and(App\Models\Order::count())->toBe($orders + 4);
 });

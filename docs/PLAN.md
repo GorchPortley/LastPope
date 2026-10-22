@@ -358,3 +358,21 @@ it on a running site.
   "Contact buyer" (Chatify) and the issue panel; a shared issue page `/dashboard/issues/{issue}`
   (buyer, seller, admins only). Filament: OrderIssueResource (queue with status filters, navigation
   badge = escalated count, thread with public reply / internal note, decision actions).
+
+### R2 implementation notes (where things live)
+- Config: `config/marketplace.php` (`physical_payout_trigger` = `shipped_delay` default, `physical_payout_delay_days`,
+  `issue_window_days`, `issue_escalation_days`, `issue_max_photos`, `issue_photo_max_kb`); env names in `.env.example`.
+- Migrations (new files only): `2026_10_22_000001_create_order_issues_tables`, `2026_10_22_000002_add_reversal_columns_to_seller_orders`
+  (`reversed_cents`, `reversal_pending_cents`). `order_issues.open_seller_order_id` is unique and NULL once resolved: the
+  database enforces "one unresolved issue per seller order".
+- Payouts: `PayoutService::isDue/dueAt/holdReason/outlook`; the hourly `marketplace:auto-complete` completes parcels (not
+  with an unresolved issue) and releases due payouts. A lost bank dispute blocks the payout until an admin recovers it.
+- Money: `RefundService` handles partial amounts per seller order (`refundSellerOrderPartially`, system path
+  `refundForIssue`, `recoverPayout`). Seller order `payout_cents` shrinks by a partial refund made before the payout; after
+  the payout `reversed_cents` grows (`reversal_pending_cents` when Stripe refuses). `refunded_cents` is cumulative.
+- Issues: `IssueService` (all rules; `can()` mirrors them for the UI), `OrderIssuePolicy`, models `OrderIssue` /
+  `OrderIssueMessage`, enums `IssueReason` / `IssueStatus` / `IssueResolution`, notifications `Issue*` + `DisputeOpened`.
+- Webhook: `charge.dispute.created` / `charge.dispute.closed` in `MarketplaceWebhookHandler` -> `IssueService::recordDispute`.
+- UI: Livewire `OrderIssuePanel` (thread + actions) used on the order page and on the shared page
+  `/dashboard/issues/{orderIssue}` (Folio), list `/dashboard/issues`, photos at `dashboard.issues.attachment` (private disk).
+  Filament: `OrderIssueResource` (queue with tabs, case page with decisions), `IssuesRelationManager` on orders.

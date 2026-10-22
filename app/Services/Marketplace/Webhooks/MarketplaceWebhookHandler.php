@@ -4,6 +4,7 @@ namespace App\Services\Marketplace\Webhooks;
 
 use App\Enums\OrderStatus;
 use App\Models\Order;
+use App\Services\Marketplace\IssueService;
 use App\Services\Marketplace\OrderFulfillment;
 use App\Services\Marketplace\RefundService;
 use App\Services\Payments\PaymentGateway;
@@ -17,6 +18,8 @@ use RuntimeException;
  *   checkout.session.async_payment_succeeded   the same, for delayed payment methods
  *   checkout.session.expired              cancel the pending order
  *   charge.refunded                       RefundService::syncFromCharge
+ *   charge.dispute.created                IssueService::recordDispute: an ESCALATED issue per seller order, payouts held
+ *   charge.dispute.closed                 IssueService::recordDispute: records won / lost
  *
  * Every handler is idempotent, so a redelivered event is harmless. Anything unknown is ignored
  * (the endpoint may also receive Wave's subscription events). An exception means "retry later".
@@ -31,6 +34,7 @@ class MarketplaceWebhookHandler
         private readonly OrderFulfillment $fulfillment,
         private readonly RefundService $refunds,
         private readonly PaymentGateway $gateway,
+        private readonly IssueService $issues,
     ) {
     }
 
@@ -43,6 +47,8 @@ class MarketplaceWebhookHandler
             'checkout.session.completed', 'checkout.session.async_payment_succeeded' => $this->sessionPaid($object),
             'checkout.session.expired' => $this->sessionExpired($object),
             'charge.refunded' => $this->chargeRefunded($object),
+            'charge.dispute.created' => $this->dispute($object, 'created'),
+            'charge.dispute.closed' => $this->dispute($object, 'closed'),
             default => self::IGNORED,
         };
     }
@@ -110,6 +116,39 @@ class MarketplaceWebhookHandler
         }
 
         $this->refunds->syncFromCharge($order, (int) ($charge['amount'] ?? 0), (int) ($charge['amount_refunded'] ?? 0));
+
+        return self::HANDLED;
+    }
+
+    /**
+     * A bank dispute (chargeback) on a charge: found through the payment intent, else the charge id. Disputes of
+     * charges that are not marketplace orders (Wave subscriptions share the account) are ignored.
+     *
+     * @param  array<string, mixed>  $dispute
+     * @param  'created'|'closed'  $event
+     */
+    private function dispute(array $dispute, string $event): string
+    {
+        $paymentIntent = $dispute['payment_intent'] ?? null;
+        $charge = $dispute['charge'] ?? null;
+
+        $order = Order::query()
+            ->when(
+                filled($paymentIntent),
+                fn ($q) => $q->where('stripe_payment_intent_id', $paymentIntent),
+                fn ($q) => $q->where('stripe_charge_id', (string) $charge),
+            )
+            ->first();
+
+        if ($order === null && filled($paymentIntent) && filled($charge)) {
+            $order = Order::query()->where('stripe_charge_id', $charge)->first();
+        }
+
+        if ($order === null || blank($dispute['id'] ?? null)) {
+            return self::IGNORED;
+        }
+
+        $this->issues->recordDispute($order, $event, $dispute);
 
         return self::HANDLED;
     }

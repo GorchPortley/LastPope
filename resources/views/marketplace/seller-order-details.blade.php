@@ -26,8 +26,20 @@
         <div class="flex justify-between"><dt class="text-gray-500">Items</dt><dd>{{ money($sellerOrder->subtotal_cents, $order->currency) }}</dd></div>
         <div class="flex justify-between"><dt class="text-gray-500">Shipping paid by the buyer</dt><dd>{{ money($sellerOrder->shipping_cents, $order->currency) }}</dd></div>
         <div class="flex justify-between"><dt class="text-gray-500">Platform fee</dt><dd>- {{ money($sellerOrder->platform_fee_cents, $order->currency) }}</dd></div>
-        <div class="flex justify-between border-t border-gray-200 pt-1 font-semibold dark:border-white/10"><dt>Your payout</dt><dd>{{ money($sellerOrder->payout_cents, $order->currency) }}</dd></div>
-        <p class="pt-1 text-xs text-gray-500">{{ $sellerOrder->isTransferred() ? 'Transferred '.$sellerOrder->transferred_at->format('M j, Y') : ($sellerOrder->payout_cents > 0 ? 'Released '.(config('marketplace.physical_payout_trigger') === 'shipped' ? 'when you mark physical items as shipped.' : 'after payment.') : 'No payout: you sell as the platform.') }}</p>
+        @if ($sellerOrder->refunded_cents > 0)
+            <div class="flex justify-between text-amber-700"><dt>Refunded to the buyer</dt><dd>- {{ money($sellerOrder->refunded_cents, $order->currency) }}</dd></div>
+        @endif
+        <div class="flex justify-between border-t border-gray-200 pt-1 font-semibold dark:border-white/10"><dt>Your payout</dt><dd>{{ money($sellerOrder->netPayoutCents(), $order->currency) }}</dd></div>
+        @php($outlook = app(\App\Services\Marketplace\PayoutService::class)->outlook($sellerOrder))
+        <p class="pt-1 text-xs text-gray-500" data-payout-state="{{ $outlook['state'] }}">
+            @switch($outlook['state'])
+                @case('paid_out') Transferred {{ $outlook['at']?->format('M j, Y') }}. @break
+                @case('held') On hold until the problem reported by the buyer is resolved. @break
+                @case('scheduled') Released on {{ $outlook['at']->format('M j, Y') }}, unless the buyer reports a problem before. @break
+                @case('after_ship') {{ app(\App\Services\Marketplace\PayoutService::class)->timingNote() }} @break
+                @default {{ $sellerOrder->payout_cents > 0 ? 'No payout is due.' : 'No payout: you sell as the platform.' }}
+            @endswitch
+        </p>
     </dl>
 
     @if ($sellerOrder->hasPhysicalItems() && filled($address))

@@ -20,6 +20,7 @@
                     <x-app.sidebar-link href="{{ route('dashboard.orders') }}" :active="request()->routeIs('dashboard.orders*')">My Orders</x-app.sidebar-link>
                     <x-app.sidebar-link href="{{ route('dashboard.listings') }}" :active="request()->routeIs('dashboard.listings')">My Listings</x-app.sidebar-link>
                     <x-app.sidebar-link href="{{ route('selling.orders') }}" :active="request()->routeIs('selling.orders')">Sales</x-app.sidebar-link>
+                    <x-app.sidebar-link href="{{ route('dashboard.issues') }}" :active="request()->routeIs('dashboard.issues*')">Problem Reports</x-app.sidebar-link>
                     <x-app.sidebar-link href="{{ route('selling.dashboard') }}" :active="request()->routeIs('selling.dashboard')">Selling &amp; Payouts</x-app.sidebar-link>
                 </x-app.sidebar-dropdown>
                 <x-app.sidebar-link href="{{ route('marketplace') }}">Browse Marketplace</x-app.sidebar-link>

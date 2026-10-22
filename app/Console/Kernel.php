@@ -18,8 +18,9 @@ class Kernel extends ConsoleKernel
         // $schedule->command('inspire')->hourly();
         $schedule->command('subscriptions:cancel-expired')->hourly();
 
-        // Complete shipped orders after marketplace.auto_complete_days and retry any payout that failed.
-        $schedule->command('marketplace:auto-complete')->daily()->withoutOverlapping();
+        // Complete shipped orders after marketplace.auto_complete_days and release due payouts (physical orders
+        // are paid out physical_payout_delay_days after shipping), retrying any transfer that failed.
+        $schedule->command('marketplace:auto-complete')->hourly()->withoutOverlapping();
 
         // Cancel abandoned pending orders and retry failed automatic refunds.
         $schedule->command('marketplace:cleanup-orders')->hourly()->withoutOverlapping();

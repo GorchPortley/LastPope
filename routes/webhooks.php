@@ -9,7 +9,7 @@
 | request is verified with the endpoint's own signing secret (see StripeWebhookController).
 | Wave's subscription webhook (POST /webhook/stripe) is separate and unchanged.
 |
-|   POST /stripe/marketplace/webhook   STRIPE_MARKETPLACE_WEBHOOK_SECRET   payments, refunds
+|   POST /stripe/marketplace/webhook   STRIPE_MARKETPLACE_WEBHOOK_SECRET   payments, refunds, bank disputes
 |   POST /stripe/connect/webhook       STRIPE_CONNECT_WEBHOOK_SECRET       connected accounts
 |
 */

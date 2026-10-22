@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SellerOrder extends Model
 {
@@ -32,6 +33,8 @@ class SellerOrder extends Model
         'refunded_cents',
         'stripe_refund_id',
         'stripe_reversal_id',
+        'reversed_cents',
+        'reversal_pending_cents',
         'refunded_at',
     ];
 
@@ -49,6 +52,8 @@ class SellerOrder extends Model
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
         'refunded_cents' => 'integer',
+        'reversed_cents' => 'integer',
+        'reversal_pending_cents' => 'integer',
         'refunded_at' => 'datetime',
     ];
 
@@ -67,6 +72,24 @@ class SellerOrder extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    /** Every problem report ever opened for this seller order, newest first. */
+    public function issues(): HasMany
+    {
+        return $this->hasMany(OrderIssue::class)->latest('id');
+    }
+
+    /** The unresolved problem report, if any (there is at most one). */
+    public function activeIssue(): HasOne
+    {
+        return $this->hasOne(OrderIssue::class)->unresolved();
+    }
+
+    /** True while a problem report is unresolved: no payout, no automatic completion. Always asks the database. */
+    public function hasUnresolvedIssue(): bool
+    {
+        return $this->issues()->unresolved()->exists();
+    }
+
     public function isTransferred(): bool
     {
         return $this->transferred_at !== null;
@@ -81,6 +104,18 @@ class SellerOrder extends Model
     public function hasPhysicalItems(): bool
     {
         return $this->items->contains(fn (OrderItem $item) => ! $item->is_digital);
+    }
+
+    /** What the buyer can still be refunded for this seller's part (items + shipping minus earlier refunds). */
+    public function refundableCents(): int
+    {
+        return max(0, $this->grossCents() - $this->refunded_cents);
+    }
+
+    /** What the seller keeps of the payout: after the transfer, what was not taken back. */
+    public function netPayoutCents(): int
+    {
+        return $this->isTransferred() ? max(0, $this->payout_cents - $this->reversed_cents) : $this->payout_cents;
     }
 
     public function isRefunded(): bool

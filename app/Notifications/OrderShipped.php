@@ -40,7 +40,8 @@ class OrderShipped extends Notification implements ShouldQueue
 
         $mail->line('Carrier: '.$sellerOrder->carrier)
             ->line('Tracking number: '.$sellerOrder->tracking_number)
-            ->line('When the parcel arrives, please confirm receipt in your orders.');
+            ->line('When the parcel arrives, please confirm receipt in your orders.')
+            ->line('If something is wrong with it, you can report a problem on your order page until '.($sellerOrder->shipped_at ?? now())->copy()->addDays(max(0, (int) config('marketplace.issue_window_days', 14)))->format('F j, Y').'.');
 
         if (filled($sellerOrder->tracking_url)) {
             $mail->action('Track your parcel', $sellerOrder->tracking_url);

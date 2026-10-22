@@ -15,10 +15,11 @@ use Illuminate\Support\Facades\Validator;
  * Shipping a seller's part of an order (docs/PLAN.md 3.8 step 5).
  *
  *   markShipped()     seller (or any admin, for a platform seller's order such as SDLabs' store sales) enters
- *                     carrier + tracking: awaiting_shipment -> shipped, payout released (trigger "shipped"),
- *                     buyer notified
- *   confirmReceived() buyer confirms the parcel arrived: shipped -> completed
- *   autoComplete()    system: a parcel shipped more than auto_complete_days ago completes by itself
+ *                     carrier + tracking: awaiting_shipment -> shipped, buyer notified. The payout follows by
+ *                     the payout trigger (default: physical_payout_delay_days after this moment)
+ *   confirmReceived() buyer confirms the parcel arrived: shipped -> completed. Never makes the payout earlier
+ *   autoComplete()    system: a parcel shipped more than auto_complete_days ago completes by itself, unless
+ *                     the seller order has an unresolved problem report
  *
  * The two user actions authorize through SellerOrderPolicy and throw AuthorizationException (HTTP 403)
  * for anybody else.
@@ -100,9 +101,16 @@ class ShipmentService
         return $sellerOrder->fresh();
     }
 
-    /** Complete one shipped seller order on the system's behalf. Returns false if it was not completable. */
+    /**
+     * Complete one shipped seller order on the system's behalf. Returns false if it was not completable,
+     * which includes an unresolved problem report: the case has to be settled first.
+     */
     public function autoComplete(SellerOrder $sellerOrder): bool
     {
+        if ($sellerOrder->hasUnresolvedIssue()) {
+            return false;
+        }
+
         try {
             $this->complete($sellerOrder, confirmedByBuyer: false);
         } catch (InvalidOrderStateException) {
@@ -114,7 +122,7 @@ class ShipmentService
 
     /**
      * Complete every seller order shipped more than $days (default marketplace.auto_complete_days)
-     * ago, paying out any that is still pending. Returns how many were completed.
+     * ago and without an unresolved problem report. Returns how many were completed.
      */
     public function autoCompleteDue(?int $days = null): int
     {
@@ -124,6 +132,7 @@ class ShipmentService
         SellerOrder::query()
             ->where('status', SellerOrderStatus::SHIPPED->value)
             ->where('shipped_at', '<=', now()->subDays($days))
+            ->whereDoesntHave('issues', fn ($issues) => $issues->unresolved())
             ->orderBy('id')
             ->chunkById(100, function ($sellerOrders) use (&$completed) {
                 foreach ($sellerOrders as $sellerOrder) {

@@ -4,11 +4,13 @@ namespace App\Filament\Resources\OrderResource\RelationManagers;
 
 use App\Enums\SellerOrderStatus;
 use App\Exceptions\Marketplace\InvalidOrderStateException;
+use App\Filament\Resources\OrderIssueResource;
 use App\Filament\Resources\OrderResource\Pages\ViewOrder;
 use App\Models\SellerOrder;
 use App\Services\Marketplace\RefundService;
 use App\Services\Marketplace\ShipmentService;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
+use App\Filament\Forms\MoneyInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -35,7 +37,7 @@ class SellerOrdersRelationManager extends RelationManager
 
         return $table
             ->recordTitleAttribute('id')
-            ->modifyQueryUsing(fn ($query) => $query->with(['seller.sellerProfile', 'order', 'items']))
+            ->modifyQueryUsing(fn ($query) => $query->with(['seller.sellerProfile', 'order', 'items', 'activeIssue']))
             ->columns([
                 Tables\Columns\TextColumn::make('seller.name')
                     ->label('Seller')
@@ -58,6 +60,13 @@ class SellerOrdersRelationManager extends RelationManager
                     ->formatStateUsing($money)
                     ->placeholder('-')
                     ->description(fn (SellerOrder $record): ?string => static::needsReversal($record) ? 'payout reversal pending' : null),
+                Tables\Columns\TextColumn::make('problem')
+                    ->label('Problem')
+                    ->state(fn (SellerOrder $record): ?string => $record->activeIssue?->status->label() ?? ($record->issues()->exists() ? 'Resolved' : null))
+                    ->badge()
+                    ->color(fn (SellerOrder $record): string => $record->activeIssue?->status->color() ?? 'success')
+                    ->url(fn (SellerOrder $record): ?string => ($issue = $record->activeIssue ?? $record->issues()->first()) ? OrderIssueResource::getUrl('view', ['record' => $issue]) : null)
+                    ->placeholder('-'),
             ])
             ->actions([
                 // Platform sellers (SDLabs' store) have no seller dashboard of their own: any admin ships for them.
@@ -108,6 +117,23 @@ class SellerOrdersRelationManager extends RelationManager
                     ->action(function (array $data, SellerOrder $record): void {
                         ViewOrder::refund(fn () => app(RefundService::class)->refundSellerOrder(auth()->user(), $record, $data['reason'] ?? null));
                     }),
+                Tables\Actions\Action::make('refundPartially')
+                    ->label('Partial refund')
+                    ->icon('heroicon-m-receipt-percent')
+                    ->color('warning')
+                    ->visible(fn (SellerOrder $record): bool => $record->order->paid_at !== null
+                        && ! in_array($record->status, [SellerOrderStatus::REFUNDED, SellerOrderStatus::CANCELLED, SellerOrderStatus::PENDING], true)
+                        && $record->refundableCents() > 1)
+                    ->modalHeading(fn (SellerOrder $record): string => 'Refund part of '.$record->order->number)
+                    ->modalDescription(fn (SellerOrder $record): string => 'Less than '.money($record->refundableCents(), $record->order->currency).' of this seller\'s items and shipping. The platform fee stays: a payout not made yet shrinks by the amount, one already made is partly taken back.')
+                    ->modalSubmitActionLabel('Refund this amount')
+                    ->form(fn (SellerOrder $record): array => [
+                        MoneyInput::make('amount')->label('Amount to refund')->required()->minValue(0.01)->maxValue(max(0, ($record->refundableCents() - 1) / 100)),
+                        Textarea::make('reason')->label('Reason (optional)')->maxLength(500)->rows(2),
+                    ])
+                    ->action(function (array $data, SellerOrder $record): void {
+                        ViewOrder::refund(fn () => app(RefundService::class)->refundSellerOrderPartially(auth()->user(), $record, (int) $data['amount'], $data['reason'] ?? null));
+                    }),
                 Tables\Actions\Action::make('retryReversal')
                     ->label('Retry transfer reversal')
                     ->icon('heroicon-m-arrow-path')
@@ -132,12 +158,14 @@ class SellerOrdersRelationManager extends RelationManager
             ]);
     }
 
-    /** Refunded after a payout was transferred, but the reversal never went through. */
+    /** Refunded (fully or partly) after a payout was transferred, but the reversal never went through. */
     public static function needsReversal(SellerOrder $sellerOrder): bool
     {
-        return $sellerOrder->isRefunded()
-            && $sellerOrder->isTransferred()
-            && filled($sellerOrder->stripe_transfer_id)
-            && blank($sellerOrder->stripe_reversal_id);
+        if (! $sellerOrder->isTransferred() || blank($sellerOrder->stripe_transfer_id)) {
+            return false;
+        }
+
+        return $sellerOrder->reversal_pending_cents > 0
+            || ($sellerOrder->isRefunded() && blank($sellerOrder->stripe_reversal_id));
     }
 }

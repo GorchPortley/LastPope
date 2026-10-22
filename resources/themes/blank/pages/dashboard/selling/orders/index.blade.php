@@ -3,6 +3,7 @@
 use App\Enums\SellerOrderStatus;
 use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Models\SellerOrder;
+use App\Services\Marketplace\PayoutService;
 use App\Services\Marketplace\ShipmentService;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\TextInput;
@@ -11,6 +12,7 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\ActionGroup;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Filters\Filter;
@@ -29,16 +31,17 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
     public function table(Table $table): Table
     {
         $status = fn ($state): SellerOrderStatus => $state instanceof SellerOrderStatus ? $state : SellerOrderStatus::from((string) $state);
+        $payouts = app(PayoutService::class);
 
         return $table
             ->query(
                 SellerOrder::query()
                     ->where('seller_id', auth()->id())
                     ->where('status', '!=', SellerOrderStatus::PENDING->value)
-                    ->with(['order', 'items'])
+                    ->with(['order.user', 'items', 'activeIssue'])
             )
             ->heading('Sales')
-            ->description('Orders that contain your items. Add the tracking number when you ship physical items; your payout is released then.')
+            ->description('Orders that contain your items. Add the tracking number when you ship physical items; '.lcfirst($payouts->timingNote()))
             ->defaultSort('created_at', 'desc')
             ->defaultPaginationPageOption(10)
             ->columns([
@@ -63,19 +66,36 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             : 'Digital delivery';
                     })
                     ->visibleFrom('md')
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn ($state): string => $status($state)->label())
                     ->color(fn ($state): string => $status($state)->color()),
+                TextColumn::make('problem')
+                    ->label('Problem')
+                    ->state(fn (SellerOrder $record): ?string => $record->activeIssue?->status->label() ?? ($record->issues()->exists() ? 'Resolved' : null))
+                    ->badge()
+                    ->color(fn (SellerOrder $record): string => $record->activeIssue?->status->color() ?? 'success')
+                    ->url(fn (SellerOrder $record): ?string => ($record->activeIssue ?? $record->issues()->first())?->url())
+                    ->placeholder('-'),
                 TextColumn::make('total')
                     ->label('Total')
                     ->state(fn (SellerOrder $record): string => money($record->grossCents(), $record->order->currency))
                     ->alignEnd(),
                 TextColumn::make('payout_cents')
                     ->label('Your payout')
-                    ->state(fn (SellerOrder $record): string => money($record->payout_cents, $record->order->currency))
-                    ->description(fn (SellerOrder $record): string => $record->isTransferred() ? 'paid out' : 'pending')
+                    ->state(fn (SellerOrder $record): string => money($record->netPayoutCents(), $record->order->currency))
+                    ->description(function (SellerOrder $record) use ($payouts): string {
+                        $outlook = $payouts->outlook($record);
+
+                        return match ($outlook['state']) {
+                            'paid_out' => 'paid out '.$outlook['at']?->format('M j'),
+                            'held' => 'on hold: open problem',
+                            'scheduled' => 'due '.$outlook['at']->format('M j, Y'),
+                            'after_ship' => 'after shipping',
+                            default => $record->payout_cents > 0 ? 'pending' : 'no payout',
+                        };
+                    })
                     ->alignEnd()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -87,6 +107,10 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->label('Needs shipping')
                     ->toggle()
                     ->query(fn (Builder $query): Builder => $query->where('status', SellerOrderStatus::AWAITING_SHIPMENT->value)),
+                Filter::make('has_problem')
+                    ->label('Open problem')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereHas('issues', fn ($issues) => $issues->unresolved())),
                 SelectFilter::make('type')
                     ->label('Type')
                     ->options(['physical' => 'Physical items', 'digital' => 'Digital only'])
@@ -114,6 +138,20 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->modalWidth('lg')
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close'),
+                ActionGroup::make([
+                    Action::make('problem')
+                        ->label('Problem')
+                        ->icon('heroicon-m-exclamation-triangle')
+                        ->color('danger')
+                        ->visible(fn (SellerOrder $record): bool => $record->activeIssue !== null)
+                        ->url(fn (SellerOrder $record): ?string => $record->activeIssue?->url()),
+                    Action::make('contact')
+                        ->label('Contact buyer')
+                        ->icon('heroicon-m-chat-bubble-left-right')
+                        ->color('gray')
+                        ->visible(fn (SellerOrder $record): bool => $record->order->user_id !== null && (int) $record->order->user_id !== (int) auth()->id())
+                        ->url(fn (SellerOrder $record): string => url('/chatify/'.$record->order->user_id)),
+                ])->label('More')->icon('heroicon-m-ellipsis-vertical')->color('gray'),
                 Action::make('ship')
                     ->label(fn (SellerOrder $record): string => $record->status === SellerOrderStatus::SHIPPED ? 'Update tracking' : 'Mark as shipped')
                     ->icon('heroicon-m-truck')
@@ -121,7 +159,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         && (int) $record->seller_id === (int) auth()->id())
                     ->modalHeading(fn (SellerOrder $record): string => 'Ship order '.$record->order->number)
                     ->modalWidth('lg')
-                    ->modalDescription('The buyer gets an e-mail with these details. Your payout is released when you mark the order as shipped.')
+                    ->modalDescription(fn (): string => 'The buyer gets an e-mail with these details. '.app(PayoutService::class)->timingNote())
                     ->modalSubmitActionLabel('Save and notify buyer')
                     ->fillForm(fn (SellerOrder $record): array => [
                         'carrier' => $record->carrier,

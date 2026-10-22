@@ -9,9 +9,10 @@ use App\Services\Marketplace\ShipmentService;
 use Illuminate\Console\Command;
 
 /**
- * Daily housekeeping for orders: shipped seller orders complete by themselves after
- * marketplace.auto_complete_days (the seller is paid if the payout is still pending), and any
- * payout that failed earlier is retried.
+ * Hourly housekeeping for orders: shipped seller orders complete by themselves after
+ * marketplace.auto_complete_days (not while a problem report is unresolved), and every payout that is
+ * due is released, which includes retrying transfers that failed earlier. With the default payout trigger
+ * ("shipped_delay") a physical order is paid out physical_payout_delay_days after it was shipped, by this job.
  */
 class MarketplaceAutoComplete extends Command
 {
@@ -19,7 +20,7 @@ class MarketplaceAutoComplete extends Command
         {--days= : Override marketplace.auto_complete_days}
         {--dry-run : Only list what would be completed}';
 
-    protected $description = 'Complete shipped orders after the buyer protection period and retry pending payouts';
+    protected $description = 'Complete shipped orders after the buyer protection period and release due (or retry failed) payouts';
 
     public function handle(ShipmentService $shipments, PayoutService $payouts): int
     {
@@ -29,9 +30,17 @@ class MarketplaceAutoComplete extends Command
             $count = SellerOrder::query()
                 ->where('status', SellerOrderStatus::SHIPPED->value)
                 ->where('shipped_at', '<=', now()->subDays($days))
+                ->whereDoesntHave('issues', fn ($issues) => $issues->unresolved())
                 ->count();
 
-            $this->info("{$count} shipped seller order(s) older than {$days} days would be completed.");
+            $due = SellerOrder::query()
+                ->whereNull('transferred_at')
+                ->where('payout_cents', '>', 0)
+                ->get()
+                ->filter(fn (SellerOrder $sellerOrder) => $payouts->isDue($sellerOrder))
+                ->count();
+
+            $this->info("{$count} shipped seller order(s) older than {$days} days would be completed; {$due} payout(s) are due.");
 
             return self::SUCCESS;
         }

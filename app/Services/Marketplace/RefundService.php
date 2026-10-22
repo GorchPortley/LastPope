@@ -26,10 +26,15 @@ use Illuminate\Support\Facades\Log;
  * refunded and recomputes the order (refunded, or partially_refunded when other sellers' parts stay).
  * Stock is not restored: the seller relists if the goods are back.
  *
- * refundOrder() and refundSellerOrder() authorize through the `refund` policy ability (admins only).
- * refundSellerOrderAutomatically() is the system path (no user, no authorization) used when the goods
- * could not be delivered. Gateway failures propagate as PaymentGatewayException before anything is
- * changed locally.
+ * Partial refunds (a problem report settled with part of the money back, docs/PLAN.md 7): refunded_cents of the
+ * seller order grows and its status stays. Before the payout the payout shrinks by the refunded amount (the platform
+ * fee is kept); after the payout that amount of the transfer is reversed (reversed_cents). A full refund (what is left
+ * of the seller order) cancels a pending payout, waiving the fee, or reverses what is left of the transfer.
+ *
+ * refundOrder(), refundSellerOrder() and refundSellerOrderPartially() authorize through the `refund` policy ability
+ * (admins only). refundSellerOrderAutomatically() and refundForIssue() are the system paths (no authorization: the
+ * caller, e.g. IssueService, already did that). Gateway failures propagate as PaymentGatewayException before
+ * anything is changed locally.
  */
 class RefundService
 {
@@ -65,21 +70,90 @@ class RefundService
         return $this->process($sellerOrder->order, $sellerOrder->getKey(), $reason, null, $reason);
     }
 
+    /** Refund part of one seller order (items + shipping, never more than what is left of it). Admin only. */
+    public function refundSellerOrderPartially(User $actor, SellerOrder $sellerOrder, int $amountCents, ?string $reason = null): RefundResult
+    {
+        Gate::forUser($actor)->authorize('refund', $sellerOrder);
+
+        return $this->process($sellerOrder->order, $sellerOrder->getKey(), $reason, $actor, partialCents: $amountCents);
+    }
+
+    /**
+     * Refund a seller order because a problem report was settled: $amountCents of it, or everything that is left
+     * when null (or when the amount covers what is left). No authorization, no refund mail to the buyer: IssueService
+     * checked who may do this and tells the buyer itself. $actor is only recorded in the Stripe metadata.
+     */
+    public function refundForIssue(SellerOrder $sellerOrder, ?int $amountCents, string $reason, ?User $actor = null): RefundResult
+    {
+        return $this->process($sellerOrder->order, $sellerOrder->getKey(), $reason, $actor, partialCents: $amountCents, notify: false);
+    }
+
+    /**
+     * Take back what the seller was paid for a seller order whose buyer won a bank dispute (the platform bears the
+     * dispute, see IssueService::recoverFromSeller()). A payout that was not made yet is cancelled instead.
+     * No authorization. Returns the cents recovered or cancelled.
+     *
+     * @throws PaymentGatewayException  when Stripe refuses the reversal (nothing is changed then)
+     */
+    public function recoverPayout(SellerOrder $sellerOrder): int
+    {
+        return (int) DB::transaction(function () use ($sellerOrder) {
+            /** @var SellerOrder $locked */
+            $locked = SellerOrder::query()->whereKey($sellerOrder->getKey())->lockForUpdate()->firstOrFail();
+
+            if (! $locked->isTransferred()) {
+                $cancelled = $locked->payout_cents;
+                $locked->forceFill(['payout_cents' => 0])->save();
+
+                return $cancelled;
+            }
+
+            $amount = max(0, $locked->payout_cents - $locked->reversed_cents);
+            if ($amount === 0 || blank($locked->stripe_transfer_id)) {
+                return 0;
+            }
+
+            $id = $this->gateway->reverseTransfer($locked->stripe_transfer_id, $amount, [
+                'order_id' => $locked->order_id,
+                'seller_order_id' => $locked->getKey(),
+                'reason' => 'dispute_lost',
+                'idempotency_key' => $this->reversalKey($locked, $amount),
+            ]);
+
+            $locked->forceFill([
+                'stripe_reversal_id' => $id,
+                'reversed_cents' => $locked->reversed_cents + $amount,
+            ])->save();
+
+            return $amount;
+        });
+    }
+
     /** Try again to take the payout back from a seller after RefundResult::$reversalFailed. */
     public function retryTransferReversal(User $actor, SellerOrder $sellerOrder): bool
     {
         Gate::forUser($actor)->authorize('refund', $sellerOrder);
 
-        if (! $sellerOrder->isRefunded() || ! $sellerOrder->stripe_transfer_id || $sellerOrder->stripe_reversal_id) {
+        // Pending amount from a partial or full refund, or (rows from before partial refunds existed) the whole payout.
+        $amount = $sellerOrder->reversal_pending_cents;
+        if ($amount <= 0 && $sellerOrder->isRefunded() && ! $sellerOrder->stripe_reversal_id) {
+            $amount = max(0, $sellerOrder->payout_cents - $sellerOrder->reversed_cents);
+        }
+
+        if ($amount <= 0 || ! $sellerOrder->isTransferred() || blank($sellerOrder->stripe_transfer_id)) {
             return false;
         }
 
-        $id = $this->gateway->reverseTransfer($sellerOrder->stripe_transfer_id, $sellerOrder->payout_cents, [
+        $id = $this->gateway->reverseTransfer($sellerOrder->stripe_transfer_id, $amount, [
             'seller_order_id' => $sellerOrder->getKey(),
-            'idempotency_key' => 'reverse-seller-order-'.$sellerOrder->getKey(),
+            'idempotency_key' => $this->reversalKey($sellerOrder, $amount),
         ]);
 
-        $sellerOrder->forceFill(['stripe_reversal_id' => $id])->save();
+        $sellerOrder->forceFill([
+            'stripe_reversal_id' => $id,
+            'reversed_cents' => $sellerOrder->reversed_cents + $amount,
+            'reversal_pending_cents' => 0,
+        ])->save();
 
         return true;
     }
@@ -128,7 +202,7 @@ class RefundService
             }
 
             foreach ($refunded as $sellerOrder) {
-                $this->applyRefund($sellerOrder, null, $sellerOrder->grossCents());
+                $this->applyRefund($sellerOrder, null, $sellerOrder->refundableCents());
             }
 
             $this->statuses->sync($locked);
@@ -142,10 +216,13 @@ class RefundService
 
     /**
      * @param  int|null  $onlySellerOrderId  null = every open seller order of the order
+     * @param  int|null  $partialCents  with a single seller order: refund only this much of it (never more than is left);
+     *                                  null = everything that is left
+     * @param  bool  $notify  send the buyer the refund mail
      */
-    private function process(Order $order, ?int $onlySellerOrderId, ?string $reason, ?User $actor, ?string $buyerNote = null): RefundResult
+    private function process(Order $order, ?int $onlySellerOrderId, ?string $reason, ?User $actor, ?string $buyerNote = null, ?int $partialCents = null, bool $notify = true): RefundResult
     {
-        $result = DB::transaction(function () use ($order, $onlySellerOrderId, $reason, $actor) {
+        $result = DB::transaction(function () use ($order, $onlySellerOrderId, $reason, $actor, $partialCents) {
             /** @var Order $locked */
             $locked = Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
 
@@ -161,16 +238,37 @@ class RefundService
                 throw new InvalidOrderStateException('Nothing left to refund on this order.');
             }
 
-            $gross = (int) $targets->sum(fn (SellerOrder $so) => $so->grossCents());
-            $wholeUntouchedOrder = $targets->count() === $open->count() && $open->count() === $all->count();
+            // What each target gives back: its whole remainder, or the requested part of a single seller order.
+            $amounts = $targets->mapWithKeys(fn (SellerOrder $so) => [$so->getKey() => $so->refundableCents()]);
+            $partial = false;
+
+            if ($partialCents !== null) {
+                if ($targets->count() !== 1) {
+                    throw new InvalidOrderStateException('A partial refund applies to one seller order.');
+                }
+
+                if ($partialCents < 1) {
+                    throw new InvalidOrderStateException('The refund amount must be at least one cent.');
+                }
+
+                $only = $targets->first();
+                if ($partialCents < $only->refundableCents()) {
+                    $amounts[$only->getKey()] = $partialCents;
+                    $partial = true;
+                }
+            }
+
+            $gross = (int) $amounts->sum();
+            $untouched = $all->every(fn (SellerOrder $so) => $so->refunded_cents === 0);
+            $wholeUntouchedOrder = ! $partial && $untouched && $targets->count() === $open->count() && $open->count() === $all->count();
 
             // Refunding the entire payment (tax included) is a full refund; otherwise items + shipping of the targets.
             $amount = $wholeUntouchedOrder ? null : $gross;
             $reported = $wholeUntouchedOrder ? $locked->total_cents : $gross;
 
             $key = $onlySellerOrderId !== null
-                ? 'refund-seller-order-'.$onlySellerOrderId
-                : 'refund-order-'.$locked->getKey().'-'.($amount ?? 'full');
+                ? 'refund-seller-order-'.$onlySellerOrderId.($targets->first()->refunded_cents > 0 || $partial ? '-'.$targets->first()->refunded_cents.'-'.$gross : '')
+                : 'refund-order-'.$locked->getKey().'-'.($amount ?? 'full').($untouched ? '' : '-'.(int) $all->sum('refunded_cents'));
 
             $refundId = $this->gateway->refund($locked->stripe_payment_intent_id, $amount, [
                 'order_id' => $locked->getKey(),
@@ -183,52 +281,79 @@ class RefundService
 
             $failed = [];
             foreach ($targets as $sellerOrder) {
-                if (! $this->applyRefund($sellerOrder, $refundId, $sellerOrder->grossCents())) {
+                if (! $this->applyRefund($sellerOrder, $refundId, (int) $amounts[$sellerOrder->getKey()])) {
                     $failed[] = $sellerOrder;
                 }
             }
 
             $this->statuses->sync($locked);
 
-            return new RefundResult($locked->refresh(), $targets->values()->all(), $reported, $refundId, $failed);
+            return new RefundResult($locked->refresh(), $targets->values()->all(), $reported, $refundId, $failed, $partial);
         });
 
-        $this->notifyBuyer($result->order, $result->amountCents, $onlySellerOrderId !== null ? $result->sellerOrders[0] : null, $buyerNote);
+        if ($notify) {
+            $this->notifyBuyer($result->order, $result->amountCents, $onlySellerOrderId !== null ? $result->sellerOrders[0] : null, $buyerNote);
+        }
 
         return $result;
     }
 
     /**
-     * Record a seller order's refund: status, entitlements, and the payout taken back.
+     * Record a refund of $amountCents of a seller order: the money flow (see the class comment), entitlements and status.
+     * A refund that covers what is left of the seller order is a full one (status refunded).
      *
      * @return bool false when the payout transfer could not be reversed
      */
-    private function applyRefund(SellerOrder $sellerOrder, ?string $refundId, int $grossCents): bool
+    private function applyRefund(SellerOrder $sellerOrder, ?string $refundId, int $amountCents): bool
     {
-        $reversalId = null;
-        $reversed = true;
+        $full = $amountCents >= $sellerOrder->refundableCents();
+        $transferred = $sellerOrder->isTransferred() && filled($sellerOrder->stripe_transfer_id);
+        $left = max(0, $sellerOrder->payout_cents - $sellerOrder->reversed_cents); // of the transfer, once paid out
 
-        if ($sellerOrder->isTransferred() && filled($sellerOrder->stripe_transfer_id) && $sellerOrder->payout_cents > 0) {
+        $reversalId = $sellerOrder->stripe_reversal_id;
+        $reversed = true;
+        $reverseCents = 0;
+        $pendingCents = 0;
+        $payoutCents = $sellerOrder->payout_cents;
+
+        if ($transferred) {
+            // After the payout: take back that amount of the transfer (everything that is left, for a full refund).
+            $reverseCents = $full ? $left : min($amountCents, $left);
+        } elseif (! $full) {
+            // Before the payout: the seller is paid that much less, the fee stays with the platform.
+            $payoutCents = max(0, $payoutCents - $amountCents);
+        }
+        // A full refund before the payout needs nothing else: a refunded seller order is never paid out, so the fee is waived too.
+
+        if ($reverseCents > 0) {
             try {
-                $reversalId = $this->gateway->reverseTransfer($sellerOrder->stripe_transfer_id, $sellerOrder->payout_cents, [
+                $reversalId = $this->gateway->reverseTransfer($sellerOrder->stripe_transfer_id, $reverseCents, [
                     'order_id' => $sellerOrder->order_id,
                     'seller_order_id' => $sellerOrder->getKey(),
-                    'idempotency_key' => 'reverse-seller-order-'.$sellerOrder->getKey(),
+                    'idempotency_key' => $this->reversalKey($sellerOrder, $reverseCents),
                 ]);
             } catch (PaymentGatewayException $e) {
                 report($e);
                 Log::error('Could not reverse a seller payout after a refund.', ['seller_order_id' => $sellerOrder->getKey()]);
                 $reversed = false;
+                $pendingCents = $reverseCents;
             }
         }
 
         $sellerOrder->forceFill([
-            'status' => SellerOrderStatus::REFUNDED,
-            'refunded_cents' => $grossCents,
+            'status' => $full ? SellerOrderStatus::REFUNDED : $sellerOrder->status,
+            'refunded_cents' => $sellerOrder->refunded_cents + $amountCents,
+            'payout_cents' => $payoutCents,
             'stripe_refund_id' => $refundId,
             'stripe_reversal_id' => $reversalId,
+            'reversed_cents' => $sellerOrder->reversed_cents + ($reversed ? $reverseCents : 0),
+            'reversal_pending_cents' => $sellerOrder->reversal_pending_cents + $pendingCents,
             'refunded_at' => now(),
         ])->save();
+
+        if (! $full) {
+            return $reversed;
+        }
 
         $buyer = $sellerOrder->order()->first()?->user;
         foreach ($sellerOrder->items as $item) {
@@ -243,6 +368,13 @@ class RefundService
         }
 
         return $reversed;
+    }
+
+    /** Idempotency key of a transfer reversal: the first one of a seller order keeps the short historic form. */
+    private function reversalKey(SellerOrder $sellerOrder, int $amountCents): string
+    {
+        return 'reverse-seller-order-'.$sellerOrder->getKey()
+            .($sellerOrder->reversed_cents > 0 ? '-'.$sellerOrder->reversed_cents.'-'.$amountCents : '');
     }
 
     private function notifyBuyer(Order $order, int $amountCents, ?SellerOrder $sellerOrder, ?string $note = null): void

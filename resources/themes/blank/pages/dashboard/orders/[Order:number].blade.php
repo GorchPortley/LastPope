@@ -1,15 +1,32 @@
 <?php
 
+use App\Enums\IssueReason;
+use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Models\Order;
+use App\Services\Marketplace\IssueService;
 use App\Support\Countries;
+use Filament\Actions\Action;
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Notifications\Notification;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\On;
 use Livewire\Volt\Component;
 use function Laravel\Folio\{middleware, name};
 
 middleware('auth');
 name('dashboard.orders.show');
 
-new class extends Component {
+new class extends Component implements HasForms, HasActions {
+    use InteractsWithForms, InteractsWithActions;
+
     public Order $order;
 
     public function mount(Order $order): void
@@ -17,7 +34,14 @@ new class extends Component {
         // OrderPolicy::view: the buyer, a seller with items in it, or an admin.
         Gate::authorize('view', $order);
 
-        $this->order = $order->load(['sellerOrders.seller.sellerProfile', 'sellerOrders.items.entitlement', 'items']);
+        $this->order = $order->load(['sellerOrders.seller.sellerProfile', 'sellerOrders.items.entitlement', 'sellerOrders.issues', 'items']);
+    }
+
+    /** A problem panel on this page changed something (a refund, an accepted offer): show the new state. */
+    #[On('issue-changed')]
+    public function reload(): void
+    {
+        $this->order->refresh()->load(['sellerOrders.seller.sellerProfile', 'sellerOrders.items.entitlement', 'sellerOrders.issues', 'items']);
     }
 
     public function with(): array
@@ -25,15 +49,93 @@ new class extends Component {
         $user = auth()->user();
         $isBuyer = (int) $this->order->user_id === (int) $user->getKey();
         $isAdmin = $user->isPlatformSeller();
+        $service = app(IssueService::class);
+
+        // Sellers only see their own part of somebody else's order.
+        $sellerOrders = $this->order->sellerOrders->filter(
+            fn ($sellerOrder) => $isBuyer || $isAdmin || (int) $sellerOrder->seller_id === (int) $user->getKey()
+        );
 
         return [
             'isBuyer' => $isBuyer,
-            // Sellers only see their own part of somebody else's order.
-            'sellerOrders' => $this->order->sellerOrders->filter(
-                fn ($sellerOrder) => $isBuyer || $isAdmin || (int) $sellerOrder->seller_id === (int) $user->getKey()
-            ),
+            'sellerOrders' => $sellerOrders,
             'showTotals' => $isBuyer || $isAdmin,
+            // Per seller order: its latest problem report, whether the buyer can report one, and until when.
+            'problems' => $sellerOrders->mapWithKeys(fn ($sellerOrder) => [$sellerOrder->getKey() => [
+                'issue' => $sellerOrder->issues->first(),
+                'canReport' => $isBuyer && $service->canReport($sellerOrder),
+                'blocker' => $isBuyer ? $service->reportBlocker($sellerOrder) : null,
+                'windowEnds' => $service->windowEndsAt($sellerOrder),
+            ]]),
         ];
+    }
+
+    /** "Report a problem" with one seller's part of the order (arguments: sellerOrder id). */
+    public function reportProblemAction(): Action
+    {
+        return Action::make('reportProblem')
+            ->label('Report a problem')
+            ->icon('heroicon-m-exclamation-triangle')
+            ->color('danger')
+            ->outlined()
+            ->size('sm')
+            ->modalHeading('Report a problem')
+            ->modalDescription('Tell us what is wrong. The seller is notified and can answer, refund or ask for the goods back. Their payout waits until it is settled.')
+            ->modalWidth('2xl')
+            ->modalSubmitActionLabel('Report the problem')
+            ->form(function (array $arguments): array {
+                $sellerOrder = $this->order->sellerOrders->firstWhere('id', (int) ($arguments['sellerOrder'] ?? 0));
+                $options = $sellerOrder ? IssueReason::optionsFor($sellerOrder) : IssueReason::options();
+
+                return [
+                    Select::make('reason')
+                        ->label('What is wrong?')
+                        ->options($options)
+                        ->required()
+                        ->native(false),
+                    Textarea::make('description')
+                        ->label('Describe the problem')
+                        ->placeholder('What happened, and what would you like the seller to do?')
+                        ->required()
+                        ->minLength(10)
+                        ->maxLength(5000)
+                        ->rows(5),
+                    FileUpload::make('photos')
+                        ->label('Photos (optional)')
+                        ->helperText('Up to '.(int) config('marketplace.issue_max_photos', 5).' pictures, '.round((int) config('marketplace.issue_photo_max_kb', 8192) / 1024).' MB each. Only you, the seller and our team can see them.')
+                        ->multiple()
+                        ->image()
+                        ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+                        ->maxFiles((int) config('marketplace.issue_max_photos', 5))
+                        ->maxSize((int) config('marketplace.issue_photo_max_kb', 8192))
+                        ->storeFiles(false),
+                ];
+            })
+            ->action(function (array $data, array $arguments): void {
+                $sellerOrder = $this->order->sellerOrders->firstWhere('id', (int) ($arguments['sellerOrder'] ?? 0));
+                abort_if($sellerOrder === null, 404);
+
+                try {
+                    $issue = app(IssueService::class)->open(
+                        auth()->user(),
+                        $sellerOrder,
+                        IssueReason::from($data['reason']),
+                        (string) $data['description'],
+                        array_values(array_filter($data['photos'] ?? [], fn ($file) => $file instanceof UploadedFile)),
+                    );
+                } catch (InvalidOrderStateException $e) {
+                    Notification::make()->danger()->title('The problem could not be reported')->body($e->getMessage())->send();
+
+                    return;
+                } catch (ValidationException $e) {
+                    Notification::make()->danger()->title('Please check your input')->body(collect($e->errors())->flatten()->first())->send();
+
+                    return;
+                }
+
+                Notification::make()->success()->title('Problem reported')->body('We told the seller. You can follow it right here.')->send();
+                $this->reload();
+            });
     }
 }; ?>
 
@@ -61,7 +163,12 @@ new class extends Component {
         <div class="gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div class="space-y-6">
                 @forelse ($sellerOrders as $sellerOrder)
-                    <x-marketplace.seller-order :sellerOrder="$sellerOrder" :order="$order" wire:key="so-{{ $sellerOrder->id }}" />
+                    @php($problem = $problems[$sellerOrder->getKey()])
+                    <x-marketplace.seller-order :sellerOrder="$sellerOrder" :order="$order" :problem="$problem" wire:key="so-{{ $sellerOrder->id }}">
+                        @if ($problem['canReport'])
+                            <x-slot name="reportButton">{{ ($this->reportProblemAction)(['sellerOrder' => $sellerOrder->getKey()]) }}</x-slot>
+                        @endif
+                    </x-marketplace.seller-order>
                 @empty
                     <p class="text-gray-500">There is nothing to show for this order.</p>
                 @endforelse
@@ -97,6 +204,8 @@ new class extends Component {
                 @endif
             </aside>
         </div>
+
+        <x-filament-actions::modals />
     </div>
     @endvolt
 </x-layouts.app>

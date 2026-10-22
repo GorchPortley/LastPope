@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\SellerOrder;
 use App\Notifications\Concerns\DescribesOrders;
+use App\Services\Marketplace\PayoutService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -29,12 +30,18 @@ class PayoutSent extends Notification implements ShouldQueue
     {
         $order = $this->sellerOrder->order;
 
-        return (new MailMessage)
+        $mail = (new MailMessage)
             ->subject('Payout sent for order '.$order->number)
             ->greeting('Your payout is on its way')
             ->line($this->amount($this->sellerOrder->payout_cents, $order)." was transferred to your Stripe account for order {$order->number}.")
-            ->line('Items '.$this->amount($this->sellerOrder->subtotal_cents, $order).' + shipping '.$this->amount($this->sellerOrder->shipping_cents, $order).' - platform fee '.$this->amount($this->sellerOrder->platform_fee_cents, $order).'.')
-            ->line('Stripe pays it out to your bank on your payout schedule.')
+            ->line('Items '.$this->amount($this->sellerOrder->subtotal_cents, $order).' + shipping '.$this->amount($this->sellerOrder->shipping_cents, $order).' - platform fee '.$this->amount($this->sellerOrder->platform_fee_cents, $order).'.');
+
+        if ($this->sellerOrder->refunded_cents > 0) {
+            $mail->line('A refund of '.$this->amount($this->sellerOrder->refunded_cents, $order).' to the buyer was already deducted from this payout.');
+        }
+
+        return $mail
+            ->line('Stripe pays it out to your bank on your payout schedule. Payouts for physical items are released '.app(PayoutService::class)->timingPhrase().' (unless a problem is open).')
             ->action('Open your sales', route('selling.orders'));
     }
 

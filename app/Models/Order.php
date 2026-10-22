@@ -106,6 +106,12 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    /** Problem reports on any seller order of this order. */
+    public function issues(): HasMany
+    {
+        return $this->hasMany(OrderIssue::class)->latest('id');
+    }
+
     public function scopeStatus(Builder $query, OrderStatus ...$statuses): Builder
     {
         return $query->whereIn('status', array_map(fn (OrderStatus $s) => $s->value, $statuses));

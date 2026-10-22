@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\OrderStatus;
 use App\Enums\SellerOrderStatus;
 use App\Filament\Resources\OrderResource\Pages;
+use App\Filament\Resources\OrderResource\RelationManagers\IssuesRelationManager;
 use App\Filament\Resources\OrderResource\RelationManagers\SellerOrdersRelationManager;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -46,7 +47,7 @@ class OrderResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['user'])->withCount('sellerOrders'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['user'])->withCount(['sellerOrders', 'issues']))
             ->columns([
                 Tables\Columns\TextColumn::make('number')->label('Order')->searchable()->sortable()->weight('medium'),
                 Tables\Columns\TextColumn::make('user.name')
@@ -66,6 +67,12 @@ class OrderResource extends Resource
                     ->formatStateUsing(fn ($state, Order $record): string => money((int) $state, $record->currency))
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('seller_orders_count')->label('Sellers')->alignCenter(),
+                Tables\Columns\TextColumn::make('issues_count')
+                    ->label('Problems')
+                    ->alignCenter()
+                    ->badge()
+                    ->color(fn ($state): string => (int) $state > 0 ? 'danger' : 'gray')
+                    ->formatStateUsing(fn ($state): string => (int) $state > 0 ? (string) $state : '-'),
                 Tables\Columns\TextColumn::make('paid_at')->dateTime('M j, Y H:i')->sortable()->placeholder('not paid'),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -81,6 +88,10 @@ class OrderResource extends Resource
                         true: fn (Builder $query) => $query->whereNotNull('paid_at'),
                         false: fn (Builder $query) => $query->whereNull('paid_at'),
                     ),
+                Tables\Filters\Filter::make('has_issue')
+                    ->label('Has a problem report')
+                    ->toggle()
+                    ->query(fn (Builder $query) => $query->whereHas('issues')),
                 Tables\Filters\Filter::make('reversal_pending')
                     ->label('Payout reversal to retry')
                     ->toggle()
@@ -155,6 +166,7 @@ class OrderResource extends Resource
     {
         return [
             SellerOrdersRelationManager::class,
+            IssuesRelationManager::class,
         ];
     }
 
@@ -166,14 +178,16 @@ class OrderResource extends Resource
         ];
     }
 
-    /** Seller orders that were refunded after a payout, where taking the payout back still has to succeed. */
+    /** Seller orders refunded (fully or partly) after a payout, where taking the payout back still has to succeed. */
     public static function reversalPending(Builder $query): Builder
     {
         return $query
-            ->where('status', SellerOrderStatus::REFUNDED->value)
             ->whereNotNull('stripe_transfer_id')
-            ->whereNull('stripe_reversal_id')
-            ->whereNotNull('transferred_at');
+            ->whereNotNull('transferred_at')
+            ->where(fn (Builder $q) => $q
+                ->where('reversal_pending_cents', '>', 0)
+                // refunded before partial refunds existed: no reversal id means it never went through
+                ->orWhere(fn (Builder $legacy) => $legacy->where('status', SellerOrderStatus::REFUNDED->value)->whereNull('stripe_reversal_id')));
     }
 
     public static function status(mixed $state): OrderStatus

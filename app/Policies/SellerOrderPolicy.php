@@ -8,13 +8,14 @@ use App\Models\User;
 /**
  * Who may do what with one seller's part of an order. Admins may view and refund everything (which
  * also keeps the Filament resources working). Shipping: the seller, or any admin when the seller is a
- * platform seller (SDLabs' store orders have no individual owner). Confirming receipt: the buyer only.
+ * platform seller (SDLabs' store orders have no individual owner). Confirming receipt and reporting a problem: the
+ * buyer only (whether the report window is open is checked by IssueService).
  */
 class SellerOrderPolicy
 {
     public function before(User $user, string $ability): ?bool
     {
-        if ($user->isPlatformSeller() && ! in_array($ability, ['ship', 'confirmReceived'], true)) {
+        if ($user->isPlatformSeller() && ! in_array($ability, ['ship', 'confirmReceived', 'reportIssue'], true)) {
             return true;
         }
 
@@ -41,6 +42,12 @@ class SellerOrderPolicy
 
     /** Only the buyer confirms that the parcel arrived. */
     public function confirmReceived(User $user, SellerOrder $sellerOrder): bool
+    {
+        return $sellerOrder->order?->user_id === $user->id;
+    }
+
+    /** Only the buyer reports a problem with a seller order. */
+    public function reportIssue(User $user, SellerOrder $sellerOrder): bool
     {
         return $sellerOrder->order?->user_id === $user->id;
     }

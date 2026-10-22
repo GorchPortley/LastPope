@@ -184,9 +184,10 @@ function checkoutSessionObject(App\Models\Order $order, string $paymentStatus = 
 
 /**
  * Open a Folio page that contains `@volt('<name>')` as $user and return that Volt component's Livewire
- * test (unlike dashboardPage(), it skips the header components of the marketing layout).
+ * test (unlike dashboardPage(), it skips the header components of the marketing layout). A page whose mount()
+ * needs the route's model (the order page) gets it through $params.
  */
-function voltPage(Tests\TestCase $test, App\Models\User $user, string $url, string $voltName): Livewire\Features\SupportTesting\Testable
+function voltPage(Tests\TestCase $test, App\Models\User $user, string $url, string $voltName, array $params = []): Livewire\Features\SupportTesting\Testable
 {
     $html = $test->actingAs($user)->get($url)->assertOk()->getContent();
     preg_match_all('/wire:snapshot="([^"]+)"/', $html, $matches);
@@ -199,7 +200,8 @@ function voltPage(Tests\TestCase $test, App\Models\User $user, string $url, stri
             $meta = json_decode((string) base64_decode(substr($name, strlen('volt-anonymous-fragment-'))), true);
 
             if (($meta['name'] ?? null) === $voltName) {
-                return Livewire\Livewire::test($name);
+                // $params are what the page's mount() takes from the route, e.g. ['order' => $order]
+                return Livewire\Livewire::test($name, $params);
             }
         }
     }
@@ -237,4 +239,52 @@ function paidListingOrder(App\Models\User $buyer, ?App\Models\User $seller = nul
 function adminUser(): App\Models\User
 {
     return App\Models\User::factory()->admin()->create();
+}
+
+/*
+|--------------------------------------------------------------------------
+| Problem reports ("Report a problem", docs/PLAN.md 7)
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * A paid physical order with one listing from an onboarded seller: 10 % fee, so for 6000 of items + 900 shipping the buyer
+ * paid 6900 and the seller's payout is 6300. $stage "paid" leaves it awaiting shipment, "shipped" has the seller ship it
+ * (the payout follows by the payout trigger of the test).
+ *
+ * @return array{buyer: App\Models\User, seller: App\Models\User, order: App\Models\Order, sellerOrder: App\Models\SellerOrder, listing: App\Models\Listing}
+ */
+function reportableOrder(string $stage = 'shipped', int $cents = 6000): array
+{
+    $buyer = App\Models\User::factory()->create();
+    $x = paidListingOrder($buyer, null, $cents);
+
+    if ($stage === 'shipped') {
+        app(App\Services\Marketplace\ShipmentService::class)->markShipped($x['seller'], $x['sellerOrder'], 'UPS', '1Z999AA10123', 'https://ups.example/track/1Z999AA10123');
+    }
+
+    return [
+        'buyer' => $buyer,
+        'seller' => $x['seller'],
+        'order' => $x['order']->fresh(),
+        'sellerOrder' => $x['sellerOrder']->fresh(),
+        'listing' => $x['listing'],
+    ];
+}
+
+/** Open a problem report as the buyer through the service. */
+function reportProblem(array $x, App\Enums\IssueReason $reason = App\Enums\IssueReason::NOT_AS_DESCRIBED, string $text = 'The surround is cracked and it was sold as perfect.', array $photos = []): App\Models\OrderIssue
+{
+    return app(App\Services\Marketplace\IssueService::class)->open($x['buyer'], $x['sellerOrder']->fresh(), $reason, $text, $photos);
+}
+
+function issues(): App\Services\Marketplace\IssueService
+{
+    return app(App\Services\Marketplace\IssueService::class);
+}
+
+/** A JPEG-ish test upload of $kb kilobytes (a real image, so the "image" rule accepts it). */
+function issuePhoto(string $name = 'photo.jpg', int $kb = 10): Illuminate\Http\UploadedFile
+{
+    return Illuminate\Http\UploadedFile::fake()->image($name, 40, 30)->size($kb);
 }

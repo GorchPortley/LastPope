@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\SellerOrder;
 use App\Notifications\Concerns\DescribesOrders;
+use App\Services\Marketplace\PayoutService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -52,7 +53,7 @@ class NewSale extends Notification implements ShouldQueue
 
         if ($physical) {
             $mail->line('Please ship to: '.implode(', ', $this->addressLines($order->shipping_address)).'.')
-                ->line('Add the carrier and tracking number in your seller dashboard once it is on its way'.(config('marketplace.physical_payout_trigger') === 'shipped' ? '; your payout is released then.' : '.'));
+                ->line('Add the carrier and tracking number in your seller dashboard once it is on its way. Your payout for physical items is released '.app(PayoutService::class)->timingPhrase().'; if the buyer reports a problem it waits until that is resolved.');
         }
 
         return $mail->action('Open your sales', route('selling.orders'));

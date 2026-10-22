@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Stripe;
 
 use App\Services\Marketplace\Webhooks\MarketplaceWebhookHandler;
 
-/** POST /stripe/marketplace/webhook: payments and refunds on the platform account. */
+/** POST /stripe/marketplace/webhook: payments, refunds and bank disputes on the platform account. */
 class MarketplaceWebhookController extends StripeWebhookController
 {
     public function __construct(private readonly MarketplaceWebhookHandler $handler)

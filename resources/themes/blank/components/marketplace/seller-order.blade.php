@@ -1,18 +1,27 @@
 {{--
     One seller's part of an order, as the buyer (or an admin / that seller) sees it: items, shipping, status,
-    tracking, and the "Confirm received" button for the buyer once it shipped. Drawn as a Filament section so
-    it sits next to the dashboard tables.
+    tracking, the "Confirm received" button for the buyer once it shipped, and the problem report ("Report a problem"
+    while the window is open, then the report's panel). Drawn as a Filament section so it sits next to the dashboard tables.
+
+    $problem: ['issue' => latest OrderIssue|null, 'canReport' => bool, 'blocker' => ?string, 'windowEnds' => ?Carbon]
+    The `reportButton` slot holds the page's "Report a problem" action.
 --}}
-@props(['sellerOrder', 'order'])
+@props(['sellerOrder', 'order', 'problem' => ['issue' => null, 'canReport' => false, 'blocker' => null, 'windowEnds' => null]])
 
 @php
     $so = $sellerOrder;
     $shop = $so->seller?->sellerProfile;
     $shopName = $shop?->shop_name ?: ($so->seller?->name ?? 'Unknown seller');
+    $issue = $problem['issue'];
+    $openIssue = $issue && $issue->isUnresolved();
+    $isBuyerView = auth()->check() && (int) $order->user_id === (int) auth()->id();
+    $contact = $isBuyerView ? $so->seller : $order->user;
     $canConfirm = auth()->check()
         && $so->status === \App\Enums\SellerOrderStatus::SHIPPED
         && auth()->user()->can('confirmReceived', $so)
-        && (int) $order->user_id === (int) auth()->id();
+        && $isBuyerView
+        && ! $openIssue;
+    $payouts = app(\App\Services\Marketplace\PayoutService::class);
 @endphp
 
 <x-filament::section {{ $attributes }} data-seller-order="{{ $so->getKey() }}">
@@ -79,11 +88,57 @@
         </p>
     @endif
 
+    @if ($so->refunded_cents > 0 && $so->status !== \App\Enums\SellerOrderStatus::REFUNDED)
+        <p class="mt-3 border-t border-gray-100 pt-3 text-sm text-amber-800" data-partial-refund>
+            {{ money($so->refunded_cents, $order->currency) }} of this part was refunded{{ $so->refunded_at ? ' on '.$so->refunded_at->format('M j, Y') : '' }}.
+        </p>
+    @endif
+
     @if ($canConfirm)
         <form method="POST" action="{{ route('orders.received', $so) }}" class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-green-50 px-4 py-3">
             @csrf
-            <p class="text-sm text-green-900">Did it arrive? Confirming completes the order and releases the payment to the seller.</p>
+            <p class="text-sm text-green-900">Did it arrive? Confirming completes the order; it does not pay the seller any sooner. @if ($payouts->trigger() === 'shipped_delay')The seller is paid {{ $payouts->delayDays() }} {{ \Illuminate\Support\Str::plural('day', $payouts->delayDays()) }} after shipping, so you can still report a problem until then.@endif</p>
             <x-button type="submit" color="success" size="sm">Confirm received</x-button>
         </form>
+    @endif
+
+    {{-- Problem report --}}
+    @if ($openIssue)
+        <div class="mt-3 border-t border-gray-100 pt-3" data-problem="open">
+            <livewire:order-issue-panel :issue="$issue" :key="'issue-'.$issue->getKey()" />
+        </div>
+    @elseif ($issue)
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3 text-sm" data-problem="resolved">
+            <p class="min-w-0 text-gray-700">
+                <x-phosphor-check-circle class="mr-1 inline h-4 w-4 align-text-bottom text-green-600" />
+                Problem &quot;{{ $issue->reason->shortLabel() }}&quot; resolved{{ $issue->resolved_at ? ' on '.$issue->resolved_at->format('M j, Y') : '' }}:
+                <strong>{{ $issue->resolution?->label() }}</strong>{{ $issue->refunded_cents > 0 ? ', '.money($issue->refunded_cents, $order->currency).' refunded' : '' }}.
+            </p>
+            <a href="{{ $issue->url() }}" class="font-medium text-brand-700 underline hover:text-brand-900">View</a>
+        </div>
+    @endif
+
+    @if ($problem['canReport'] && ! $openIssue)
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3" data-problem="report">
+            <p class="min-w-0 text-sm text-gray-600">
+                Something wrong with this part of your order?
+                @if ($problem['windowEnds'])
+                    You can report a problem until {{ $problem['windowEnds']->format('M j, Y') }}.
+                @else
+                    You can report it at any time until the seller ships.
+                @endif
+            </p>
+            {{ $reportButton ?? '' }}
+        </div>
+    @elseif ($isBuyerView && ! $openIssue && ! $issue && filled($problem['blocker']) && in_array($so->status, [\App\Enums\SellerOrderStatus::SHIPPED, \App\Enums\SellerOrderStatus::DELIVERED, \App\Enums\SellerOrderStatus::COMPLETED], true))
+        <p class="mt-3 border-t border-gray-100 pt-3 text-sm text-gray-500" data-problem="closed">{{ $problem['blocker'] }}</p>
+    @endif
+
+    @if ($contact && ! $contact->is(auth()->user()) && $so->status !== \App\Enums\SellerOrderStatus::PENDING)
+        <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 text-sm">
+            <a href="{{ url('/chatify/'.$contact->getKey()) }}" class="inline-flex items-center gap-1 font-medium text-gray-700 hover:text-gray-950" data-contact>
+                <x-phosphor-chat-circle class="h-4 w-4" /> {{ $isBuyerView ? 'Contact seller' : 'Contact buyer' }}
+            </a>
+        </div>
     @endif
 </x-filament::section>

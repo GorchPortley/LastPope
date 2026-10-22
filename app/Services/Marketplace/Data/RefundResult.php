@@ -8,6 +8,7 @@ use App\Models\SellerOrder;
 /**
  * What a refund did. $reversalFailed lists seller orders whose payout could not be taken back from
  * the seller (the buyer was refunded anyway): retry with RefundService::retryTransferReversal().
+ * $partial: only part of one seller order was refunded (its status did not change).
  */
 final class RefundResult
 {
@@ -21,6 +22,7 @@ final class RefundResult
         public readonly int $amountCents,
         public readonly ?string $refundId,
         public readonly array $reversalFailed = [],
+        public readonly bool $partial = false,
     ) {
     }
 

@@ -10,7 +10,7 @@ use App\Models\Order;
  * Derives a paid order's status from its seller orders. Call it after any seller order changed.
  *
  *   every non-cancelled seller order refunded -> refunded
- *   some refunded                             -> partially_refunded
+ *   some refunded, or part of one refunded    -> partially_refunded
  *   every non-cancelled seller order completed-> completed
  *   otherwise                                 -> paid
  *
@@ -33,9 +33,12 @@ class OrderStatusSynchronizer
 
         $refunded = $active->filter(fn ($so) => $so->status === SellerOrderStatus::REFUNDED)->count();
 
+        // A seller order that got part of its money back (a problem report settled with a partial refund) counts too.
+        $anyRefund = $active->contains(fn ($so) => $so->status === SellerOrderStatus::REFUNDED || $so->refunded_cents > 0);
+
         $status = match (true) {
             $refunded === $active->count() => OrderStatus::REFUNDED,
-            $refunded > 0 => OrderStatus::PARTIALLY_REFUNDED,
+            $anyRefund => OrderStatus::PARTIALLY_REFUNDED,
             $active->every(fn ($so) => $so->status === SellerOrderStatus::COMPLETED) => OrderStatus::COMPLETED,
             default => OrderStatus::PAID,
         };

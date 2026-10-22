@@ -377,3 +377,70 @@ it on a running site.
 - UI: Livewire `OrderIssuePanel` (thread + actions) used on the order page and on the shared page
   `/dashboard/issues/{orderIssue}` (Folio), list `/dashboard/issues`, photos at `dashboard.issues.attachment` (private disk).
   Filament: `OrderIssueResource` (queue with tabs, case page with decisions), `IssuesRelationManager` on orders.
+
+## 8. Revision R3: dropshipping for the SDLabs store (owner decisions)
+
+The SDLabs store (STORE listings, platform seller) sells a **mix of own inventory and dropshipped
+products**. Marketplace (user) listings are unchanged. Migration policy §7 applies (new migrations only).
+
+### R3.1 Suppliers and fulfilment modes
+- `suppliers`: name, contact name/email/phone, `order_email` (where purchase orders go), website,
+  account number, ships_from_country, lead_time_min_days / lead_time_max_days, dropship_fee_cents (per
+  supplier order), blind_dropship (bool, default true: no supplier branding/prices in the parcel),
+  auto_send_purchase_orders (bool, default false), shipping rules for what WE charge the buyer for that
+  supplier's parcel: domestic_cents, international_cents (nullable = domestic only),
+  additional_item_cents, free_shipping_over_cents (nullable), notes, active.
+  Optional stock feed: feed_url (CSV over HTTP) or an uploaded CSV, column names for sku / quantity /
+  cost, feed_last_synced_at, feed_last_error.
+- Store listings get `fulfillment` (`FulfillmentMode`: STOCK, DROPSHIP, STOCK_THEN_DROPSHIP), nullable
+  supplier_id, supplier_sku, `cost_cents` (what one unit costs us: supplier price for dropship, purchase
+  cost for stock), `supplier_stock` (nullable int from the feed) and `supplier_stock_synced_at`.
+  * STOCK: as today (own quantity, own shipping fields, handling_days).
+  * DROPSHIP: no own quantity; available while the supplier is active and supplier_stock is null
+    (unknown → assume available) or > 0; max orderable = supplier_stock when known.
+  * STOCK_THEN_DROPSHIP: sells own stock first; when own quantity cannot cover a line it is fulfilled
+    by the supplier (a line is never split: the whole line is stock or dropship, decided at checkout and
+    stored on the order item as `fulfillment_source` = stock|supplier + supplier_id).
+- Stock reservation (orders.reserved_until) keeps working for own stock; supplier lines are checked
+  against supplier_stock when known and never decrement own quantity.
+
+### R3.2 Shipping and buyer-facing info
+- Within the platform seller order, shipping is computed per **fulfilment group**: own-stock lines use
+  the listing rules as today; each supplier's lines form one parcel priced with the supplier rules
+  (first item domestic/international by buyer country, + additional_item_cents per further unit, free
+  over free_shipping_over_cents). The cart/checkout show one shipping line per group, e.g. "Shipping
+  (ships from SDLabs)" / "Shipping (ships separately, 5–8 business days)". Supplier names are never
+  shown to buyers.
+- Buy box / listing / driver page: own stock → "In stock, ships in N days"; dropship → "Ships in X–Y
+  business days"; hybrid shows whichever applies to the chosen quantity.
+
+### R3.3 Purchase orders and shipments
+- `supplier_orders` (purchase orders): number (e.g. PO-7KQ2M9), order, seller order, supplier, status
+  (`SupplierOrderStatus`: PENDING, SENT, CONFIRMED, SHIPPED, CANCELLED, PROBLEM), shipping address
+  snapshot, supplier_reference (their order number), items (`supplier_order_items`: order item,
+  supplier_sku, quantity, unit_cost_cents), items_cost_cents, shipping_cost_cents (what the supplier
+  charges us, entered when known), dropship_fee_cents, sent_at, confirmed_at, cancelled_at, notes.
+- Created automatically by OrderFulfillment::markPaid — one per supplier per paid order (idempotent).
+  Auto-send when the supplier has auto_send_purchase_orders, otherwise admins send it.
+  Sending = queued mail to order_email with PO number, lines (SKU, qty, unit cost), ship-to address,
+  "blind dropship" instructions when set, and a reply-to of the store email; plus CSV download and
+  "Mark as placed manually" (for supplier web portals) with supplier_reference.
+- `shipments` (general, used for every seller order from now on): seller order, optional supplier
+  order, carrier, tracking_number, tracking_url, shipped_at, items (pivot with quantities). The existing
+  marketplace seller "Mark shipped" flow creates one shipment for the whole seller order (unchanged UX).
+  Store orders can have several (own-stock parcel shipped by an admin + one per purchase order when the
+  admin enters the supplier's tracking). A seller order becomes SHIPPED when all its items are in
+  shipments; shipped_at = the last shipment's time, so payout timing (R2.1), auto-complete and the
+  problem window keep their meaning. The buyer gets OrderShipped per shipment ("2 of 2 parcels shipped").
+- Refund/cancel: refunding store lines whose PO is still PENDING cancels those PO lines; if already SENT,
+  the PO is flagged PROBLEM with a note "cancel with supplier" for the admin.
+
+### R3.4 Stock feed, margins
+- `marketplace:sync-supplier-stock` (scheduled hourly; also an admin "Sync now" button): reads each
+  supplier's feed, matches rows to listings by supplier_sku, updates supplier_stock (and cost_cents when
+  a cost column is mapped), records errors on the supplier; never deletes listings.
+- Margin report (admin): per paid order and totals for a date range — revenue (items + shipping
+  charged), costs (unit costs × qty, supplier shipping, dropship fees), estimated Stripe fee
+  (`marketplace.stripe_fee_bps` default 290 + `stripe_fee_fixed_cents` default 30), refunds, margin and
+  margin %; CSV export. Store listing form shows the unit margin at the entered price and warns below
+  `marketplace.min_margin_bps` (default 1500).

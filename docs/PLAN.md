@@ -531,3 +531,33 @@ products**. Marketplace (user) listings are unchanged. Migration policy §7 appl
   ShipmentService, plain Eloquent, no factories: the production image has no Faker) inside a transaction that is always rolled back, with
   notifications, mail and queues faked; `EmailPreviews::definitions()` lists the mails (add new ones there: a test checks every mail-capable
   notification is covered).
+
+## 10. Revision R5: Flarum 2.0 (owner decisions)
+
+### R5.1 Upgrade (one agent)
+- Replace the crazymax/flarum 1.8 image with our own image in docker/flarum: same pinned
+  serversideup/php 8.3 fpm-nginx base as the app, Flarum 2.0.x installed with Composer at BUILD time
+  from a committed docker/flarum/composer.json + composer.lock (bundled default extensions plus
+  flarum/tags, flarum/embed, fof/upload, fof/polls, fof/reactions, fof/best-answer, fof/byobu — all
+  stable 2.x, exact versions). No runtime Composer installs, no installer patching.
+- Served at https://DOMAIN/forum (sub-path). First start: unattended install (admin from FLARUM_ADMIN_*,
+  url from APP_DOMAIN, DB from FLARUM_DB_*), then on every start: config generated from env, migrate,
+  enable the configured extensions, store FLARUM_API_KEY, copy MAIL_* settings, clear cache. Persist
+  what must survive (config if needed, storage, public assets incl. avatars and fof/upload files).
+  Flarum's scheduler runs (schedule:run every minute). An existing 1.8 database is upgraded in place
+  with `php flarum migrate` (Flarum's official path); `docker/flarum/reset.sh` wipes the forum (volume
+  + database) for a clean start — the owner will reset the dev forum.
+- Laravel side: FlarumClient and everything using it (SSO remember-cookie login, user creation, tags,
+  discussions, posts, reply counts, embed URLs, forum:setup / --backfill / forum:seed-demo) verified
+  against a real Flarum 2.0 and adapted. Remove the unused maicol07/flarum-sso-plugin package.
+- The embed page (flarum/embed 2.x) must show the discussion without Flarum's top bar; the
+  composer and fof/upload work inside the iframe.
+
+### R5.2 Discussion visibility with Byobu (follow-up agent)
+| Design state           | Discussion visible to                                   |
+|------------------------|---------------------------------------------------------|
+| hidden (not active)    | designer + admins (thread created when the design is)   |
+| active, free           | everyone (public, Designs tag)                          |
+| active, paid           | designer + buyers (unrevoked entitlements) + admins     |
+Buyers are added when an entitlement is granted and removed when it is revoked (refunds). Changes of
+active status or price move the thread between these states. Drivers and listings stay public.

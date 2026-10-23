@@ -607,7 +607,9 @@ active status or price move the thread between these states. Drivers and listing
   - Byobu adds an event post ("forumadmin added recipients ...") on every change of the list, which would list every purchase and refund
     in a design's thread. `docker/flarum/skeleton/extend.php` binds Byobu's `CreatePostWhenRecipientsChanged` (subscribed by class name,
     so the container binding wins) to a subclass that skips recipient-change and made-public posts when the actor is a forum admin;
-    members' own private discussions keep them. The Docker CI smoke test checks a discussion still has one post after such changes.
+    members' own private discussions keep them. The skipped post is not only cosmetic: Byobu stores recipients after the discussion is
+    saved, and the post's creation re-saves the discussion (Post::created), which is when Flarum recomputes `is_private`. The subclass
+    therefore re-saves a fresh copy of the discussion itself (without it the first "make private" left the thread public). The Docker CI smoke test checks a discussion still has one post after such changes.
     Recipients still see each other's names when they post;
     each new recipient gets an alert and an e-mail "added you to a private discussion", and the first restriction would even tell the
     designer about their own thread. `createUser()` therefore switches `notify_byobuPrivateDiscussionAdded_{alert,email}` off for accounts the

@@ -9,6 +9,7 @@
 
 use Flarum\Extend;
 use Flarum\Extension\Extension;
+use Flarum\Frontend\Document;
 use FoF\Byobu\Events\AbstractRecipientsEvent;
 use FoF\Byobu\Events\DiscussionMadePublic;
 use FoF\Byobu\Listeners\CreatePostWhenRecipientsChanged;
@@ -16,6 +17,24 @@ use Illuminate\Contracts\Container\Container;
 
 return [
     // Register extenders here to customize your forum!
+
+    // LastPope: the forum lives under /forum of the site, and its logo (top left) leads back to the site's home page instead
+    // of the forum's. Flarum renders that link (#home-link) in the page and routes clicks on it inside the forum, so point it
+    // at the site root and keep Flarum's handler from seeing the click: the browser then simply follows the link.
+    (new Extend\Frontend('forum'))->content(function (Document $document) {
+        $document->foot[] = <<<'HTML'
+            <script>
+            (function () {
+                var link = document.getElementById('home-link');
+                if (!link) return;
+                link.href = new URL('/', link.href).href;
+                document.addEventListener('click', function (e) {
+                    if (e.target instanceof Element && e.target.closest('#home-link')) e.stopPropagation();
+                }, true);
+            })();
+            </script>
+            HTML;
+    }),
 
     // LastPope: the shop decides who can see a design's thread (designer, buyers, admins; docs/PLAN.md R5.2) and changes
     // its recipients through the API as a forum administrator on every purchase, refund, price or status change. Byobu

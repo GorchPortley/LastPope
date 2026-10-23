@@ -555,6 +555,11 @@ Until now the forum was Flarum 1.8 (the `crazymax/flarum` image). The upgrade ne
 ### Forum tips
 
 - Add Flarum extensions as described in ["Adding an extension"](#adding-an-extension). The forum's own Extension Manager is deliberately not installed.
+- **Logo and colours like the site:** Administration, Appearance: upload `https://<domain>/images/forum/sdlabs-forum-logo-white.png` as
+  the logo (made from the site's SVG logo; Flarum only takes PNG/JPG/GIF), tick *Colored header* and set the primary colour to
+  `#3b0764` (the site's header). For Flarum's white header use `sdlabs-forum-logo-black.png` instead. A forum reset clears this.
+  Clicking the logo leads to the site's home page, not the forum's (`docker/flarum/skeleton/extend.php`). Phones show no logo in
+  Flarum's header; `linkrobins/mobile-logo` (Flarum 2) adds one if wanted.
 - The forum's mail settings are copied from `MAIL_*` once, when it is installed. Change them later
   in the forum administration (Administration, Email). Only SMTP settings can be copied: with any other `MAIL_MAILER`
   (an API mailer such as Resend or Postmark, or `log`) the forum is installed with the **Log** driver, which writes its

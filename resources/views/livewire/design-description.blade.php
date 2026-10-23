@@ -120,7 +120,13 @@
     
     <div class="min-h-[300px]" x-show="selectedTab === 'discussion'" id="tabpanelDiscussion" role="tabpanel" aria-label="discussion">
         @if($design->forum_slug && app(\App\Services\Forum\ForumClient::class)->enabled())
-            <iframe src="{{ app(\App\Services\Forum\ForumClient::class)->embedUrl($design->forum_slug) }}" style="width:100%; height: 800px;"></iframe>
+            @if($this->canSeeDiscussion)
+                <iframe src="{{ app(\App\Services\Forum\ForumClient::class)->embedUrl($design->forum_slug) }}" style="width:100%; height: 800px;"></iframe>
+            @else
+                <div class="flex items-center justify-center h-[300px] py-8 text-gray-500" data-discussion-locked>
+                    <p>The discussion for this design is open to buyers. {{ auth()->check() ? 'Buy this design to join it.' : 'Log in to buy this design and join it.' }}</p>
+                </div>
+            @endif
         @else
             <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
                 <p>No discussion data available</p>

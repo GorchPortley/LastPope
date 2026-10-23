@@ -574,3 +574,52 @@ products**. Marketplace (user) listings are unchanged. Migration policy §7 appl
 | active, paid           | designer + buyers (unrevoked entitlements) + admins     |
 Buyers are added when an entitlement is granted and removed when it is revoked (refunds). Changes of
 active status or price move the thread between these states. Drivers and listings stay public.
+
+### R5.2 implementation notes (where things live; done)
+- `App\Services\Forum\DesignDiscussionAudience`: the one place that says who may see a design's discussion, from the database:
+  `isPublic()` (active and free), `members()` (the designer, the site's admins = role `admin`, and, while active and paid, the users with an
+  unrevoked entitlement) and `includes($design, $user)` (the same rules for one viewer). The job and the Discussion tab both use it.
+- `App\Jobs\SyncForumVisibility` (queued, `afterCommit`, `ShouldBeUniqueUntilProcessing` per design plus `WithoutOverlapping`, so a change
+  that arrives while a run is in progress queues another run and the last run always reads the newest data; 3 tries with backoff
+  60/300/900 s like CreateForumDiscussion). Stateless: it recomputes the audience and calls `ForumClient::makeDiscussionPublic()` or
+  `makeDiscussionPrivate($slug, $members)`. `SyncForumVisibility::queueFor()` skips designs without a thread and never throws.
+  Triggers: `DesignObserver` (active or price_cents changed), `EntitlementObserver` (a new, revoked, restored or deleted entitlement of a
+  design whose audience depends on buyers, so every path counts: `User::grantEntitlement` / `revokeEntitlement`, refunds, Filament),
+  `CreateForumDiscussion` (after it opened a design thread) and `php artisan forum:sync-visibility` (all designs, run inline, prints
+  public/private/failed; the re-sync after a forum reset or restore, or when admins changed).
+- A design gets its thread when it is created, active or not (`CreateForumDiscussion::wantsThread()`, formerly `isPublic()`); drivers and
+  listings are unchanged. `forum:setup --backfill` and `forum:seed-demo` include hidden designs; `forum:seed-demo` also syncs the
+  visibility before it posts, and only lets demo users who can see a private design thread reply (the buyers and the demo admin;
+  DemoSeeder now gives the admin's two paid designs a complimentary buyer so they have somebody to talk to; hidden designs get no replies).
+- `FlarumClient` (verified against Flarum 2.0.2 + fof/byobu 2.0.0, the real image):
+  - Private = recipients. `PATCH /discussions/{id}` with `relationships.recipientUsers` / `recipientGroups` sets the list exactly (added and
+    removed ones are diffed by Byobu; the same list again is a no-op, so the call is idempotent). The Admin group (id 1) is always sent.
+  - Byobu shows a private discussion **only to recipients, forum admins included** (an admin who is not a recipient gets 404, also when
+    patching), so the Admin group stays a recipient. The site's app admins are added as user recipients, so they pass the embed.
+  - Members cannot create private discussions (403: `startPrivateDiscussionWith*` is granted to nobody by default) and the tag is dropped
+    when a discussion is created with recipients. So a thread is created public in its tag as the designer, then restricted by the admin
+    identity, in the same CreateForumDiscussion run (the queued sync is only the retry). The tag stays on the discussion through private
+    and public again. The price: a public moment between those two requests.
+  - Public again: removing all recipients **hides the discussion** (soft delete) instead. What works is `attributes.public = <discussion id>`
+    plus empty `recipientUsers` / `recipientGroups` in the same PATCH (without the relationships Byobu answers 200 and ignores it), and only
+    while the setting `fof-byobu.makePublic` is on, which is off on a fresh forum: the client reads `canMakePublic` and switches it on with
+    `POST /settings` the first time. Both methods read the discussion back afterwards because Byobu answers 200 to requests it ignores.
+  - Byobu adds an event post ("forumadmin added recipients ...") on every change of the list, which would list every purchase and refund
+    in a design's thread. `docker/flarum/skeleton/extend.php` binds Byobu's `CreatePostWhenRecipientsChanged` (subscribed by class name,
+    so the container binding wins) to a subclass that skips recipient-change and made-public posts when the actor is a forum admin;
+    members' own private discussions keep them. The Docker CI smoke test checks a discussion still has one post after such changes.
+    Recipients still see each other's names when they post;
+    each new recipient gets an alert and an e-mail "added you to a private discussion", and the first restriction would even tell the
+    designer about their own thread. `createUser()` therefore switches `notify_byobuPrivateDiscussionAdded_{alert,email}` off for accounts the
+    site creates (a member can only edit their own preferences, so it acts as that account). Replies in a private discussion still notify
+    all recipients (Byobu default; left alone).
+  - `makeDiscussionPrivate()` resolves every member with `ensureUser()` and throws when one has no account, because the list replaces the
+    current one and a partial list would remove a buyer.
+  - Embed: `/forum/embed/{slug}` with the SSO `flarum_remember` cookie is 200 for a recipient and 404 for a non-recipient or guest.
+- Discussion tab (`design-description.blade.php`, `DesignDescription::canSeeDiscussion`): the iframe for those `includes()` accepts, otherwise
+  "The discussion for this design is open to buyers." plus "Buy this design to join it." (logged in) or "Log in to buy this design and
+  join it." (guest), in the style of the Files tab message (`data-discussion-locked`).
+- Tests: `tests/Feature/Forum/ForumVisibilityTest.php` (state table, recompute, triggers, tab, `forum:sync-visibility`), client payloads in
+  `FlarumClientTest`, `FakeForumClient::$visibility` (posting to a private thread as a non-member fails like Flarum). Known gaps: granting
+  or removing the admin role does not queue a sync by itself (the next change of a design does, or run `forum:sync-visibility`), and
+  deleting a design leaves its thread as it was.

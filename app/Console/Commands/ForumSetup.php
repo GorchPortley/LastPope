@@ -15,7 +15,7 @@ class ForumSetup extends Command
 {
     protected $signature = 'forum:setup
         {--check : Only report the status, do not create anything}
-        {--backfill : Also queue a discussion for every public design, driver and listing that has none yet}';
+        {--backfill : Also queue a discussion for every design, public driver and public listing that has none yet}';
 
     protected $description = 'Check the connection to the Flarum forum and create the tags used for automatic discussions';
 
@@ -86,7 +86,7 @@ class ForumSetup extends Command
             }
 
             $model::query()->whereNull('forum_slug')->each(function ($item) use (&$queued) {
-                if (CreateForumDiscussion::supports($item) && CreateForumDiscussion::isPublic($item)) {
+                if (CreateForumDiscussion::supports($item) && CreateForumDiscussion::wantsThread($item)) {
                     CreateForumDiscussion::dispatch($item);
                     $queued++;
                 }

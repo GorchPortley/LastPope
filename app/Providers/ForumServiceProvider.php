@@ -6,9 +6,11 @@ use App\Console\Commands\ForumSeedDemo;
 use App\Console\Commands\ForumSetup;
 use App\Models\Design;
 use App\Models\Driver;
+use App\Models\Entitlement;
 use App\Models\Listing;
 use App\Observers\DesignObserver;
 use App\Observers\DriverObserver;
+use App\Observers\EntitlementObserver;
 use App\Observers\ListingObserver;
 use App\Services\Forum\FlarumClient;
 use App\Services\Forum\ForumClient;
@@ -17,7 +19,8 @@ use Illuminate\Support\ServiceProvider;
 
 /**
  * Wires the Flarum forum into the app: the HTTP client (or a no-op one when FORUM_ENABLED=false),
- * the observers that open a discussion for new designs/drivers/listings, and `forum:setup`.
+ * the observers that open a discussion for new designs/drivers/listings (and re-sync who can see a design's
+ * discussion when its status, price or buyers change), and the `forum:*` commands.
  * Login/logout/registration listeners are registered in EventServiceProvider.
  */
 class ForumServiceProvider extends ServiceProvider
@@ -35,6 +38,7 @@ class ForumServiceProvider extends ServiceProvider
     {
         Design::observe(DesignObserver::class);
         Driver::observe(DriverObserver::class);
+        Entitlement::observe(EntitlementObserver::class);
 
         if (class_exists(Listing::class)) {
             Listing::observe(ListingObserver::class);

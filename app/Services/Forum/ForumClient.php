@@ -12,8 +12,8 @@ use App\Models\User;
  *
  * Failure policy: the calls that run inside a web request (ensureUser, issueRememberToken) never
  * throw, they log and return null, so a forum outage can never block a login or registration.
- * createDiscussion, createPost, replyCount, tags and createTag throw ForumException; the queued job
- * retries, and `forum:setup` / `forum:seed-demo` report the error.
+ * createDiscussion, createPost, replyCount, makeDiscussionPublic, makeDiscussionPrivate, tags and createTag throw
+ * ForumException; the queued job retries, and `forum:setup` / `forum:seed-demo` report the error.
  */
 interface ForumClient
 {
@@ -59,6 +59,28 @@ interface ForumClient
      * @throws ForumException
      */
     public function replyCount(string $discussion): ?int;
+
+    /**
+     * Let everyone see the discussion again (in the tag it was created in). Does nothing when it is public already.
+     *
+     * @param  string  $discussion  the stored discussion slug "{id}-{title-slug}"; only the leading id is used
+     *
+     * @throws ForumException
+     */
+    public function makeDiscussionPublic(string $discussion): void;
+
+    /**
+     * Make the discussion private: only $members and the forum's administrators can see it and reply. The member
+     * list is applied as given (anybody not on it loses access), so pass everybody who may see it. Does nothing
+     * when the discussion is private to exactly these members already. Every member needs a forum account, which
+     * is created when missing; when one cannot be had nothing is changed and the call throws.
+     *
+     * @param  string  $discussion  the stored discussion slug "{id}-{title-slug}"; only the leading id is used
+     * @param  iterable<User>  $members
+     *
+     * @throws ForumException
+     */
+    public function makeDiscussionPrivate(string $discussion, iterable $members): void;
 
     /** Public link to a discussion, e.g. https://example.com/forum/d/12-my-design. */
     public function discussionUrl(string $slug): string;

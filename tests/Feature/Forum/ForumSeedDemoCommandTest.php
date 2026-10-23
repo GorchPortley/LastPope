@@ -4,6 +4,7 @@ use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\User;
+use App\Services\Forum\DesignDiscussionAudience;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\FakeForumClient;
@@ -17,14 +18,20 @@ beforeEach(function () {
     config(['forum.throttle_wait' => 0]);
 });
 
-/** @return array<int, \Illuminate\Database\Eloquent\Model> every item that is public and gets a thread */
-function publicForumSubjects(): array
+/** @return array<int, \Illuminate\Database\Eloquent\Model> every item that gets a thread: all designs (hidden ones too), public drivers and listings */
+function forumSubjects(): array
 {
     return array_merge(
-        Design::where('active', true)->get()->all(),
+        Design::all()->all(),
         Driver::where('active', true)->get()->all(),
         Listing::where('status', 'active')->get()->all(),
     );
+}
+
+/** The threads that get replies: a hidden design has nobody to talk to. */
+function talkingForumSubjects(): array
+{
+    return array_values(array_filter(forumSubjects(), fn ($subject) => ! ($subject instanceof Design && ! $subject->active)));
 }
 
 it('refuses to run outside the local and demo environments', function () {
@@ -62,7 +69,7 @@ it('needs an enabled, reachable forum', function () {
     expect($forum->discussions)->toBeEmpty()->and($forum->tags)->toBe([]);
 });
 
-it('creates the missing tags, then a thread for every public design, driver and listing', function () {
+it('creates the missing tags, then a thread for every design, public driver and public listing', function () {
     // created before the forum is connected, like content that was published earlier
     $draftDesign = Design::factory()->draft()->create();
     $draftDriver = Driver::factory()->draft()->create();
@@ -76,7 +83,7 @@ it('creates the missing tags, then a thread for every public design, driver and 
 
     expect($forum->tags)->toHaveKeys(['designs', 'drivers', 'marketplace']);
 
-    $subjects = publicForumSubjects();
+    $subjects = forumSubjects();
     expect($subjects)->not->toBeEmpty()->and($forum->discussions)->toHaveCount(count($subjects));
 
     foreach ($subjects as $subject) {
@@ -85,14 +92,35 @@ it('creates the missing tags, then a thread for every public design, driver and 
 
     // each thread is written by its owner, in the tag of its kind
     $tags = collect($forum->discussions)->countBy('tag');
-    expect($tags['designs'])->toBe(Design::where('active', true)->count())
+    expect($tags['designs'])->toBe(Design::count())
         ->and($tags['drivers'])->toBe(Driver::where('active', true)->count())
         ->and($tags['marketplace'])->toBe(Listing::where('status', 'active')->count());
 
+    // a hidden design has its thread too (private to its designer and the admins); other drafts have none
     expect($storeListing->fresh()->forum_slug)->not->toBeNull()
-        ->and($draftDesign->fresh()->forum_slug)->toBeNull()
+        ->and($draftDesign->fresh()->forum_slug)->not->toBeNull()
         ->and($draftDriver->fresh()->forum_slug)->toBeNull()
         ->and($draftListing->fresh()->forum_slug)->toBeNull();
+});
+
+it('sets who can see each design thread: free designs are public, hidden and paid ones private', function () {
+    $hidden = Design::factory()->draft()->create();
+
+    $forum = FakeForumClient::install();
+    $this->artisan('forum:seed-demo')->assertSuccessful();
+
+    foreach (Design::all() as $design) {
+        $members = $forum->visibility[$design->forum_slug];
+
+        if (DesignDiscussionAudience::isPublic($design)) {
+            expect($members)->toBeNull();
+        } else {
+            expect($members)->toBe(DesignDiscussionAudience::members($design)->pluck('id')->all())
+                ->and($members)->toContain($design->user_id);
+        }
+    }
+
+    expect($forum->visibility[$hidden->fresh()->forum_slug])->toContain($hidden->user_id);
 });
 
 it('adds 2 to 4 replies per thread from other demo users, and the seller answers questions on listings', function () {
@@ -101,7 +129,7 @@ it('adds 2 to 4 replies per thread from other demo users, and the seller answers
     $this->artisan('forum:seed-demo')->assertSuccessful();
 
     $bySlug = collect($forum->posts)->groupBy('discussion');
-    $subjects = publicForumSubjects();
+    $subjects = talkingForumSubjects();
     expect($bySlug)->toHaveCount(count($subjects));
 
     $demoIds = User::where('email', 'like', '%@sdlabs.test')->pluck('id')->all();
@@ -119,6 +147,11 @@ it('adds 2 to 4 replies per thread from other demo users, and the seller answers
             ->and($posts->pluck('author')->every(fn ($id) => in_array($id, $demoIds, true)))->toBeTrue()
             ->and($posts->pluck('content')->every(fn ($text) => filled($text)))->toBeTrue()
             ->and($posts->pluck('content')->unique()->count())->toBe($posts->count());
+
+        // a private design thread only hears from people who can see it: its buyers and the admin
+        if ($subject instanceof Design && ! DesignDiscussionAudience::isPublic($subject)) {
+            expect($posts->pluck('author')->every(fn ($id) => DesignDiscussionAudience::members($subject)->contains('id', $id)))->toBeTrue();
+        }
 
         if ($subject instanceof Listing) {
             // buyer question, seller answer, buyer question, seller answer (cut at the reply count)
@@ -183,8 +216,8 @@ it('carries on when the forum says slow down', function () {
     $this->artisan('forum:seed-demo')->expectsOutputToContain('Forum demo content is ready')->assertSuccessful();
 
     expect($forum->throttle)->toBe(0)
-        ->and($forum->discussions)->toHaveCount(count(publicForumSubjects()))
-        ->and(collect($forum->posts)->pluck('discussion')->unique())->toHaveCount(count(publicForumSubjects()));
+        ->and($forum->discussions)->toHaveCount(count(forumSubjects()))
+        ->and(collect($forum->posts)->pluck('discussion')->unique())->toHaveCount(count(talkingForumSubjects()));
 });
 
 it('reports the steps that keep failing and succeeds on the next run', function () {
@@ -196,7 +229,7 @@ it('reports the steps that keep failing and succeeds on the next run', function 
 
     $forum->throttle = 0;
     $this->artisan('forum:seed-demo')->assertSuccessful();
-    expect($forum->discussions)->toHaveCount(count(publicForumSubjects()));
+    expect($forum->discussions)->toHaveCount(count(forumSubjects()));
 });
 
 // --- DemoSeeder -----------------------------------------------------------------------------------
@@ -223,7 +256,7 @@ it('ends the demo seeding with the forum content when the forum is up', function
 
     $this->artisan('db:seed', ['--class' => DemoSeeder::class])->assertSuccessful();
 
-    expect($forum->discussions)->toHaveCount(count(publicForumSubjects()))
+    expect($forum->discussions)->toHaveCount(count(forumSubjects()))
         ->and($forum->posts)->not->toBeEmpty();
 });
 
@@ -244,7 +277,7 @@ it('seeds a forum through the real client: authors act as themselves, throttled 
         public int $next = 100;
         public int $writes = 0;
         public int $throttled = 0;
-        /** @var array<int, array{id: int, author: int, title: string}> */
+        /** @var array<int, array{id: int, author: int, title: string, private: bool, recipients: array<int, int>}> */
         public array $discussions = [];
         /** @var array<int, array{id: int, discussion: int, author: int, content: string}> */
         public array $posts = [];
@@ -279,11 +312,18 @@ it('seeds a forum through the real client: authors act as themselves, throttled 
             $route === '/discussions' && $method === 'POST' => (function () use ($request, $flarum, $actor, $json) {
                 $id = $flarum->next++;
                 $title = (string) $request['data']['attributes']['title'];
-                $flarum->discussions[$id] = ['id' => $id, 'author' => $actor, 'title' => $title];
+                $flarum->discussions[$id] = ['id' => $id, 'author' => $actor, 'title' => $title, 'private' => false, 'recipients' => []];
 
                 return $json(['data' => ['id' => (string) $id, 'attributes' => ['slug' => $id.'-'.Illuminate\Support\Str::slug($title)]]], 201);
             })(),
             $route === '/posts' && $method === 'POST' => (function () use ($request, $flarum, $actor, $json) {
+                $thread = $flarum->discussions[(int) $request['data']['relationships']['discussion']['data']['id']] ?? null;
+
+                // a private discussion does not exist for anybody but its recipients (Byobu)
+                if ($thread === null || ($thread['private'] && ! in_array($actor, $thread['recipients'], true))) {
+                    return $json(['errors' => [['status' => '404', 'code' => 'not_found']]], 404);
+                }
+
                 $id = $flarum->next++;
                 $flarum->posts[$id] = [
                     'id' => $id,
@@ -294,12 +334,27 @@ it('seeds a forum through the real client: authors act as themselves, throttled 
 
                 return $json(['data' => ['type' => 'posts', 'id' => (string) $id]], 201);
             })(),
-            (bool) preg_match('#^/discussions/(\d+)$#', $route, $m) => (function () use ($flarum, $m, $json) {
+            (bool) preg_match('#^/discussions/(\d+)$#', $route, $m) => (function () use ($request, $method, $flarum, $m, $json) {
                 $id = (int) $m[1];
 
-                return isset($flarum->discussions[$id])
-                    ? $json(['data' => ['id' => (string) $id, 'attributes' => ['commentCount' => 1 + count(array_filter($flarum->posts, fn ($p) => $p['discussion'] === $id))]]])
-                    : $json(['errors' => []], 404);
+                if (! isset($flarum->discussions[$id])) {
+                    return $json(['errors' => []], 404);
+                }
+
+                if ($method === 'PATCH') {
+                    $public = isset($request['data']['attributes']['public']);
+                    $flarum->discussions[$id]['private'] = ! $public;
+                    $flarum->discussions[$id]['recipients'] = $public ? [] : array_map(
+                        fn ($user) => (int) $user['id'],
+                        $request['data']['relationships']['recipientUsers']['data'],
+                    );
+                }
+
+                return $json(['data' => ['id' => (string) $id, 'attributes' => [
+                    'commentCount' => 1 + count(array_filter($flarum->posts, fn ($p) => $p['discussion'] === $id)),
+                    'isPrivateDiscussion' => $flarum->discussions[$id]['private'],
+                    'canMakePublic' => true,
+                ]]]);
             })(),
             default => $json(['errors' => [['detail' => "unexpected {$method} {$route}"]]], 500),
         };
@@ -307,14 +362,21 @@ it('seeds a forum through the real client: authors act as themselves, throttled 
 
     $this->artisan('forum:seed-demo')->expectsOutputToContain('Forum demo content is ready')->assertSuccessful();
 
-    $subjects = publicForumSubjects();
+    $subjects = forumSubjects();
     expect($flarum->throttled)->toBeGreaterThan(5)
         ->and($flarum->discussions)->toHaveCount(count($subjects));
 
     $repliesByThread = collect($flarum->posts)->groupBy('discussion');
-    expect($repliesByThread)->toHaveCount(count($subjects));
+    expect($repliesByThread)->toHaveCount(count(talkingForumSubjects()));
 
-    foreach ($subjects as $subject) {
+    // hidden and paid designs are private by now, to their designer, buyers and the admin only
+    foreach (Design::all() as $design) {
+        $thread = $flarum->discussions[(int) explode('-', $design->forum_slug)[0]];
+
+        expect($thread['private'])->toBe(! DesignDiscussionAudience::isPublic($design));
+    }
+
+    foreach (talkingForumSubjects() as $subject) {
         $subject = $subject->fresh();
         [$id] = explode('-', $subject->forum_slug);
         $posts = $repliesByThread[(int) $id];

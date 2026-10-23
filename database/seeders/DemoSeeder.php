@@ -531,6 +531,10 @@ class DemoSeeder extends Seeder
         }
         $u['buyer4']->grantEntitlement($d['echo-chamber'], EntitlementSource::FREE);
         $u['buyer5']->grantEntitlement($d['harbor-2'], EntitlementSource::ADMIN_GRANT);
+        // Complimentary copies of the admin's paid designs: their forum discussions are private to the buyers, so
+        // `forum:seed-demo` needs somebody to hold a conversation with.
+        $u['buyer3']->grantEntitlement($d['atlas-four'], EntitlementSource::ADMIN_GRANT);
+        $u['buyer1']->grantEntitlement($d['stagehand-system'], EntitlementSource::ADMIN_GRANT);
 
         $address = fn (string $buyer) => $u[$buyer]->addresses()->first();
 

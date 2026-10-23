@@ -24,6 +24,10 @@ use Throwable;
  * Every member gets a Flarum account with a random password that only this app knows (the
  * encrypted users.forum_password); members never type it. Login simply asks Flarum for a
  * "remember" token with that password and hands it to the browser as the flarum_remember cookie.
+ *
+ * Private discussions are fof/byobu's: a discussion is private while it has recipients (users and/or groups), and only
+ * recipients see it, Flarum's administrators included (hence the Admin group is always a recipient, which also keeps the
+ * discussion reachable for our admin calls). Byobu keeps the discussion's tag when it turns private or public again.
  */
 class FlarumClient implements ForumClient
 {
@@ -31,6 +35,19 @@ class FlarumClient implements ForumClient
     private const DOWN_KEY = 'forum:unavailable';
 
     private const DOWN_SECONDS = 30;
+
+    /** Flarum's built-in Admin group. */
+    private const ADMIN_GROUP_ID = 1;
+
+    /**
+     * Byobu mails and alerts a member "X added you to a private discussion" whenever they become a recipient. This
+     * app adds people on its own (the designer of every hidden or paid design, every buyer), so the accounts it
+     * creates start with that notification off. Members can switch it on in their forum settings.
+     */
+    private const QUIET_PREFERENCES = [
+        'notify_byobuPrivateDiscussionAdded_alert' => false,
+        'notify_byobuPrivateDiscussionAdded_email' => false,
+    ];
 
     private static ?bool $hasForumUserIdColumn = null;
 
@@ -220,6 +237,70 @@ class FlarumClient implements ForumClient
         return is_numeric($comments) ? max(0, (int) $comments - 1) : null;
     }
 
+    public function makeDiscussionPublic(string $discussion): void
+    {
+        $this->assertConfigured();
+
+        $id = $this->discussionId($discussion);
+        $state = $this->readDiscussion($id);
+
+        if (! $state['private']) {
+            return;
+        }
+
+        // Byobu hides the "public" field until its setting "make public" is on, and a fresh forum has it off.
+        if (! $state['canMakePublic']) {
+            $this->throwUnlessSuccessful($this->request()->post('settings', ['fof-byobu.makePublic' => '1']), 'allow making discussions public');
+            Log::info('Forum: switched on the Byobu setting "make public" (needed to open designs to everyone again).');
+        }
+
+        // Byobu only looks at "public" when the request also submits the (now empty) recipient lists.
+        $response = $this->request()->patch('discussions/'.$id, [
+            'data' => [
+                'type' => 'discussions',
+                'id' => (string) $id,
+                'attributes' => ['public' => $id],
+                'relationships' => [
+                    'recipientUsers' => ['data' => []],
+                    'recipientGroups' => ['data' => []],
+                ],
+            ],
+        ]);
+
+        $this->throwUnlessSuccessful($response, 'make the discussion public');
+        $this->assertPrivacy($id, false);
+    }
+
+    public function makeDiscussionPrivate(string $discussion, iterable $members): void
+    {
+        $this->assertConfigured();
+
+        $id = $this->discussionId($discussion);
+        $recipients = [];
+
+        foreach ($members as $member) {
+            // A missing account must not silently drop a member: the list below replaces the current one.
+            $forumId = $this->ensureUser($member)
+                ?? throw new ForumException("Could not find or create the forum account of user #{$member->getKey()}.");
+
+            $recipients[$forumId] = ['type' => 'users', 'id' => (string) $forumId];
+        }
+
+        $response = $this->request()->patch('discussions/'.$id, [
+            'data' => [
+                'type' => 'discussions',
+                'id' => (string) $id,
+                'relationships' => [
+                    'recipientUsers' => ['data' => array_values($recipients)],
+                    'recipientGroups' => ['data' => [['type' => 'groups', 'id' => (string) self::ADMIN_GROUP_ID]]],
+                ],
+            ],
+        ]);
+
+        $this->throwUnlessSuccessful($response, 'make the discussion private');
+        $this->assertPrivacy($id, true);
+    }
+
     public function discussionUrl(string $slug): string
     {
         return $this->forumUrl().'/d/'.rawurlencode($slug);
@@ -379,6 +460,26 @@ class FlarumClient implements ForumClient
         return (int) $matches[1];
     }
 
+    /** @return array{private: bool, canMakePublic: bool} as the admin sees the discussion */
+    private function readDiscussion(int $id): array
+    {
+        $response = $this->request()->get('discussions/'.$id);
+        $this->throwUnlessSuccessful($response, 'read the discussion');
+
+        return [
+            'private' => (bool) $response->json('data.attributes.isPrivateDiscussion'),
+            'canMakePublic' => (bool) $response->json('data.attributes.canMakePublic'),
+        ];
+    }
+
+    /** Byobu answers 200 to requests it quietly ignores, so read the discussion back after changing who can see it. */
+    private function assertPrivacy(int $id, bool $private): void
+    {
+        if ($this->readDiscussion($id)['private'] !== $private) {
+            throw new ForumException("Flarum accepted the request but discussion #{$id} is still ".($private ? 'public' : 'private').'.');
+        }
+    }
+
     private function apiUrl(): string
     {
         return rtrim($this->internalUrl, '/').'/api';
@@ -454,7 +555,10 @@ class FlarumClient implements ForumClient
             ]);
 
             if ($response->successful()) {
-                return (int) $response->json('data.id');
+                $id = (int) $response->json('data.id');
+                $this->quietenNotifications($id);
+
+                return $id;
             }
 
             if ($response->status() === 422) {
@@ -473,6 +577,29 @@ class FlarumClient implements ForumClient
         }
 
         throw new ForumException('No free forum user name found for user #'.$user->getKey().'.');
+    }
+
+    /** Best effort: a member can only change their own preferences, so this acts as the new account. */
+    private function quietenNotifications(int $forumUserId): void
+    {
+        try {
+            $response = $this->request($forumUserId)->patch('users/'.$forumUserId, [
+                'data' => [
+                    'type' => 'users',
+                    'id' => (string) $forumUserId,
+                    'attributes' => ['preferences' => self::QUIET_PREFERENCES],
+                ],
+            ]);
+        } catch (ConnectionException $e) {
+            $response = null;
+        }
+
+        if ($response === null || ! $response->successful()) {
+            Log::warning('Could not set the notification preferences of a new forum account.', [
+                'forum_user_id' => $forumUserId,
+                'status' => $response?->status(),
+            ]);
+        }
     }
 
     /** Put e-mail and password of an existing forum account back in line with the app. */

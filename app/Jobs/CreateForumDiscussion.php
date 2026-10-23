@@ -24,7 +24,9 @@ use Illuminate\Support\Str;
  * ("{id}-{title}") in the item's forum_slug column, which the pages use for the embedded thread.
  *
  * The discussion is authored by the item's owner (designer / creator / seller), never by whoever
- * happens to be logged in: this runs on the queue, where there is no logged-in user.
+ * happens to be logged in: this runs on the queue, where there is no logged-in user. It always starts
+ * public, in the item's tag (members cannot start private discussions); a design's thread is then made
+ * as private as the design (SyncForumVisibility) in the same run.
  */
 class CreateForumDiscussion implements ShouldBeUnique, ShouldQueue
 {
@@ -69,8 +71,8 @@ class CreateForumDiscussion implements ShouldBeUnique, ShouldQueue
 
         $subject = $this->subject->fresh();
 
-        // Deleted meanwhile, already has a thread (earlier run / duplicate job), or not public (yet).
-        if ($subject === null || ! self::supports($subject) || filled($subject->forum_slug) || ! self::isPublic($subject)) {
+        // Deleted meanwhile, already has a thread (earlier run / duplicate job), or not ready for one (yet).
+        if ($subject === null || ! self::supports($subject) || filled($subject->forum_slug) || ! self::wantsThread($subject)) {
             return;
         }
 
@@ -90,6 +92,25 @@ class CreateForumDiscussion implements ShouldBeUnique, ShouldQueue
 
         // Quietly: this must not trigger the observer (or search indexing) again.
         $subject->forceFill(['forum_slug' => $slug])->saveQuietly();
+
+        if ($subject instanceof Design) {
+            $this->restrict($subject, $forum);
+        }
+    }
+
+    /**
+     * Make a new design thread as private as the design right away, in this run, so a hidden or paid design's thread
+     * is public only for the moment between the two requests instead of until the queue gets to the sync job.
+     * When that fails, the queued sync (with its retries) takes over.
+     */
+    private function restrict(Design $design, ForumClient $forum): void
+    {
+        try {
+            (new SyncForumVisibility($design))->handle($forum);
+        } catch (\Throwable $e) {
+            report($e);
+            SyncForumVisibility::queueFor($design);
+        }
     }
 
     public function failed(?\Throwable $exception): void
@@ -114,13 +135,17 @@ class CreateForumDiscussion implements ShouldBeUnique, ShouldQueue
         return $kind === null ? '' : trim((string) config("forum.tags.{$kind}.slug"));
     }
 
-    public static function isPublic(Model $subject): bool
+    /**
+     * Is the item ready for its discussion? A design gets one from the day it is created, hidden or not (a hidden
+     * design's discussion is private to its designer and the admins); drivers and listings wait until they are public.
+     */
+    public static function wantsThread(Model $subject): bool
     {
-        if ($subject instanceof Listing) {
-            return $subject->status === ListingStatus::ACTIVE;
-        }
-
-        return (bool) $subject->active;
+        return match (true) {
+            $subject instanceof Design => true,
+            $subject instanceof Listing => $subject->status === ListingStatus::ACTIVE,
+            default => (bool) $subject->active,
+        };
     }
 
     public static function ownerOf(Model $subject): ?User

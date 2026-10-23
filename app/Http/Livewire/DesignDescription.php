@@ -4,6 +4,7 @@ namespace App\Http\Livewire;
 
 use Livewire\Component;
 use App\Models\Design;
+use App\Services\Forum\DesignDiscussionAudience;
 
 class DesignDescription extends Component
 {
@@ -67,6 +68,12 @@ class DesignDescription extends Component
         }
 
         return $tabs;
+    }
+
+    /** Hidden and paid designs have a private forum discussion: only the designer, the buyers and the admins can open it. */
+    public function getCanSeeDiscussionProperty(): bool
+    {
+        return DesignDiscussionAudience::includes($this->design, auth()->user());
     }
 
     public function getHasAccessProperty()

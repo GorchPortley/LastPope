@@ -383,20 +383,62 @@ forum **tags** exist. Missing tags are created: `designs`, `drivers` and `market
 from `FORUM_DESIGN_TAG`, `FORUM_DRIVER_TAG`, `FORUM_LISTING_TAG`; an empty value switches the automatic
 discussions off for that kind of item). The command is safe to repeat; `--check` only reports.
 
-From then on, every design and driver that is **published** (active) gets its own discussion in the
-forum, written under the owner's forum account, and the design/driver page shows it in the *Discussion*
-tab. Drafts never get a thread. Discussions are created in the background by the `queue` container, so
-they appear a few seconds after publishing; if the forum is down they are retried automatically.
+From then on, every **design** gets its own discussion in the forum as soon as it is created (hidden or not, see
+["Who can see a design's discussion"](#who-can-see-a-designs-discussion)) and every driver gets one once it is
+**published** (active), written under the owner's forum account; the design/driver page shows it in the *Discussion*
+tab. Draft drivers never get a thread. Discussions are created in the background by the `queue` container, so
+they appear a few seconds after saving; if the forum is down they are retried automatically.
 
-Designs and drivers that were published before the forum was connected (or imported demo data) can be
+Designs and drivers that existed before the forum was connected (or imported demo data) can be
 given their discussions in one go:
 
 ```bash
 docker compose exec app php artisan forum:setup --backfill
 ```
 
-Marketplace listings follow the same rule (a discussion in the `marketplace` tag once a listing is active); this
+Marketplace listings follow the same rule as drivers (a discussion in the `marketplace` tag once a listing is active); this
 includes the store listings of new drivers.
+
+### Who can see a design's discussion
+
+The discussion of a **design** follows the design, using the Byobu extension's private discussions:
+
+| The design is | The discussion is visible to |
+|---|---|
+| hidden (not active) | its designer and the site's admins |
+| active and free | everybody (public, in the `designs` tag) |
+| active and paid | its designer, the site's admins and its buyers (everybody with an unrevoked entitlement) |
+
+Buyers are added when they buy (when the entitlement is granted) and removed when it is revoked (a refund, or *Revoke* in the
+admin). Showing or hiding a design, or changing its price, moves the discussion between these states: free to paid makes it
+private, paid to free makes it public again. Drivers and listings stay public. On the design page the *Discussion* tab shows
+the thread to the designer, the buyers and the admins; anybody else reads "The discussion for this design is open to buyers."
+instead of an empty frame.
+
+The `queue` container does the work (job `SyncForumVisibility`, a few seconds after the change). It always works out who may
+see the discussion from the site's database and tells the forum, so it is safe to repeat, runs once per design at a time, and
+retries by itself when the forum is down: a forum problem never holds up saving a design or a purchase. Things to know:
+
+- **Admins** are the site's admins (the `admin` role); they, the designer and the buyers get a forum account if they have none yet.
+  Flarum's own administrators (the *Admins* group, so `forumadmin` too) are always part of a private discussion: Byobu shows a
+  private discussion only to its recipients, and the site needs access to change them. **Do not remove the Admins group from a
+  design discussion** in the forum: the site could no longer change it (the queue log then shows HTTP 404).
+- When somebody becomes an admin or stops being one, existing discussions catch up at their next change, or all at once with
+  `docker compose exec app php artisan forum:sync-visibility`. The command prints how many discussions are public, private
+  and failed, and is safe to repeat; run it as well after restoring a forum backup.
+- A new discussion is created public (forum members may not start private discussions) and made private in the same queue job
+  right after, so a hidden or paid design's thread is public only for the moment between those two requests. If that second
+  step fails, the queued sync retries it.
+- Byobu normally writes a line into a discussion each time its people change ("forumadmin added recipients ..."). For changes
+  made by a forum administrator, which is how the site makes them, `docker/flarum/skeleton/extend.php` switches that off, so a
+  design's thread does not list every purchase and refund; members' own private discussions keep the lines. Members of a
+  private discussion can still see each other's forum names when they post. Accounts the site creates (from now on; older ones keep Flarum's
+  defaults) have Byobu's "you were added to a private discussion" notification switched off, so buyers are not e-mailed when
+  they buy; replies in a private discussion do notify its members (alert and e-mail, Byobu's default), which every member can
+  change in their forum settings. The tag's discussion count in the forum also includes private discussions.
+- The first time a discussion has to become public again, the site switches on Byobu's setting *Make public* in the forum by itself.
+- After a [forum reset](#resetting-the-forum), `forum:setup --backfill` creates the discussion of every design (hidden ones
+  too) and the job makes them private as needed.
 
 ### Demo content for the forum
 
@@ -407,10 +449,11 @@ docker compose exec app php artisan forum:setup        # tags, once the forum is
 docker compose exec app php artisan forum:seed-demo
 ```
 
-`forum:seed-demo` makes sure the tags exist, creates the discussion of every public design, driver and listing
-that has none (written by its owner, right away instead of through the queue), and then adds 2 to 4 replies to each
-thread from the other demo users: build and crossover questions on designs, measurement remarks on drivers,
-condition and shipping questions with the seller's answers on listings. Run it again whenever you like: threads that
+`forum:seed-demo` makes sure the tags exist, creates the discussion of every design (hidden ones too), public driver and
+public listing that has none (written by its owner, right away instead of through the queue), sets who can see each design
+discussion, and then adds 2 to 4 replies to each thread from the other demo users: build and crossover questions on designs,
+measurement remarks on drivers, condition and shipping questions with the seller's answers on listings. Private design
+discussions only get replies from demo users who can see them (their buyers and the demo admin); a hidden design's gets none. Run it again whenever you like: threads that
 already have replies are left alone, so a second run adds nothing. It refuses to run when `APP_ENV` is not `local`
 or `demo`, and `db:seed` runs it for you when the forum is switched on and reachable (otherwise `db:seed` prints
 the command to run later).
@@ -475,7 +518,7 @@ discussions and accounts it had stored. The site's own database is not touched. 
 ```bash
 docker compose exec app php artisan forum:setup
 docker compose exec app php artisan forum:seed-demo           # demo site: threads and replies for every design, driver and listing
-docker compose exec app php artisan forum:setup --backfill    # real site: a discussion for every published design, driver and listing
+docker compose exec app php artisan forum:setup --backfill    # real site: a discussion for every design, published driver and listing
 ```
 
 Members get their forum account again the next time they log in, or when something is posted under their name.

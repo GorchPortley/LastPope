@@ -8,7 +8,42 @@
  */
 
 use Flarum\Extend;
+use Flarum\Extension\Extension;
+use FoF\Byobu\Events\AbstractRecipientsEvent;
+use FoF\Byobu\Events\DiscussionMadePublic;
+use FoF\Byobu\Listeners\CreatePostWhenRecipientsChanged;
+use Illuminate\Contracts\Container\Container;
 
 return [
     // Register extenders here to customize your forum!
+
+    // LastPope: the shop decides who can see a design's thread (designer, buyers, admins; docs/PLAN.md R5.2) and changes
+    // its recipients through the API as a forum administrator on every purchase, refund, price or status change. Byobu
+    // would add a "forumadmin added recipients ..." line to the thread each time, which clutters it and shows everybody
+    // who bought the design or got a refund. Recipient changes made by an administrator leave no line; members' own
+    // private discussions keep them. Byobu subscribes this listener by class name, so binding the class swaps it.
+    new class implements Extend\ExtenderInterface {
+        public function extend(Container $container, ?Extension $extension = null): void
+        {
+            if (! class_exists(CreatePostWhenRecipientsChanged::class)) {
+                return;
+            }
+
+            $container->bind(CreatePostWhenRecipientsChanged::class, fn () => new class extends CreatePostWhenRecipientsChanged {
+                public function whenDiscussionWasTagged(AbstractRecipientsEvent $event): void
+                {
+                    if (! $event->actor->isAdmin()) {
+                        parent::whenDiscussionWasTagged($event);
+                    }
+                }
+
+                public function whenMadePublic(DiscussionMadePublic $event): void
+                {
+                    if (! $event->actor->isAdmin()) {
+                        parent::whenMadePublic($event);
+                    }
+                }
+            });
+        }
+    },
 ];

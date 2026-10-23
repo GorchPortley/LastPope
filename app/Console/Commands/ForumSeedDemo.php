@@ -3,10 +3,12 @@
 namespace App\Console\Commands;
 
 use App\Jobs\CreateForumDiscussion;
+use App\Jobs\SyncForumVisibility;
 use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\User;
+use App\Services\Forum\DesignDiscussionAudience;
 use App\Services\Forum\ForumClient;
 use App\Services\Forum\ForumException;
 use App\Services\Forum\ForumTagSetup;
@@ -18,10 +20,12 @@ use Illuminate\Support\Collection;
 use Throwable;
 
 /**
- * Fills the forum of a demo/dev site: makes sure the tags exist, creates the missing thread of every public
- * design, driver and listing right now (as its owner, the same code as the CreateForumDiscussion job), then
- * gives every thread that has no reply yet 2-4 replies from the other demo users, taken from the bank of
- * hobbyist comments in DemoCatalog::forumComments().
+ * Fills the forum of a demo/dev site: makes sure the tags exist, creates the missing thread of every design and
+ * every public driver and listing right now (as its owner, the same code as the CreateForumDiscussion job), sets who
+ * can see each design thread (hidden and paid designs are private, see DesignDiscussionAudience), then gives every
+ * thread that has no reply yet 2-4 replies from the other demo users, taken from the bank of hobbyist comments in
+ * DemoCatalog::forumComments(). A private thread only gets replies from demo users who can see it (the buyers and
+ * the admin), a hidden design's none.
  *
  * Runs in the local and demo environments only (and testing, like DemoSeeder), never in production.
  *
@@ -36,7 +40,7 @@ class ForumSeedDemo extends Command
 {
     protected $signature = 'forum:seed-demo';
 
-    protected $description = 'Demo/dev only: create forum threads for public designs, drivers and listings and add demo replies';
+    protected $description = 'Demo/dev only: create forum threads for designs, public drivers and listings and add demo replies';
 
     /** Demo accounts all have an address in this domain (see DemoCatalog::users()). */
     private const DEMO_DOMAIN = '@sdlabs.test';
@@ -87,7 +91,7 @@ class ForumSeedDemo extends Command
         }
 
         $failures = $this->createThreads($forum);
-        $failures = array_merge($failures, $this->addReplies($forum));
+        $failures = array_merge($failures, $this->syncVisibility($forum), $this->addReplies($forum));
 
         $this->table(['Result', 'Count'], [
             ['Threads created', $this->threadsCreated],
@@ -142,9 +146,34 @@ class ForumSeedDemo extends Command
             ];
         }
 
-        $this->components->info(count($chains) === 0 ? 'Every public design, driver and listing already has a thread.' : 'Creating '.count($chains).' thread(s)...');
+        $this->components->info(count($chains) === 0 ? 'Every design and every public driver and listing already has a thread.' : 'Creating '.count($chains).' thread(s)...');
 
         return $this->drain($chains);
+    }
+
+    /**
+     * Set who can see each design thread now, so the replies below meet the final state (the job CreateForumDiscussion
+     * queues for this may not have run yet). Idempotent, and it repairs threads whose state drifted.
+     *
+     * @return array<int, string> failures
+     */
+    private function syncVisibility(ForumClient $forum): array
+    {
+        $failures = [];
+
+        foreach ($this->subjects()->whereInstanceOf(Design::class) as $design) {
+            if (blank($design->forum_slug)) {
+                continue; // its thread could not be created
+            }
+
+            try {
+                (new SyncForumVisibility($design))->handle($forum);
+            } catch (Throwable $e) {
+                $failures[] = $this->label($design).': '.$e->getMessage();
+            }
+        }
+
+        return $failures;
     }
 
     // --- replies ------------------------------------------------------------------------------
@@ -159,6 +188,10 @@ class ForumSeedDemo extends Command
         foreach ($this->subjects() as $subject) {
             if (blank($subject->forum_slug)) {
                 continue; // its thread could not be created
+            }
+
+            if ($subject instanceof Design && ! $subject->active) {
+                continue; // a hidden design: nobody to talk to yet
             }
 
             try {
@@ -203,8 +236,9 @@ class ForumSeedDemo extends Command
     }
 
     /**
-     * The replies a thread gets: 2-4 of them, from demo users other than the owner. Designs and drivers get
-     * comments in turn from different members; a listing gets buyer questions that its seller answers.
+     * The replies a thread gets: 2-4 of them, from demo users other than the owner (for a private design thread,
+     * only those who can see it; fewer replies when there are few of them). Designs and drivers get comments in
+     * turn from different members; a listing gets buyer questions that its seller answers.
      *
      * @param  Collection<int, User>  $demoUsers
      * @return array<int, array{0: User, 1: string}>
@@ -213,6 +247,11 @@ class ForumSeedDemo extends Command
     {
         $owner = CreateForumDiscussion::ownerOf($subject);
         $others = $demoUsers->reject(fn (User $user) => $owner !== null && $user->is($owner))->values();
+
+        if ($subject instanceof Design && ! DesignDiscussionAudience::isPublic($subject)) {
+            $members = DesignDiscussionAudience::members($subject);
+            $others = $others->filter(fn (User $user) => $members->contains($user))->values();
+        }
 
         if ($others->isEmpty() || ! $owner instanceof User) {
             return [];
@@ -240,7 +279,8 @@ class ForumSeedDemo extends Command
         $title = CreateForumDiscussion::titleFor($subject);
         $replies = [];
 
-        for ($i = 0; $i < $count; $i++) {
+        // one person should not carry a whole thread
+        for ($i = 0; $i < min($count, 2 * $others->count()); $i++) {
             $replies[] = [
                 $others[($hash + $i) % $others->count()],
                 str_replace('{item}', $title, $comments[($hash + $i * 3) % count($comments)]),
@@ -253,7 +293,7 @@ class ForumSeedDemo extends Command
     // --- helpers ------------------------------------------------------------------------------
 
     /**
-     * Every public item that gets a thread: active designs and drivers, active listings (store and marketplace).
+     * Every item that gets a thread: all designs (hidden ones too), active drivers, active listings (store and marketplace).
      *
      * @return Collection<int, Model>
      */
@@ -262,7 +302,7 @@ class ForumSeedDemo extends Command
         return collect([Design::class, Driver::class, Listing::class])
             ->flatMap(fn (string $class) => $class::query()->orderBy('id')->get())
             ->filter(fn (Model $item) => CreateForumDiscussion::supports($item)
-                && CreateForumDiscussion::isPublic($item)
+                && CreateForumDiscussion::wantsThread($item)
                 && CreateForumDiscussion::ownerOf($item) instanceof User)
             ->values();
     }

@@ -18,7 +18,7 @@ abstract class ForumDiscussionObserver
             return;
         }
 
-        if (filled($subject->forum_slug) || ! CreateForumDiscussion::isPublic($subject) || ! CreateForumDiscussion::supports($subject)) {
+        if (filled($subject->forum_slug) || ! CreateForumDiscussion::wantsThread($subject) || ! CreateForumDiscussion::supports($subject)) {
             return;
         }
 

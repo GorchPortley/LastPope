@@ -37,6 +37,14 @@ class NullForumClient implements ForumClient
         return null;
     }
 
+    public function makeDiscussionPublic(string $discussion): void
+    {
+    }
+
+    public function makeDiscussionPrivate(string $discussion, iterable $members): void
+    {
+    }
+
     public function discussionUrl(string $slug): string
     {
         return $this->forumUrl().'/d/'.rawurlencode($slug);

@@ -50,16 +50,26 @@ it('creates a forum account with a generated password, sanitized name and the ma
     Http::fake([
         FORUM_API.'/users?*' => Http::response(['data' => []]),
         FORUM_API.'/users' => Http::response(['data' => ['id' => '7', 'type' => 'users']], 201),
+        FORUM_API.'/users/7' => Http::response(['data' => ['id' => '7']]),
     ]);
 
     $user = User::factory()->create(['username' => 'José Müller', 'email' => 'jose@example.test', 'forum_password' => null]);
 
     expect(flarum()->ensureUser($user))->toBe(7);
 
-    [$lookup, $create] = recorded();
+    [$lookup, $create, $preferences] = recorded();
     expect($lookup[0])->toBe('GET')
         ->and($lookup[1])->toContain('filter%5Bemail%5D=jose%40example.test')
         ->and($lookup[3])->toBe('Token master-key-123; userId=1');
+
+    // a member can only change their own preferences: the new account switches off Byobu's "added to a private discussion"
+    expect($preferences[0])->toBe('PATCH')
+        ->and($preferences[1])->toBe(FORUM_API.'/users/7')
+        ->and($preferences[3])->toBe('Token master-key-123; userId=7')
+        ->and($preferences[2]['data']['attributes']['preferences'])->toBe([
+            'notify_byobuPrivateDiscussionAdded_alert' => false,
+            'notify_byobuPrivateDiscussionAdded_email' => false,
+        ]);
 
     $attributes = $create[2]['data']['attributes'];
     $user->refresh();
@@ -158,6 +168,7 @@ it('creates the account on the first login and then logs in', function () {
             ->push(['token' => 'fresh-token', 'userId' => 8]),
         FORUM_API.'/users?*' => Http::response(['data' => []]),
         FORUM_API.'/users' => Http::response(['data' => ['id' => '8']], 201),
+        FORUM_API.'/users/8' => Http::response(['data' => ['id' => '8']]),
     ]);
 
     $user = User::factory()->create(['forum_password' => null]);
@@ -169,6 +180,7 @@ it('creates the account on the first login and then logs in', function () {
         'POST /forum/api/token',
         'GET /forum/api/users',
         'POST /forum/api/users',
+        'PATCH /forum/api/users/8',
         'POST /forum/api/token',
     ]);
 });
@@ -360,13 +372,14 @@ it('creates the forum account of a replier that has none yet', function () {
     Http::fake([
         FORUM_API.'/users?*' => Http::response(['data' => []]),
         FORUM_API.'/users' => Http::response(['data' => ['id' => '61']], 201),
+        FORUM_API.'/users/61' => Http::response(['data' => ['id' => '61']]),
         FORUM_API.'/posts' => Http::response(['data' => ['id' => '7']], 201),
     ]);
 
     expect(flarum()->createPost('3-driver-thread', 'Nice measurements.', User::factory()->create()))->toBe(7);
 
     $methods = collect(recorded())->map(fn ($r) => $r[0].' '.parse_url($r[1], PHP_URL_PATH))->all();
-    expect($methods)->toBe(['GET /forum/api/users', 'POST /forum/api/users', 'POST /forum/api/posts']);
+    expect($methods)->toBe(['GET /forum/api/users', 'POST /forum/api/users', 'PATCH /forum/api/users/61', 'POST /forum/api/posts']);
 });
 
 it('takes the discussion id from the stored slug, and rejects anything else', function () {
@@ -428,4 +441,117 @@ it('does nothing for replies when the forum is disabled', function () {
 
     Http::fake();
     Http::assertNothingSent();
+});
+
+/** Flarum's answer for a discussion as the admin sees it (fof/byobu adds the two attributes). */
+function discussionState(bool $private, bool $canMakePublic = true): array
+{
+    return ['data' => ['id' => '12', 'attributes' => ['isPrivateDiscussion' => $private, 'canMakePublic' => $canMakePublic]]];
+}
+
+it('makes a discussion private to the given members and the Admin group, and reads the result back', function () {
+    Http::fake([
+        FORUM_API.'/users/41' => Http::response(['data' => ['id' => '41']]),
+        FORUM_API.'/users/42' => Http::response(['data' => ['id' => '42']]),
+        FORUM_API.'/discussions/12' => Http::sequence()->push(discussionState(false))->push(discussionState(true)),
+    ]);
+
+    $designer = User::factory()->create(['forum_user_id' => 41]);
+    $buyer = User::factory()->create(['forum_user_id' => 42]);
+
+    // listed twice on purpose (an admin who is also the designer)
+    flarum()->makeDiscussionPrivate('12-my-design', [$designer, $buyer, $designer]);
+
+    $patch = collect(recorded())->first(fn ($r) => $r[0] === 'PATCH');
+
+    expect($patch[1])->toBe(FORUM_API.'/discussions/12')
+        ->and($patch[3])->toBe('Token master-key-123; userId=1') // the admin may edit recipients; the designer may not
+        ->and($patch[2]['data']['id'])->toBe('12')
+        ->and($patch[2]['data']['relationships']['recipientUsers']['data'])->toBe([
+            ['type' => 'users', 'id' => '41'],
+            ['type' => 'users', 'id' => '42'],
+        ])
+        ->and($patch[2]['data']['relationships']['recipientGroups']['data'])->toBe([['type' => 'groups', 'id' => '1']]);
+
+    expect(collect(recorded())->last()[0])->toBe('GET'); // read back
+});
+
+it('changes nothing when a member has no forum account: a partial list would remove that member', function () {
+    Http::fake([
+        FORUM_API.'/users/41' => Http::response(['data' => ['id' => '41']]),
+        FORUM_API.'/users?*' => Http::response(['data' => []]),
+        FORUM_API.'/users' => Http::response(['errors' => [['status' => '500']]], 500),
+    ]);
+
+    $designer = User::factory()->create(['forum_user_id' => 41]);
+    $stranger = User::factory()->create();
+
+    expect(fn () => flarum()->makeDiscussionPrivate('12-my-design', [$designer, $stranger]))
+        ->toThrow(ForumException::class, "Could not find or create the forum account of user #{$stranger->id}");
+
+    expect(collect(recorded())->where(0, 'PATCH'))->toBeEmpty();
+});
+
+it('does not trust a 200 from Flarum: the discussion is read back after making it private', function () {
+    Http::fake([
+        FORUM_API.'/users/41' => Http::response(['data' => ['id' => '41']]),
+        FORUM_API.'/discussions/12' => Http::response(discussionState(false)),
+    ]);
+
+    expect(fn () => flarum()->makeDiscussionPrivate('12-my-design', [User::factory()->create(['forum_user_id' => 41])]))
+        ->toThrow(ForumException::class, 'still public');
+});
+
+it('makes a private discussion public with the recipients emptied, as Byobu wants it', function () {
+    Http::fake([
+        FORUM_API.'/discussions/12' => Http::sequence()
+            ->push(discussionState(true))
+            ->push(discussionState(false)) // the PATCH answer
+            ->push(discussionState(false)), // the read back
+    ]);
+
+    flarum()->makeDiscussionPublic('12-my-design');
+
+    $patch = collect(recorded())->first(fn ($r) => $r[0] === 'PATCH');
+
+    expect($patch[2]['data']['attributes'])->toBe(['public' => 12])
+        ->and($patch[2]['data']['relationships'])->toBe(['recipientUsers' => ['data' => []], 'recipientGroups' => ['data' => []]])
+        ->and($patch[3])->toBe('Token master-key-123; userId=1');
+});
+
+it('leaves a public discussion alone', function () {
+    Http::fake([FORUM_API.'/discussions/12' => Http::response(discussionState(false))]);
+
+    flarum()->makeDiscussionPublic('12-my-design');
+
+    Http::assertSentCount(1);
+});
+
+it('switches on the Byobu setting "make public" when the forum has it off', function () {
+    Http::fake([
+        FORUM_API.'/settings' => Http::response(null, 204),
+        FORUM_API.'/discussions/12' => Http::sequence()
+            ->push(discussionState(true, canMakePublic: false))
+            ->push(discussionState(false))
+            ->push(discussionState(false)),
+    ]);
+
+    flarum()->makeDiscussionPublic('12-my-design');
+
+    $methods = collect(recorded())->map(fn ($r) => $r[0].' '.parse_url($r[1], PHP_URL_PATH))->all();
+
+    expect($methods)->toBe(['GET /forum/api/discussions/12', 'POST /forum/api/settings', 'PATCH /forum/api/discussions/12', 'GET /forum/api/discussions/12'])
+        ->and(collect(recorded())->first(fn ($r) => $r[0] === 'POST')[2])->toBe(['fof-byobu.makePublic' => '1']);
+});
+
+it('reports a discussion Flarum does not know, and does nothing while the forum is disabled', function () {
+    Http::fake([FORUM_API.'/discussions/12' => Http::response(['errors' => [['status' => '404', 'code' => 'not_found']]], 404)]);
+
+    expect(fn () => flarum()->makeDiscussionPublic('12-gone'))->toThrow(ForumException::class, 'HTTP 404');
+
+    $null = new App\Services\Forum\NullForumClient;
+    $null->makeDiscussionPublic('12-x');
+    $null->makeDiscussionPrivate('12-x', [User::factory()->create()]);
+
+    Http::assertSentCount(1);
 });

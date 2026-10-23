@@ -58,13 +58,14 @@ it('flags an existing tag that is only a secondary tag', function () {
     $this->artisan('forum:setup')->expectsOutputToContain('secondary tag')->assertFailed();
 });
 
-it('queues discussions for public items without one when asked to backfill', function () {
+it('queues discussions for designs (hidden ones too) and public items without one when asked to backfill', function () {
     \Illuminate\Support\Facades\Queue::fake();
 
     // Created while the forum is still disabled, i.e. before it was connected.
     $owner = \App\Models\User::factory()->create();
     $public = \App\Models\Design::factory()->for($owner, 'designer')->count(2)->create();
     $draft = \App\Models\Design::factory()->for($owner, 'designer')->draft()->create();
+    $draftDriver = \App\Models\Driver::factory()->draft()->create();
     $threaded = \App\Models\Design::factory()->for($owner, 'designer')->create(['forum_slug' => '1-has-thread']);
 
     FakeForumClient::install();
@@ -74,9 +75,11 @@ it('queues discussions for public items without one when asked to backfill', fun
 
     $this->artisan('forum:setup --backfill')->expectsOutputToContain('discussion(s)')->assertSuccessful();
 
-    foreach ($public as $design) {
+    // a hidden design gets its (private) thread as well; a draft driver does not
+    foreach ([...$public, $draft] as $design) {
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\CreateForumDiscussion::class, fn ($job) => $job->subject->is($design));
     }
 
-    \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\CreateForumDiscussion::class, fn ($job) => $job->subject->is($draft) || $job->subject->is($threaded));
+    \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\CreateForumDiscussion::class, fn ($job) => $job->subject->is($threaded));
+    \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\CreateForumDiscussion::class, fn ($job) => $job->subject->is($draftDriver));
 });

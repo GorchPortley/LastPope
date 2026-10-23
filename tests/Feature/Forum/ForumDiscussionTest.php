@@ -33,11 +33,19 @@ it('does not queue a discussion while the forum is disabled', function () {
     Queue::assertNotPushed(CreateForumDiscussion::class);
 });
 
-it('queues a discussion for a design as soon as it is public', function () {
+it('queues a discussion for a design as soon as it is created, hidden or not', function () {
     FakeForumClient::install();
     Queue::fake();
 
     $draft = Design::factory()->draft()->create();
+    Queue::assertPushed(CreateForumDiscussion::class, fn ($job) => $job->subject->is($draft));
+});
+
+it('queues a discussion for a driver only once it is public', function () {
+    FakeForumClient::install();
+    Queue::fake();
+
+    $draft = Driver::factory()->draft()->create();
     Queue::assertNotPushed(CreateForumDiscussion::class);
 
     $draft->update(['active' => true]);
@@ -102,13 +110,13 @@ it('does not create a second discussion when the job runs twice', function () {
     expect($forum->discussions)->toHaveCount(1);
 });
 
-it('does nothing in the job when the forum got disabled meanwhile or the item is a draft', function () {
+it('does nothing in the job when the forum got disabled meanwhile or the driver is a draft', function () {
     Queue::fake();
     $design = Design::factory()->create();
-    $draft = Design::factory()->draft()->create();
+    $draft = Driver::factory()->draft()->create();
 
     $forum = FakeForumClient::install();
-    $forum->tags = ['designs' => 5];
+    $forum->tags = ['designs' => 5, 'drivers' => 3];
     (new CreateForumDiscussion($draft))->handle($forum);
 
     $disabled = new FakeForumClient(false);

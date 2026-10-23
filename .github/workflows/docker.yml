@@ -124,6 +124,19 @@ jobs:
           echo 'SLUG='.$slug.PHP_EOL;
           echo 'EMBED='.$forum->embedUrl($slug).PHP_EOL;
           echo 'TOKEN='.($forum->issueRememberToken($user) ? 'issued' : 'MISSING').PHP_EOL;
+          // Byobu (R5.2): private to the member, then a buyer joins, then public again. docker/flarum/skeleton/extend.php
+          // keeps these admin changes from adding "added recipients" lines, so the discussion still has one post.
+          $buyer = App\Models\User::forceCreate([
+              'name' => 'CI Buyer', 'username' => 'ci_buyer', 'email' => 'ci-buyer@example.test',
+              'password' => bcrypt(Illuminate\Support\Str::random(24)), 'verified' => 1,
+          ]);
+          $forum->makeDiscussionPrivate($slug, [$user]);
+          $forum->makeDiscussionPrivate($slug, [$user, $buyer]);
+          $forum->makeDiscussionPublic($slug);
+          $discussion = Illuminate\Support\Facades\Http::acceptJson()
+              ->withHeaders(['Authorization' => 'Token '.config('forum.api_key').'; userId='.config('forum.admin_user_id')])
+              ->get(config('forum.internal_url').'/api/discussions/'.(int) $slug);
+          echo 'POSTS='.$discussion->json('data.attributes.lastPostNumber').PHP_EOL;
           PHP
           )
           out=$(docker compose exec -T app php artisan tinker --execute="${php_code}")
@@ -132,6 +145,7 @@ jobs:
           embed=$(echo "${out}" | sed -n 's/^EMBED=//p' | tr -d '\r')
           [ -n "${slug}" ] || { echo "the app could not create a discussion"; exit 1; }
           echo "${out}" | grep -q '^TOKEN=issued' || { echo "no remember token issued"; exit 1; }
+          echo "${out}" | grep -q '^POSTS=1$' || { echo "recipient changes added event posts to the discussion (see docker/flarum/skeleton/extend.php)"; exit 1; }
           echo "${slug}" > forum-slug.txt
           # the URL the app builds, and the same discussion under /forum/d/<id>
           for url in "${embed}" "https://localhost/forum/d/${slug}"; do

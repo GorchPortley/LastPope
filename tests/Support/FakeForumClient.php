@@ -18,6 +18,15 @@ class FakeForumClient implements ForumClient
     /** @var array<string, int> discussion slug => replies that already exist (written by somebody else) */
     public array $existingReplies = [];
 
+    /**
+     * @var array<string, array<int, int>|null> discussion slug => ids of the users it is private to (besides the
+     *                                           forum's administrators); null = public. Slugs never restricted are missing = public.
+     */
+    public array $visibility = [];
+
+    /** @var array<int, array{discussion: string, members: array<int, int>|null}> every makeDiscussionPublic / makeDiscussionPrivate call */
+    public array $visibilityCalls = [];
+
     /** The next N createDiscussion / createPost calls fail with Flarum's "429 slow down". */
     public int $throttle = 0;
 
@@ -87,6 +96,11 @@ class FakeForumClient implements ForumClient
     {
         $this->failWhenThrottled();
 
+        // Like Flarum: a private discussion does not exist for anybody who cannot see it.
+        if (($this->visibility[$discussion] ?? null) !== null && ! in_array($author->getKey(), $this->visibility[$discussion], true)) {
+            throw new ForumException('Flarum could not post the reply (HTTP 404): not_found', 404);
+        }
+
         $this->posts[] = ['discussion' => $discussion, 'content' => $content, 'author' => $author->getKey()];
 
         return 1000 + count($this->posts);
@@ -96,6 +110,20 @@ class FakeForumClient implements ForumClient
     {
         return ($this->existingReplies[$discussion] ?? 0)
             + count(array_filter($this->posts, fn (array $post) => $post['discussion'] === $discussion));
+    }
+
+    public function makeDiscussionPublic(string $discussion): void
+    {
+        $this->visibility[$discussion] = null;
+        $this->visibilityCalls[] = ['discussion' => $discussion, 'members' => null];
+    }
+
+    public function makeDiscussionPrivate(string $discussion, iterable $members): void
+    {
+        $ids = collect($members)->map(fn (User $user) => $user->getKey())->unique()->sort()->values()->all();
+
+        $this->visibility[$discussion] = $ids;
+        $this->visibilityCalls[] = ['discussion' => $discussion, 'members' => $ids];
     }
 
     private function failWhenThrottled(): void

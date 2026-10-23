@@ -47,10 +47,6 @@ class WaveServiceProvider extends ServiceProvider
     	$this->app->router->aliasMiddleware('subscribed', \Wave\Http\Middleware\Subscribed::class);
         $this->app->router->aliasMiddleware('token_api', \Wave\Http\Middleware\TokenMiddleware::class);
         
-        if(!$this->hasDBConnection()){
-            $this->app->router->pushMiddlewareToGroup('web', \Wave\Http\Middleware\InstallMiddleware::class);
-        }
-
         if(config('wave.demo')){
             $this->app->router->pushMiddlewareToGroup('web', \Wave\Http\Middleware\ThemeDemoMiddleware::class);
             // Overwrite the Vite asset helper so we can use the demo folder as opposed to the build folder

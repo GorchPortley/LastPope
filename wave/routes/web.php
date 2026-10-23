@@ -4,15 +4,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::impersonate();
 
-// Documentation routes
-Route::view('docs/{page?}', 'docs::index')->where('page', '(.*)');
+// LastPope: Wave's /docs (its documentation views are not part of this site; every visit was a 500) and /install (its
+// one-click installer: seeds the database and logs the visitor in as the first user when APP_ENV=local) are removed.
 
 // Additional Auth Routes
 Route::get('logout', '\Wave\Http\Controllers\LogoutController@logout')->name('wave.logout');
 // Route::get('user/verify/{verification_code}', '\Wave\Http\Controllers\Auth\RegisterController@verify')->name('verify');
 // Route::post('register/complete', '\Wave\Http\Controllers\Auth\RegisterController@complete')->name('wave.register-complete');
-
-Route::view('install', 'wave::install')->name('wave.install');
 
 Route::group(['middleware' => 'auth'], function () {
     Route::redirect('settings', 'settings/profile')->name('settings');

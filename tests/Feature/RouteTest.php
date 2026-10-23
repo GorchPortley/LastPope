@@ -40,3 +40,16 @@ test('regular users cannot open the admin panel', function () {
 
     $this->get('/admin')->assertForbidden();
 });
+
+test('the Wave docs page and one-click installer are not routes of this site', function () {
+    $admin = UserFactory::new()->create();
+    app()->detectEnvironment(fn () => 'local'); // the installer only ever ran in the local environment
+
+    get('/docs')->assertNotFound();
+    get('/docs/getting-started')->assertNotFound();
+    get('/install')->assertNotFound();
+    get('/install?complete=true')->assertNotFound();
+
+    $this->assertGuest();
+    expect($admin->fresh())->not->toBeNull();
+});

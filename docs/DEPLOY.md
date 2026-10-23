@@ -546,7 +546,12 @@ Until now the forum was Flarum 1.8 (the `crazymax/flarum` image). The upgrade ne
 
 - Add Flarum extensions as described in ["Adding an extension"](#adding-an-extension). The forum's own Extension Manager is deliberately not installed.
 - The forum's mail settings are copied from `MAIL_*` once, when it is installed. Change them later
-  in the forum administration (Administration, Email).
+  in the forum administration (Administration, Email). Only SMTP settings can be copied: with any other `MAIL_MAILER`
+  (an API mailer such as Resend or Postmark, or `log`) the forum is installed with the **Log** driver, which writes its
+  e-mails to its log instead of sending them. The forum works fine without e-mail (accounts and passwords live on the site).
+- Posts are saved but Flarum says "something went wrong, reload": the forum could not send its notification e-mails
+  (they are sent while the post is saved). Fix the SMTP settings in Administration, Email (*Send test mail*), or choose
+  the **Log** driver there to turn forum e-mail off.
 - A member's forum user name is taken from their site username; Flarum only allows letters, digits, `-` and
   `_` (3-30 characters), so other characters are replaced. The names `admin`, `administrator`, the forum
   admin's own name and a few more are reserved: such members get a numbered name like `admin_2`.

@@ -238,6 +238,12 @@ function installFile(string $prefix): string
             'mail_password' => env('FLARUM_MAIL_PASSWORD'),
             'mail_from' => env('FLARUM_MAIL_FROM', 'noreply@localhost') ?: 'noreply@localhost',
         ];
+    } else {
+        // No SMTP to copy (the site mails through an API mailer, or not at all). Flarum's default driver needs a sendmail
+        // binary this image does not have, and its notifications are sent while the request runs, so every reply would
+        // be saved and then answered with an error. "log" writes them to storage/logs instead; set real mail up later in
+        // the administration (Email).
+        $settings['mail_driver'] = 'log';
     }
 
     $data = [

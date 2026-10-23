@@ -11,7 +11,9 @@
 # Build from the repository root:  docker build -f docker/app/Dockerfile -t lastpope-app .
 # (compose.yaml does this for you.)
 
-ARG PHP_IMAGE=serversideup/php:8.3-fpm-nginx-v5.0.1
+# PHP 8.3.36 (v5.0.2): fixes the critical PHP2Shell remote code execution bugs CVE-2026-109618/109619. Pinned by digest
+# as well, so the tag cannot change under us; to update, take the next release tag and its digest from Docker Hub.
+ARG PHP_IMAGE=serversideup/php:8.3-fpm-nginx-v5.0.2@sha256:e6e9d1a027d603dd6399adc66cb85f83e474ca11fb521e1c2eb1411a82dd5ff0
 ARG NODE_IMAGE=node:22.23-alpine3.24
 
 # ---------------------------------------------------------------------------

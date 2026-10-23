@@ -79,6 +79,13 @@ jobs:
       - name: Show running services
         run: docker compose ps
 
+      - name: PHP is patched (8.3.36 or newer, CVE-2026-109618/109619) in the app and forum images
+        run: |
+          for svc in app flarum; do
+            docker compose exec -T "${svc}" php -r 'echo PHP_VERSION, PHP_EOL; exit(version_compare(PHP_VERSION, "8.3.36", ">=") ? 0 : 1);' \
+              || { echo "${svc}: PHP is older than 8.3.36"; exit 1; }
+          done
+
       - name: Migrations ran on MariaDB
         run: docker compose exec -T app php artisan migrate:status
 

@@ -810,7 +810,7 @@ Prefer not to log in for every update? The server can check GitHub itself, back 
 when the tests are green: see [13. Automatic updates](#13-automatic-updates).
 
 Software versions are pinned in the repository, so nothing changes by itself: MariaDB 11.8, Redis 8.2,
-Caddy 2.11, PHP 8.3 with nginx (serversideup/php v5), Flarum 2.0 (versions of Flarum and its extensions are locked in `docker/flarum/composer.lock`, see [Upgrading Flarum](#upgrading-flarum)). A new version arrives only when the
+Caddy 2.11, PHP 8.3 with nginx (serversideup/php v5.0.2, PHP 8.3.36), Flarum 2.0 (versions of Flarum and its extensions are locked in `docker/flarum/composer.lock`, see [Upgrading Flarum](#upgrading-flarum)). A new version arrives only when the
 repository changes the pinned tag. Do not jump MariaDB across major versions without reading the MariaDB
 upgrade notes.
 
@@ -1142,13 +1142,13 @@ The Stripe CLI forwards `/stripe/marketplace/webhook` and `/stripe/connect/webho
 | Service | Image | Notes |
 |---|---|---|
 | `caddy` | `caddy:2.11.7` | ports 80, 443/tcp, 443/udp; config `docker/caddy/Caddyfile` |
-| `app` | built from `docker/app/Dockerfile` on `serversideup/php:8.3-fpm-nginx-v5.0.1` | internal port 8080; runs migrations + caches on start |
+| `app` | built from `docker/app/Dockerfile` on `serversideup/php:8.3-fpm-nginx-v5.0.2` (PHP 8.3.36) | internal port 8080; runs migrations + caches on start |
 | `queue` | same image | `php artisan queue:work --tries=3` |
 | `scheduler` | same image | `php artisan schedule:work` |
 | `reverb` | same image | `php artisan reverb:start`, internal port 8080, WebSocket server for live chat (Caddy: `/ws/app/*`) |
 | `mariadb` | `mariadb:11.8.9` | databases: app (`MARIADB_DATABASE`) and forum (`FLARUM_DB_DATABASE`) |
 | `redis` | `redis:8.2.10-alpine` | password protected, append-only persistence |
-| `flarum` | built from `docker/flarum/Dockerfile` (tag `lastpope-flarum:2.0.2`) on `serversideup/php:8.3-fpm-nginx-v5.0.1`, Flarum 2.0.2 | internal port 8000, served at `/forum` |
+| `flarum` | built from `docker/flarum/Dockerfile` (tag `lastpope-flarum:2.0.2`) on `serversideup/php:8.3-fpm-nginx-v5.0.2` (PHP 8.3.36), Flarum 2.0.2 | internal port 8000, served at `/forum` |
 | `flarum-scheduler` | same image as `flarum` | `php flarum schedule:run` every minute |
 
 **Volumes** (prefix `lastpope_`): `mariadb-data`, `redis-data`, `app-storage` (storage/app: uploads, snapshots),

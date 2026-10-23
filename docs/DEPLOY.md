@@ -472,24 +472,34 @@ administration's dashboard can tell that the scheduler is alive. Check it with `
 ### Adding an extension
 
 Extensions are part of the image, so adding one means changing `docker/flarum/composer.json` and rebuilding. Use only
-extensions that support **Flarum 2** (the extension's page on [extiverse.com](https://extiverse.com) or packagist.org says so).
+extensions that support **Flarum 2** (the extension's page on [extiverse.com](https://extiverse.com) or packagist.org says so:
+it requires `flarum/core` `^2.0`).
+
+**Never install extensions from inside the running forum** (the forum's Extension Manager, or `composer` in the `flarum`
+container): the container has no `composer.json`, so Composer starts an empty one and removes every extension the image
+ships, and whatever it installs is gone at the next rebuild anyway. If that happened, see
+[Forum is missing its extensions](#14-logs-and-troubleshooting).
+
+Do it **on your computer** (Docker installed), not on the server: with [automatic updates](#13-automatic-updates) the
+server's copy of the code is read-only, and the push rebuilds the forum there by itself.
 
 ```bash
-cd ~/lastpope/docker/flarum
+cd LastPope/docker/flarum
 # 1. add  "vendor/package": "1.2.3"  (an exact version) to "require" in composer.json, then refresh composer.lock.
-#    Composer is run in a container, nothing needs to be installed on the server:
+#    Composer runs in a container, nothing else needs to be installed:
 docker run --rm --user "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer \
   -v "$PWD":/app -w /app composer:2 update vendor/package --no-install --no-scripts
-# 2. rebuild and restart the forum (the scheduler uses the same image)
-cd ~/lastpope
-docker compose up -d --build flarum flarum-scheduler
+# 2. commit composer.json and composer.lock together and push
+git add composer.json composer.lock && git commit -m "Forum: add vendor/package" && git push
 ```
 
-Commit `composer.json` and `composer.lock` together. The extension is then installed but still **off**: switch it on in
-the forum administration (Extensions), or list its id in `.env` (`FLARUM_EXTENSIONS="vendor-package"`, the composer name with `/`
-replaced by `-`) and run `docker compose up -d flarum`; it is switched on once at the next start, and its database changes
-are applied. If composer complains about a missing PHP extension, add `--ignore-platform-req=ext-name` for the lock
-refresh and add the extension to `install-php-extensions` in `docker/flarum/Dockerfile`.
+The updater builds the new image and restarts the forum. The extension is then installed but still **off**: switch it on in
+the forum administration (Extensions); switching installed extensions on and off there is fine. Or list its id in `.env`
+(`FLARUM_EXTENSIONS="vendor-package"`, the composer name with `/` replaced by `-`) and run `docker compose up -d flarum`: it
+is switched on once at the next start. If composer complains about a missing PHP extension, add
+`--ignore-platform-req=ext-name` for the lock refresh and add the extension to `install-php-extensions` in
+`docker/flarum/Dockerfile`. Without automatic updates: `git pull` and `docker compose up -d --build flarum flarum-scheduler`
+on the server.
 
 ### Upgrading Flarum
 
@@ -1054,6 +1064,7 @@ docker stats                              # CPU/RAM per container
 | `Access denied for user 'lastpope'` after changing a DB password in `.env` | MariaDB only reads passwords when its data volume is created. Change it inside the database: `docker compose exec mariadb mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "ALTER USER 'lastpope'@'%' IDENTIFIED BY 'the-new-password'"`; for the forum user re-run `docker compose exec mariadb bash /docker-entrypoint-initdb.d/10-flarum.sh`. |
 | Forum shows an error page or never gets healthy | `docker compose logs flarum` shows the install or migration (lines starting with `flarum-start:`); Flarum's own error log is `docker compose exec flarum sh -c 'tail -n 50 storage/logs/*.log'`. The forum needs no internet at run time (everything is in the image); if the **build** fails, see "Could not authenticate against github.com" above, it applies to `docker compose build flarum` too. |
 | Forum update: `flarum-start: ERROR ... cannot connect to the database` | The forum could not reach MariaDB within 3 minutes (is `mariadb` healthy? did you change `FLARUM_DB_PASSWORD`? see the `Access denied` row above). Docker restarts the container and it tries again. |
+| Forum is missing its extensions (after the forum's Extension Manager or `composer` was used inside the container) | The image's extensions are back once the container is recreated from the image, and the start-up script switches them on again when its note of what it already did is cleared: `echo "DELETE FROM flarum_settings WHERE flarum_settings.key = 'lastpope.extensions_seen';" | docker compose exec -T mariadb sh -c 'mariadb -u"$FLARUM_DB_USERNAME" -p"$FLARUM_DB_PASSWORD" "$FLARUM_DB_DATABASE"'`, then `docker compose up -d --force-recreate flarum flarum-scheduler` and `docker compose exec app php artisan forum:sync-visibility`. Add extensions as in [Adding an extension](#adding-an-extension). |
 | Forum is stuck on an old or half-finished state and you do not need its content | `docker/flarum/reset.sh` ([Resetting the forum](#resetting-the-forum)). |
 | Admin dashboard of the forum warns that the scheduler is not running | `docker compose ps flarum-scheduler` and `docker compose logs flarum-scheduler`; `docker compose up -d flarum-scheduler`. |
 | Forum login / "not logged in to the forum" | `FORUM_ENABLED=true`, `FLARUM_API_KEY` set, and `FLARUM_URL` equals `https://<domain>/forum`. Then `docker compose up -d app queue scheduler`. |

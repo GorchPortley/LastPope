@@ -52,7 +52,7 @@ class OrderRefunded extends Notification implements ShouldQueue
 
         return $mail
             ->line('It usually appears on your statement within 5 to 10 business days. Refunded digital downloads are removed from your library.')
-            ->action('View your order', $this->buyerOrderUrl($this->order));
+            ->action('View your order', $this->buyerOrderUrl($this->order, $notifiable));
     }
 
     /** @return array<string, mixed> */
@@ -62,7 +62,7 @@ class OrderRefunded extends Notification implements ShouldQueue
             'order_refunded',
             'Refund issued',
             $this->amount($this->amountCents, $this->order)." was refunded for order {$this->order->number}.".(filled($this->note) ? ' '.$this->note : ''),
-            $this->buyerOrderUrl($this->order),
+            $this->buyerOrderUrl($this->order, $notifiable),
             [
                 'order_id' => $this->order->getKey(),
                 'order_number' => $this->order->number,

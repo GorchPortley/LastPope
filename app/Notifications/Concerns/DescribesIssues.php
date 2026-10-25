@@ -4,6 +4,7 @@ namespace App\Notifications\Concerns;
 
 use App\Filament\Resources\OrderIssueResource;
 use App\Models\OrderIssue;
+use App\Support\RecipientLink;
 use Illuminate\Support\Str;
 
 /** Shared bits of the problem-report notifications (mail + database, like the other marketplace ones). */
@@ -18,7 +19,7 @@ trait DescribesIssues
             return OrderIssueResource::getUrl('view', ['record' => $issue]);
         }
 
-        return $issue->url();
+        return RecipientLink::to($issue->url(), $notifiable);
     }
 
     /** "SDL-7KQ2M9: Peerless 830869" */

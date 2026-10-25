@@ -43,7 +43,7 @@ it('gives all six marketplace notifications a title, a body and a url in the dat
     }
 
     // buyers land on the order, sellers on their sales
-    expect((new OrderReceipt($this->order))->toArray($this->buyer)['url'])->toBe(route('dashboard.orders.show', ['order' => $this->order->number]))
+    expect((new OrderReceipt($this->order))->toArray($this->buyer)['url'])->toBe(App\Support\RecipientLink::to(route('dashboard.orders.show', ['order' => $this->order->number]), $this->buyer))
         ->and((new NewSale($this->so))->toArray($this->seller)['url'])->toBe(route('selling.orders'));
 });
 

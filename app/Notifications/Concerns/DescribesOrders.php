@@ -4,6 +4,7 @@ namespace App\Notifications\Concerns;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Support\RecipientLink;
 use Illuminate\Support\Collection;
 
 /** Small formatting helpers shared by the marketplace notifications. */
@@ -90,9 +91,9 @@ trait DescribesOrders
         ] + $extra;
     }
 
-    /** The buyer's page for an order. */
-    protected function buyerOrderUrl(Order $order): string
+    /** The buyer's page for an order, marked for the account it is sent to (RecipientLink). */
+    protected function buyerOrderUrl(Order $order, object $notifiable): string
     {
-        return route('dashboard.orders.show', ['order' => $order->number]);
+        return RecipientLink::to(route('dashboard.orders.show', ['order' => $order->number]), $notifiable);
     }
 }

@@ -64,7 +64,7 @@ class OrderReceipt extends Notification implements ShouldQueue
             }
         }
 
-        return $mail->action($digital && ! $physical ? 'Open your library' : 'View your order', $digital && ! $physical ? route('dashboard.library') : $this->buyerOrderUrl($order));
+        return $mail->action($digital && ! $physical ? 'Open your library' : 'View your order', $digital && ! $physical ? route('dashboard.library') : $this->buyerOrderUrl($order, $notifiable));
     }
 
     /**
@@ -97,7 +97,7 @@ class OrderReceipt extends Notification implements ShouldQueue
             'order_receipt',
             'Order confirmed',
             "Your order {$this->order->number} is paid. Total ".$this->amount($this->order->total_cents, $this->order).'.',
-            $this->buyerOrderUrl($this->order),
+            $this->buyerOrderUrl($this->order, $notifiable),
             [
                 'order_id' => $this->order->getKey(),
                 'order_number' => $this->order->number,

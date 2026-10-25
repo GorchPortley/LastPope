@@ -375,5 +375,5 @@ it('builds mails and database payloads for every problem notification', function
 
     // admins land in the Filament queue, everybody else on the shared issue page
     expect($cases['issue_escalated'][0]->toArray($admin)['url'])->toBe(App\Filament\Resources\OrderIssueResource::getUrl('view', ['record' => $issue]))
-        ->and($cases['issue_resolved'][0]->toArray($x['buyer'])['url'])->toBe($issue->url());
+        ->and($cases['issue_resolved'][0]->toArray($x['buyer'])['url'])->toBe(App\Support\RecipientLink::to($issue->url(), $x['buyer']));
 });

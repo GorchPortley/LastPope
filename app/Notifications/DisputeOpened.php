@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Models\Order;
 use App\Models\OrderIssue;
 use App\Notifications\Concerns\DescribesIssues;
+use App\Support\RecipientLink;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -81,6 +82,6 @@ class DisputeOpened extends Notification implements ShouldQueue
     {
         $first = $this->issues[0] ?? null;
 
-        return $first ? $this->issueUrl($first, $notifiable) : route('dashboard.orders.show', ['order' => $this->order->number]);
+        return $first ? $this->issueUrl($first, $notifiable) : RecipientLink::to(route('dashboard.orders.show', ['order' => $this->order->number]), $notifiable);
     }
 }

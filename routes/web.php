@@ -29,3 +29,8 @@ Route::prefix('downloads')->group(function () {
     Route::get('/driver-snapshots/{snapshot}', [DownloadController::class, 'driverSnapshot'])
         ->name('driver-snapshots.download');
 });
+
+// "This link is for another account" (EnsureLinkRecipient): sign out and come back to the link after signing in again.
+Route::post('/link/switch-account', \App\Http\Controllers\SwitchAccountController::class)
+    ->middleware('auth')
+    ->name('link.switch-account');

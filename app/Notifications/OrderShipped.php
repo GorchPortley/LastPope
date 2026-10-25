@@ -83,7 +83,7 @@ class OrderShipped extends Notification implements ShouldQueue
         if (filled($this->trackingUrl())) {
             $mail->action('Track your parcel', $this->trackingUrl());
         } else {
-            $mail->action('View your order', $this->buyerOrderUrl($order));
+            $mail->action('View your order', $this->buyerOrderUrl($order, $notifiable));
         }
 
         return $mail;
@@ -100,7 +100,7 @@ class OrderShipped extends Notification implements ShouldQueue
             'Your order has shipped',
             ($several ? "Parcel {$this->parcel} of {$this->parcels} of your order {$order->number}" : "Your order {$order->number}")
                 ." has shipped with {$this->carrier()} (tracking {$this->trackingNumber()}).",
-            $this->buyerOrderUrl($order),
+            $this->buyerOrderUrl($order, $notifiable),
             [
                 'order_id' => $order->getKey(),
                 'order_number' => $order->number,

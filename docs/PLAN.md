@@ -625,3 +625,49 @@ active status or price move the thread between these states. Drivers and listing
   `FlarumClientTest`, `FakeForumClient::$visibility` (posting to a private thread as a non-member fails like Flarum). Known gaps: granting
   or removing the admin role does not queue a sync by itself (the next change of a design does, or run `forum:sync-visibility`), and
   deleting a design leaves its thread as it was.
+
+## 11. Revision R6: Stripe ledger, balances and reconciliation (owner decisions)
+
+Owner request: "a 1:1 link with Stripe that shows all transactional info so that balances are always accurate and up to
+date". Until now every money figure on the site (admin stats, seller dashboard totals, the Margins report's Stripe fee,
+which is an estimate) came from the site's own records. Decisions: pages for **admins and sellers**, a **daily
+reconciliation with an admin alert**, and **actual Stripe fees** instead of the estimate.
+
+### R6.1 Mirror (Stripe is the source of truth for money that moved)
+- New tables (new migration files only):
+  - `stripe_balance_transactions`: Stripe's ledger, 1:1. Primary key `txn_...`; `account` (null = platform, else `acct_...`);
+    type, reporting_category, amount / fee / net (cents), currency, available_on, created (Stripe time), source id and type,
+    description, fee details, livemode; plus links found by matching: order, seller order, seller (user).
+  - `stripe_payouts`: payouts to a bank (platform and connected accounts): `po_...`, account, amount, currency, status,
+    arrival date, failure message, livemode.
+  - `stripe_balances`: latest balance per account and currency (available, pending, in transit), refreshed time.
+  - a per-account sync cursor; `orders.stripe_fee_cents` (nullable, actual fee of the charge).
+- Sync job per account (platform + every connected seller account, Stripe-Account header): balance transactions
+  (incremental by `created` with an overlap window, idempotent upserts), payouts, balance. Pending/available follows
+  `available_on`. Scheduled every 10 minutes; webhooks only *trigger* a sync of the account concerned (platform:
+  balance.available, payout.*, transfer.*, charge.refunded, charge.dispute.*; connect: payout.*, balance.available).
+  Backfill command for the whole history. Wave subscription charges share the platform account: unlinked charges
+  without order metadata are "other", never errors.
+- Linking: charge `ch_` -> orders.stripe_charge_id; refund -> its charge's order (and seller_orders.stripe_refund_id);
+  transfer `tr_` -> seller_orders.stripe_transfer_id; transfer reversal -> its transfer; dispute adjustments -> charge;
+  a connected account's `payment` (py_) -> its source transfer -> seller order.
+
+### R6.2 Pages
+- Admin, Filament group "Finance": **Stripe ledger** (balance cards with last sync time and "Sync now"; transactions table
+  with filters, order links, an "open in Stripe" link, CSV export; seller balances table: Stripe balance per seller,
+  next/last payout, plus money the site still holds for them) and **Reconciliation** (open differences, resolve with a note).
+  Dashboard widget: open differences count.
+- Seller: **Earnings** page in the selling dashboard: Stripe balance (available, pending, on the way to the bank), payouts
+  to their bank with status and arrival date, transfers received linked to their orders, and payouts SDLabs still holds
+  (existing PayoutService outlook). Existing selling-dashboard totals use the ledger for money that was paid out.
+
+### R6.3 Reconciliation (daily, plus on demand)
+Compares site records with the ledger and stores each difference once (deduplicated, auto-resolved when a later run finds
+it fixed); a mail to admins lists new ones. Checks: every paid order has its charge for the order total; Stripe's
+refunded total per charge equals what the site recorded; every transferred seller order has its transfer (amount, account)
+and its reversals; every platform transfer belongs to a seller order; charges with order metadata whose order is not paid
+on the site (missed webhook); failed seller payouts; disputes without a case.
+
+### R6.4 Actual fees
+`orders.stripe_fee_cents` from the charge's balance transaction. MarginReport and stats use it; the estimate stays only
+until Stripe reports the fee and is marked "(est.)".

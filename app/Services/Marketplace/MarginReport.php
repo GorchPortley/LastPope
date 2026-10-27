@@ -103,6 +103,8 @@ class MarginReport
             }
         }
 
+        [$stripeFee, $estimated] = $this->stripeFee($order, $items + $shipping);
+
         return new MarginRow(
             orderNumber: $order->number,
             paidAt: $order->paid_at,
@@ -112,9 +114,32 @@ class MarginReport
             goodsCostCents: $goods,
             supplierShippingCents: $supplierShipping,
             dropshipFeesCents: $fees,
-            stripeFeeCents: $this->stripeFeeCents($items + $shipping),
+            stripeFeeCents: $stripeFee,
             costsPending: $pending,
+            estimatedFees: $estimated ? 1 : 0,
         );
+    }
+
+    /**
+     * The Stripe fee of the part of the order that is worth $partCents (items + shipping): what Stripe charged, shared by value when
+     * the order has other sellers' parts, or the estimate when the fee is not known yet.
+     *
+     * @return array{0: int, 1: bool} cents, and whether it is an estimate
+     */
+    public function stripeFee(Order $order, int $partCents): array
+    {
+        if ($order->stripe_fee_cents === null) {
+            return [$this->stripeFeeCents($partCents), true];
+        }
+
+        $whole = $order->subtotal_cents + $order->shipping_cents;
+
+        if ($whole <= 0 || $partCents >= $whole) {
+            return [$order->stripe_fee_cents, false];
+        }
+
+        // rounded half up
+        return [intdiv($order->stripe_fee_cents * $partCents * 2 + $whole, 2 * $whole), false];
     }
 
     /** Stripe's fee for charging $revenueCents: revenue x stripe_fee_bps (rounded half up) + stripe_fee_fixed_cents. */
@@ -134,8 +159,9 @@ class MarginReport
         $report = $this->forRange($from, $to);
         $money = fn (int $cents): string => number_format($cents / 100, 2, '.', '');
 
+        // The header says "(est.)" as soon as one order's fee is an estimate; the last column says which ones.
         $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, ['Order', 'Paid', 'Items', 'Shipping charged', 'Revenue', 'Refunds', 'Goods cost', 'Supplier shipping', 'Dropship fees', 'Stripe fee (est.)', 'Margin', 'Margin %', 'Costs pending'], escape: '');
+        fputcsv($handle, ['Order', 'Paid', 'Items', 'Shipping charged', 'Revenue', 'Refunds', 'Goods cost', 'Supplier shipping', 'Dropship fees', $report['totals']->stripeFeeIsEstimate() ? 'Stripe fee (est.)' : 'Stripe fee', 'Margin', 'Margin %', 'Costs pending', 'Stripe fee estimated'], escape: '');
 
         $line = fn (MarginRow $row, string $label, string $paid): array => [
             $label,
@@ -151,6 +177,7 @@ class MarginReport
             $money($row->marginCents()),
             $row->marginPercent() === null ? '' : number_format($row->marginPercent(), 1, '.', ''),
             $row->costsPending ? 'yes' : '',
+            $row->stripeFeeIsEstimate() ? 'yes' : '',
         ];
 
         foreach ($report['rows'] as $row) {

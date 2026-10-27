@@ -2,9 +2,11 @@
 
 namespace App\Support\EmailPreviews;
 
+use App\Enums\DiscrepancyKind;
 use App\Enums\IssueResolution;
 use App\Enums\IssueStatus;
 use App\Mail\PurchaseOrderMail;
+use App\Models\StripeDiscrepancy;
 use App\Models\User;
 use App\Notifications\DisputeOpened;
 use App\Notifications\IssueEscalated;
@@ -20,6 +22,7 @@ use App\Notifications\OrderShipped;
 use App\Notifications\PayoutSent;
 use App\Notifications\PurchaseOrdersToSend;
 use App\Notifications\SaleCancelled;
+use App\Notifications\StripeDifferencesFound;
 use Closure;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail as LaravelVerifyEmail;
@@ -200,6 +203,25 @@ class EmailPreviews
                         'id' => 'dp_preview_1', 'amount' => $d->sale->subtotal_cents + $d->sale->shipping_cents, 'reason' => 'product_not_received',
                         'evidence_details' => ['due_by' => now()->addDays(9)->timestamp],
                     ]), $d->admin];
+                },
+            ],
+
+            // --- Money
+            'stripe_differences' => [
+                'source' => StripeDifferencesFound::class,
+                'group' => 'Money', 'label' => 'Stripe differences found', 'audience' => 'Admin',
+                'description' => 'The daily check found differences between the shop\'s records and Stripe\'s ledger.',
+                'build' => function (SampleData $d) {
+                    $make = fn (DiscrepancyKind $kind, string $key, ?int $expected, ?int $actual, string $details) => StripeDiscrepancy::create([
+                        'kind' => $kind, 'key' => $key, 'order_id' => $d->saleOrder->getKey(), 'stripe_id' => $d->saleOrder->stripe_charge_id,
+                        'expected_cents' => $expected, 'actual_cents' => $actual, 'currency' => $d->saleOrder->currency, 'details' => $details,
+                        'first_seen_at' => now(), 'last_seen_at' => now(),
+                    ]);
+
+                    return [new StripeDifferencesFound(new \Illuminate\Database\Eloquent\Collection([
+                        $make(DiscrepancyKind::CHARGE_AMOUNT, 'order:preview-1', $d->saleOrder->total_cents, $d->saleOrder->total_cents - 500, 'Order '.$d->saleOrder->number.' is for more here than Stripe charged.'),
+                        $make(DiscrepancyKind::TRANSFER_MISSING, 'seller_order:preview-1', $d->sale->payout_cents, null, 'The payout was recorded as a transfer Stripe does not have.'),
+                    ])), $d->admin];
                 },
             ],
 

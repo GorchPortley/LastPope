@@ -3,8 +3,11 @@
 namespace App\Services\Marketplace\Webhooks;
 
 use App\Enums\OrderStatus;
+use App\Jobs\SyncStripeLedger;
 use App\Models\Order;
+use App\Models\SellerProfile;
 use App\Services\Marketplace\IssueService;
+use App\Services\Marketplace\Ledger\LedgerEvents;
 use App\Services\Marketplace\OrderFulfillment;
 use App\Services\Marketplace\RefundService;
 use App\Services\Payments\PaymentGateway;
@@ -20,6 +23,10 @@ use RuntimeException;
  *   charge.refunded                       RefundService::syncFromCharge
  *   charge.dispute.created                IssueService::recordDispute: an ESCALATED issue per seller order, payouts held
  *   charge.dispute.closed                 IssueService::recordDispute: records won / lost
+ *   balance.available, payout.*, transfer.*, charge.refunded, charge.dispute.*
+ *                                         also queue a sync of the platform's Stripe ledger (SyncStripeLedger, docs/PLAN.md 11):
+ *                                         the event only says something changed, the sync reads what (transfer.* also queues the
+ *                                         seller account the transfer went to)
  *
  * Every handler is idempotent, so a redelivered event is harmless. Anything unknown is ignored
  * (the endpoint may also receive Wave's subscription events). An exception means "retry later".
@@ -43,14 +50,27 @@ class MarketplaceWebhookHandler
     {
         $object = $this->payload($event);
 
-        return match ($event->type) {
+        $result = match ($event->type) {
             'checkout.session.completed', 'checkout.session.async_payment_succeeded' => $this->sessionPaid($object),
             'checkout.session.expired' => $this->sessionExpired($object),
             'charge.refunded' => $this->chargeRefunded($object),
             'charge.dispute.created' => $this->dispute($object, 'created'),
             'charge.dispute.closed' => $this->dispute($object, 'closed'),
-            default => self::IGNORED,
+            default => LedgerEvents::forPlatform($event->type) ? self::HANDLED : self::IGNORED,
         };
+
+        // After the order side is done, so the ledger links to the records it just changed. Never breaks the webhook.
+        if (LedgerEvents::forPlatform($event->type)) {
+            SyncStripeLedger::queueFor(null);
+
+            // A transfer also shows up on the seller's own account.
+            $destination = $object['destination'] ?? null;
+            if (str_starts_with($event->type, 'transfer.') && is_string($destination) && SellerProfile::query()->where('stripe_account_id', $destination)->exists()) {
+                SyncStripeLedger::queueFor($destination);
+            }
+        }
+
+        return $result;
     }
 
     /** @param  array<string, mixed>  $session */

@@ -73,4 +73,37 @@ interface PaymentGateway
      * @throws PaymentGatewayException
      */
     public function findChargeId(string $paymentIntentId): ?string;
+
+    // --- Ledger (docs/PLAN.md 11, R6): read-only views of Stripe's own books --------------------------------------------
+
+    /**
+     * One page of an account's balance transactions, newest first, each with its `source` expanded (the charge, refund,
+     * transfer, transfer reversal, payout or dispute behind it). $account null = the platform account, else a connected
+     * account (the Stripe-Account header). $createdSince is a Unix time (inclusive); $startingAfter the id of the last
+     * transaction of the previous page. Objects come back as the arrays of Stripe's API.
+     *
+     * @return array{data: array<int, array<string, mixed>>, has_more: bool}
+     *
+     * @throws PaymentGatewayException
+     */
+    public function listBalanceTransactions(?string $account, ?int $createdSince = null, ?string $startingAfter = null, int $limit = 100): array;
+
+    /**
+     * One page of an account's payouts to its bank account, newest first (`destination` expanded: the bank name and last
+     * four digits). Same arguments as listBalanceTransactions().
+     *
+     * @return array{data: array<int, array<string, mixed>>, has_more: bool}
+     *
+     * @throws PaymentGatewayException
+     */
+    public function listPayouts(?string $account, ?int $createdSince = null, ?string $startingAfter = null, int $limit = 100): array;
+
+    /**
+     * Stripe's balance object of an account: `available` and `pending` amounts per currency (null = the platform).
+     *
+     * @return array<string, mixed>
+     *
+     * @throws PaymentGatewayException
+     */
+    public function retrieveBalance(?string $account): array;
 }

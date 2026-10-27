@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class SellerProfile extends Model
@@ -61,6 +63,24 @@ class SellerProfile extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** The balance of the connected account as last read from Stripe, per currency (all modes: filter on livemode). */
+    public function stripeBalances(): HasMany
+    {
+        return $this->hasMany(StripeBalance::class, 'account_key', 'stripe_account_id');
+    }
+
+    /** The newest payout of the connected account to its bank. */
+    public function latestStripePayout(): HasOne
+    {
+        return $this->hasOne(StripePayout::class, 'account', 'stripe_account_id')->ofMany(['stripe_created_at' => 'max', 'id' => 'max'], fn ($query) => $query->where('livemode', \App\Support\StripeMode::isLive()));
+    }
+
+    /** The payout on its way to the bank that arrives first. */
+    public function nextStripePayout(): HasOne
+    {
+        return $this->hasOne(StripePayout::class, 'account', 'stripe_account_id')->ofMany(['arrival_date' => 'min', 'id' => 'min'], fn ($query) => $query->where('livemode', \App\Support\StripeMode::isLive())->onTheWay());
     }
 
     /** Stripe says this account can take payments and receive payouts. */

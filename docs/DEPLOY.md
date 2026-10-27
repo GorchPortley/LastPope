@@ -21,6 +21,7 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 - [16. Reference](#16-reference)
 - [17. Seasonal themes](#17-seasonal-themes)
 - [18. Dropshipping](#18-dropshipping)
+- [19. Stripe ledger and reconciliation](#19-stripe-ledger-and-reconciliation)
 
 ---
 
@@ -636,13 +637,19 @@ STRIPE_SECRET_KEY=sk_test_...
   - `charge.refunded`
   - `charge.dispute.created` (a buyer's bank opened a dispute: the order's payouts are put on hold and the admins are told)
   - `charge.dispute.closed` (the outcome, won or lost, is recorded on the case)
+  - for the [Stripe ledger](#19-stripe-ledger-and-reconciliation) (they only make the site read Stripe's books sooner; every
+    10 minutes it reads them anyway): `balance.available`, `payout.created`, `payout.updated`, `payout.paid`,
+    `payout.failed`, `payout.canceled`, `transfer.created`, `transfer.updated`, `transfer.reversed`,
+    `charge.dispute.funds_withdrawn`, `charge.dispute.funds_reinstated`
 - Copy the endpoint's *Signing secret* (`whsec_...`) into `.env` as `STRIPE_MARKETPLACE_WEBHOOK_SECRET`.
 
 **10.4 Webhook endpoint 2: connected accounts**
 
 - Click *Add endpoint* again and choose **Listen to events on Connected accounts**.
 - Endpoint URL: `https://shop.example.com/stripe/connect/webhook`
-- Event to send: `account.updated`
+- Events to send: `account.updated`, and for the [Stripe ledger](#19-stripe-ledger-and-reconciliation) the payouts and
+  balance of the sellers' accounts: `payout.created`, `payout.updated`, `payout.paid`, `payout.failed`, `payout.canceled`,
+  `balance.available`
 - Copy this endpoint's own signing secret into `.env` as `STRIPE_CONNECT_WEBHOOK_SECRET`.
 
 **Refunds: make them in `/admin`** (an order's *Refund order*, or *Refund* / *Partial refund* on one seller's part).
@@ -689,6 +696,11 @@ seller order of that order gets an escalated case, their payouts stay on hold an
 evidence in the Stripe dashboard before the due date; Stripe sends `charge.dispute.closed` with the outcome, which is
 recorded on the case. A lost dispute keeps the payouts blocked until an admin chooses **Recover from seller** (reverses the
 transfer, or cancels a payout that was not made yet).
+
+**Stripe's books on the site**: the admin panel and the sellers' *Earnings* page show Stripe's own balance, payouts and
+transactions, and a daily check compares them with the shop's records. The two endpoints above must send the extra events
+listed there, and the ledger needs a one-time backfill after the update that brings it: see
+[19. Stripe ledger and reconciliation](#19-stripe-ledger-and-reconciliation).
 
 **10.5 Apply and test**
 
@@ -1286,3 +1298,83 @@ store names itself; the reply-to of purchase orders), `MARKETPLACE_PURCHASE_ORDE
 `MARKETPLACE_MIN_MARGIN_BPS` (the store listing form warns below this margin; 1500 = 15 %).
 Purchase-order e-mails use the normal mail settings ([section 9](#9-mail)) and the **queue** container, so make sure it
 is running.
+
+## 19. Stripe ledger and reconciliation
+
+The site keeps a copy of Stripe's own books: every **balance transaction** (payments, refunds, transfers to sellers, payouts,
+fees, disputes) of the platform account and of every seller's connected account, their **payouts** to the bank and their
+**balances**. Stripe is the source of truth for money that moved; the copy lets the admin panel and the sellers see it, and a
+daily check compares it with the shop's own records. Nothing here moves money: the site only *reads* from Stripe.
+
+**After the update that brings it (once)**
+
+1. `docker compose up -d --build` applies the migrations (new tables `stripe_balance_transactions`, `stripe_payouts`,
+   `stripe_balances`, `stripe_sync_cursors`, `stripe_discrepancies` and a column `orders.stripe_fee_cents`).
+2. Add the extra webhook events listed in [10.3 and 10.4](#10-stripe-setup) to both endpoints (Stripe dashboard, Developers,
+   Webhooks, the endpoint, *Update details*). They are optional (without them the books are still read every 10 minutes), but
+   they make balances and payouts show up within seconds.
+3. Read the whole history **once**:
+
+```bash
+docker compose exec app php artisan stripe:ledger-sync --all
+```
+
+   It reads the platform and every seller account from the beginning, 100 transactions per request, and prints one line per
+   account; it can take a few minutes on a busy account. To read only part of the history use `--since=2025-01-01` (a start
+   date), for one account `--account=acct_...` (or `--account=platform`). Running it again is harmless: every transaction is
+   stored once, by its Stripe id. Orders get their real Stripe fee from it, so the Margins report stops estimating (see below).
+   Without this step the first scheduled sync (below) does the same work in the background, in pieces.
+
+**What runs by itself** (the `scheduler` and `queue` containers must be running)
+
+| What | When | |
+|---|---|---|
+| `stripe:ledger-sync --all --queue` | every 10 minutes | queues one job per account (the platform and each seller with a Stripe account). Each job reads what is new since its last run, with an hour of overlap so a late transaction is still caught. A webhook (payout, balance, transfer, refund, dispute) queues the job of the account concerned at once. Jobs retry with a growing delay; an account that Stripe keeps refusing is tried every 6 hours only. |
+| `stripe:reconcile` | every day at 04:17 | reads the ledger, compares it with the shop's records and stores every difference once |
+
+Both do nothing while `STRIPE_SECRET_KEY` is empty. Test keys and live keys are kept apart: everything stored says which mode it
+came from, the pages show the mode of the current keys, and switching from test to live keys starts a clean ledger.
+
+**Admin panel, group Finance**
+
+- **Stripe ledger**: the platform's balance per currency (available, pending, on its way to the bank, with when it was last read
+  and any error), "Sync now", every transaction with filters (type, account, dates, linked to an order or not), the order it
+  belongs to, a link to the payment, transfer, payout or dispute in the Stripe dashboard (test mode links go to the `/test/`
+  dashboard), a CSV export of what the filters show, and below it the **seller balances**: each seller's Stripe balance, next and
+  last payout, and the money the site still holds for them (payouts waiting for shipment, the payout delay or a problem report).
+- **Reconciliation**: the differences the daily check found, open ones first; "Check now" runs the check on demand (without mailing).
+  Close a difference with a note once you have sorted it out in Stripe; it stays closed while its numbers stay the same and
+  opens again if they change. A difference whose cause is fixed closes by itself.
+- The admin dashboard shows the number of open differences, the Stripe balance and when the ledger was last read.
+- **Margins** and the marketplace stats now use the Stripe fee that Stripe actually charged for each payment. Only an order whose
+  fee Stripe has not reported yet is estimated; it is marked **(est.)** (also in the CSV).
+
+**Sellers**: *Dashboard > Marketplace > Earnings* (`/dashboard/selling/earnings`) shows their Stripe balance (available, pending, on
+its way to their bank), their payouts to the bank with status, arrival date and, when a payout fails, why in plain words, the
+transfers the site made to them linked to their orders, and what the site still holds for them. The balance is asked from Stripe
+again when it is older than 5 minutes. "Paid out" on the selling dashboard now comes from the ledger. A seller only ever sees
+their own account.
+
+**The daily check and its mail.** `stripe:reconcile` brings the ledger up to date first, then checks:
+
+1. every paid order has its payment in Stripe, for the order total (tax included);
+2. what Stripe refunded per payment equals what the site recorded (refunding a whole order also refunds its tax, which the site's
+   per-seller refund amounts do not count: the check knows this);
+3. every transferred seller order has its transfer in Stripe, for the right amount, to the seller's account, received there, and
+   Stripe's reversals of it equal what the site took back;
+4. every transfer on the platform account belongs to a seller order;
+5. payments whose order is not paid on the site (a missed webhook) or does not exist;
+6. failed payouts to a bank account (it closes by itself once a later payout went through);
+7. bank disputes without a problem report on the site.
+
+Payments of Wave's subscriptions share the Stripe account and are not part of any check. Events younger than 30 minutes, orders
+from the other Stripe mode and orders from before the ledger's first transaction are left out. Admins get **one e-mail listing
+the new differences** (the first 15; a difference is mailed once, again only if it changes after it was closed) and a
+notification in the site; with nothing new there is no mail. The command prints the same summary: `php artisan stripe:reconcile`
+(`--no-sync` to compare without reading Stripe first, `--no-mail` to keep quiet).
+
+**Limits worth knowing.** A balance transaction is read once and not edited afterwards (Stripe does not change them); a transaction
+Stripe shows more than an hour late is picked up by `stripe:ledger-sync --since=...`. The dashboard links open the Stripe dashboard
+page of the object; the account must be signed in. The demo data's made-up Stripe ids (`acct_demo...`, `ch_demo_...`) are skipped.
+Tuning (rarely needed) is in `config/marketplace.php` under `ledger` (overlap, payout look-back, pages per job, how old a seller's
+balance may be, the check's grace period).

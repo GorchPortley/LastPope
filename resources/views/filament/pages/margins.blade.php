@@ -15,7 +15,9 @@
     $cards = [
         ['label' => 'Revenue', 'value' => money($totals->revenueCents()), 'note' => 'items '.money($totals->itemsCents).' + shipping '.money($totals->shippingCents), 'key' => 'revenue'],
         ['label' => 'Costs', 'value' => money($totals->costsCents()), 'note' => 'goods '.money($totals->goodsCostCents).', supplier shipping '.money($totals->supplierShippingCents).', fees '.money($totals->dropshipFeesCents), 'key' => 'costs'],
-        ['label' => 'Stripe fees (est.)', 'value' => money($totals->stripeFeeCents), 'note' => $totals->orders.' '.\Illuminate\Support\Str::plural('order', $totals->orders), 'key' => 'stripe-fees'],
+        ['label' => $totals->stripeFeeIsEstimate() ? 'Stripe fees (est.)' : 'Stripe fees', 'value' => money($totals->stripeFeeCents), 'note' => $totals->stripeFeeIsEstimate()
+            ? ($totals->orders - $totals->estimatedFees).' of '.$totals->orders.' '.\Illuminate\Support\Str::plural('order', $totals->orders).' charged by Stripe, '.$totals->estimatedFees.' estimated'
+            : 'charged by Stripe, '.$totals->orders.' '.\Illuminate\Support\Str::plural('order', $totals->orders), 'key' => 'stripe-fees'],
         ['label' => 'Refunds', 'value' => money($totals->refundsCents), 'note' => 'given back to buyers', 'key' => 'refunds'],
         ['label' => 'Margin', 'value' => money($margin), 'note' => 'after costs, fees and refunds', 'key' => 'margin', 'class' => $marginClass($margin, $totals->marginBps())],
         ['label' => 'Margin %', 'value' => $percent === null ? '-' : number_format($percent, 1).' %', 'note' => 'of the revenue kept', 'key' => 'margin-percent', 'class' => $marginClass($margin, $totals->marginBps())],
@@ -28,8 +30,8 @@
             {{ $this->form }}
         </form>
         <p class="mt-4 text-sm text-gray-500 dark:text-gray-400" data-margin-range>
-            Paid orders from {{ $this->rangeLabel() }}: the SDLabs store's part of each order. Stripe's fee is an estimate
-            ({{ number_format((int) config('marketplace.stripe_fee_bps', 290) / 100, 2) }} % + {{ money((int) config('marketplace.stripe_fee_fixed_cents', 30)) }} per order).
+            Paid orders from {{ $this->rangeLabel() }}: the SDLabs store's part of each order. Stripe's fee is the one Stripe charged for the payment;
+            until Stripe reports it, it is an estimate ({{ number_format((int) config('marketplace.stripe_fee_bps', 290) / 100, 2) }} % + {{ money((int) config('marketplace.stripe_fee_fixed_cents', 30)) }} per order), marked (est.).
         </p>
     </x-filament::section>
 
@@ -57,7 +59,7 @@
                             <th class="px-3 py-2 text-end font-medium">Goods</th>
                             <th class="px-3 py-2 text-end font-medium">Supplier ship.</th>
                             <th class="px-3 py-2 text-end font-medium">Fees</th>
-                            <th class="px-3 py-2 text-end font-medium">Stripe (est.)</th>
+                            <th class="px-3 py-2 text-end font-medium">{{ $totals->stripeFeeIsEstimate() ? 'Stripe (est.)' : 'Stripe' }}</th>
                             <th class="px-3 py-2 text-end font-medium">Margin</th>
                             <th class="px-3 py-2 text-end font-medium">%</th>
                         </tr>
@@ -77,7 +79,7 @@
                                 <td class="px-3 py-2 text-end">{{ money($row->goodsCostCents) }}</td>
                                 <td class="px-3 py-2 text-end">{{ money($row->supplierShippingCents) }}</td>
                                 <td class="px-3 py-2 text-end">{{ money($row->dropshipFeesCents) }}</td>
-                                <td class="px-3 py-2 text-end">{{ money($row->stripeFeeCents) }}</td>
+                                <td class="px-3 py-2 text-end" @if ($row->stripeFeeIsEstimate()) data-fee-estimate title="Estimated: Stripe has not reported the fee of this payment yet" @endif>{{ money($row->stripeFeeCents) }}@if ($row->stripeFeeIsEstimate()) <span class="text-xs text-gray-500 dark:text-gray-400">(est.)</span>@endif</td>
                                 <td class="px-3 py-2 text-end font-semibold {{ $marginClass($row->marginCents(), $row->marginBps()) }}">{{ money($row->marginCents()) }}</td>
                                 <td class="px-3 py-2 text-end {{ $marginClass($row->marginCents(), $row->marginBps()) }}">{{ $row->marginPercent() === null ? '-' : number_format($row->marginPercent(), 1) }}</td>
                             </tr>
@@ -91,7 +93,7 @@
                             <td class="px-3 py-2 text-end">{{ money($totals->goodsCostCents) }}</td>
                             <td class="px-3 py-2 text-end">{{ money($totals->supplierShippingCents) }}</td>
                             <td class="px-3 py-2 text-end">{{ money($totals->dropshipFeesCents) }}</td>
-                            <td class="px-3 py-2 text-end">{{ money($totals->stripeFeeCents) }}</td>
+                            <td class="px-3 py-2 text-end">{{ money($totals->stripeFeeCents) }}@if ($totals->stripeFeeIsEstimate()) <span class="text-xs font-normal text-gray-500 dark:text-gray-400">(est.)</span>@endif</td>
                             <td class="px-3 py-2 text-end {{ $marginClass($margin, $totals->marginBps()) }}">{{ money($margin) }}</td>
                             <td class="px-3 py-2 text-end {{ $marginClass($margin, $totals->marginBps()) }}">{{ $percent === null ? '-' : number_format($percent, 1) }}</td>
                         </tr>

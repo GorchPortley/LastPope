@@ -182,8 +182,9 @@ it('exports the report as CSV with a totals row', function () {
     $csv = $this->report->toCsv($from, $to);
     $rows = array_map('str_getcsv', array_filter(explode("\n", $csv)));
 
-    expect($rows[0])->toBe(['Order', 'Paid', 'Items', 'Shipping charged', 'Revenue', 'Refunds', 'Goods cost', 'Supplier shipping', 'Dropship fees', 'Stripe fee (est.)', 'Margin', 'Margin %', 'Costs pending'])
-        ->and($rows[1])->toBe([$order->number, now()->format('Y-m-d'), '280.00', '20.99', '300.99', '0.00', '170.00', '10.00', '2.50', '9.03', '109.46', '36.4', ''])
+    expect($rows[0])->toBe(['Order', 'Paid', 'Items', 'Shipping charged', 'Revenue', 'Refunds', 'Goods cost', 'Supplier shipping', 'Dropship fees', 'Stripe fee (est.)', 'Margin', 'Margin %', 'Costs pending', 'Stripe fee estimated'])
+        // no actual fee known yet (R6): the estimate, marked as one
+        ->and($rows[1])->toBe([$order->number, now()->format('Y-m-d'), '280.00', '20.99', '300.99', '0.00', '170.00', '10.00', '2.50', '9.03', '109.46', '36.4', '', 'yes'])
         ->and($rows[2][0])->toBe('Total (1 orders)')
         ->and($rows[2][10])->toBe('109.46');
 });

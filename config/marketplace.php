@@ -130,6 +130,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Stripe ledger (docs/PLAN.md 11)
+    |--------------------------------------------------------------------------
+    |
+    | The site mirrors Stripe's own books (balance transactions, payouts, balances) for the platform and for every
+    | seller's connected account, and compares them with its records every day.
+    |   overlap_minutes          every sync reads from this long before the end of the last one, so a transaction that
+    |                            showed up late is still picked up (upserts make the repeat harmless)
+    |   payout_lookback_days     payouts change status after they are created: the sync reads this many days of them again
+    |   job_max_pages            pages of 100 transactions one queued sync reads before it queues itself again
+    |   balance_max_age_minutes  the seller's Earnings page asks Stripe for the balance again when it is older than this
+    |   reconcile_grace_minutes  the reconciliation leaves events younger than this alone (webhooks and the sync need time)
+    |
+    */
+
+    'ledger' => [
+        'overlap_minutes' => 60,
+        'payout_lookback_days' => 45,
+        'job_max_pages' => 20,
+        'balance_max_age_minutes' => 5,
+        'reconcile_grace_minutes' => 30,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Defaults
     |--------------------------------------------------------------------------
     */

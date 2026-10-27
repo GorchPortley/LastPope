@@ -5,6 +5,7 @@ use App\Exceptions\Marketplace\ConnectException;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Services\Marketplace\ConnectOnboardingService;
+use App\Services\Marketplace\Ledger\SellerEarnings;
 use App\Services\Marketplace\PayoutService;
 use App\Support\Countries;
 use Filament\Forms\Components\Select;
@@ -177,33 +178,17 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
         $user = auth()->user();
         $profile = $user->sellerProfile?->refresh();
 
-        $paid = SellerOrder::query()->where('seller_id', $user->getKey())->whereIn('status', [
-            SellerOrderStatus::PAID->value, SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::PARTIALLY_SHIPPED->value, SellerOrderStatus::SHIPPED->value,
-            SellerOrderStatus::DELIVERED->value, SellerOrderStatus::COMPLETED->value,
-        ]);
+        $paid = SellerOrder::query()->where('seller_id', $user->getKey())->whereIn('status', array_map(fn (SellerOrderStatus $status) => $status->value, SellerEarnings::SOLD));
 
         $totals = (clone $paid)->selectRaw('COUNT(*) as orders, COALESCE(SUM(subtotal_cents + shipping_cents), 0) as gross, COALESCE(SUM(platform_fee_cents), 0) as fees')->first();
 
         // Payouts that have not been made yet: held back by a problem report, scheduled for a date, or waiting for the shipment.
         $payouts = app(PayoutService::class);
-        $upcoming = SellerOrder::query()
-            ->where('seller_id', $user->getKey())
-            ->whereNull('transferred_at')
-            ->where('payout_cents', '>', 0)
-            ->whereIn('status', [SellerOrderStatus::AWAITING_SHIPMENT->value, SellerOrderStatus::PARTIALLY_SHIPPED->value, SellerOrderStatus::SHIPPED->value, SellerOrderStatus::DELIVERED->value, SellerOrderStatus::COMPLETED->value])
-            ->with(['order', 'items', 'seller', 'activeIssue'])
-            ->latest('id')
-            ->limit(25)
-            ->get()
-            ->map(fn (SellerOrder $sellerOrder) => ['sellerOrder' => $sellerOrder, 'outlook' => $payouts->outlook($sellerOrder)])
-            ->reject(fn (array $row) => $row['outlook']['state'] === 'none')
-            // held first, then by date, then the ones that wait for a shipment
-            ->sortBy(fn (array $row) => match ($row['outlook']['state']) {
-                'held' => '0',
-                'scheduled' => '1'.$row['outlook']['at']->format('YmdHis'),
-                default => '2',
-            })
-            ->values();
+        $earnings = app(SellerEarnings::class);
+        $upcoming = $earnings->upcoming($user);
+
+        // "Paid out" is what Stripe's ledger says reached the seller's account (the site's own records until Stripe has been read).
+        $paidOut = $earnings->paidOut($user);
 
         // Where the Stripe card is: nothing / account without details / waiting for Stripe / ready.
         $stripe = match (true) {
@@ -223,7 +208,8 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                 'orders' => (int) $totals->orders,
                 'gross' => (int) $totals->gross,
                 'fees' => (int) $totals->fees,
-                'payouts' => (int) (clone $paid)->whereNotNull('transferred_at')->sum('payout_cents'),
+                'payouts' => $paidOut['cents'],
+                'payoutsConfirmed' => $paidOut['confirmed'],
                 'pending' => (int) (clone $paid)->whereNull('transferred_at')->sum('payout_cents'),
                 'held' => $upcoming->where('outlook.state', 'held')->count(),
                 'toShip' => SellerOrder::query()->where('seller_id', $user->getKey())->where('status', SellerOrderStatus::AWAITING_SHIPMENT->value)->count(),
@@ -239,7 +225,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             @foreach ([
                 ['Gross sales', money($stats['gross']), $stats['orders'].' '.\Illuminate\Support\Str::plural('order', $stats['orders']), 'gross'],
                 ['Platform fees', money($stats['fees']), 'kept by '.config('app.name'), 'fees'],
-                ['Paid out', money($stats['payouts']), 'sent to your Stripe account', 'payouts'],
+                ['Paid out', money($stats['payouts']), $stats['payoutsConfirmed'] ? 'sent to your Stripe account, as Stripe shows it' : 'sent to your Stripe account', 'payouts'],
                 ['Pending payouts', money($stats['pending']), $stats['held'] > 0 ? $stats['held'].' on hold: open '.\Illuminate\Support\Str::plural('problem', $stats['held']) : ($stats['toShip'] > 0 ? $stats['toShip'].' to ship' : 'see when each is released'), 'pending'],
             ] as [$label, $value, $hint, $key])
                 <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5" data-stat="{{ $key }}">
@@ -269,7 +255,10 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             @break
                         @case('active')
                             <p class="text-gray-700">Payments for your paid items are transferred to your bank through Stripe. You can publish paid designs and listings. {{ $payoutNote }}</p>
-                            <x-button tag="a" href="{{ route('selling.dashboard-link') }}" color="gray">Open Stripe dashboard</x-button>
+                            <div class="flex flex-wrap gap-3">
+                                <x-button tag="a" href="{{ route('selling.earnings') }}">Your earnings and payouts</x-button>
+                                <x-button tag="a" href="{{ route('selling.dashboard-link') }}" color="gray">Open Stripe dashboard</x-button>
+                            </div>
                             @break
                         @case('pending')
                             <p class="text-gray-700">Stripe has your details and is verifying them. This usually takes minutes, sometimes a few days. We e-mail you as soon as you can sell paid items.</p>
@@ -303,53 +292,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
         </div>
 
         <x-filament::section heading="Upcoming payouts" icon="phosphor-calendar-check" description="When the money for your sales reaches your Stripe account." data-upcoming-payouts>
-            <p class="text-sm text-gray-600">{{ $payoutNote }}</p>
-
-            @if ($upcoming->isEmpty())
-                <p class="mt-4 text-sm text-gray-500">Nothing is waiting to be paid out.</p>
-            @else
-                <ul class="mt-4 divide-y divide-gray-100">
-                    @foreach ($upcoming as $row)
-                        @php
-                            $so = $row['sellerOrder'];
-                            $outlook = $row['outlook'];
-                        @endphp
-                        <li class="flex flex-wrap items-center justify-between gap-3 py-3 text-sm" data-payout-row="{{ $so->getKey() }}" data-payout-state="{{ $outlook['state'] }}">
-                            <div class="min-w-0">
-                                <p class="font-medium text-gray-950">{{ $so->order->number }} <span class="font-normal text-gray-500">&middot; {{ $so->items->first()?->title }}{{ $so->items->count() > 1 ? ' + '.($so->items->count() - 1).' more' : '' }}</span></p>
-                                <p class="text-gray-500">
-                                    @switch($outlook['state'])
-                                        @case('held')
-                                            On hold until the problem reported by the buyer is resolved.
-                                            @if ($so->activeIssue)
-                                                <a href="{{ $so->activeIssue->url() }}" class="font-medium text-brand-700 underline hover:text-brand-900">Open the problem</a>
-                                            @endif
-                                            @break
-                                        @case('scheduled')
-                                            @if ($outlook['at']->isPast())
-                                                Due now: it is released within the hour.
-                                            @else
-                                                Released on {{ $outlook['at']->format('M j, Y') }} unless the buyer reports a problem.
-                                            @endif
-                                            @break
-                                        @default Released after you mark the parcel as shipped.
-                                    @endswitch
-                                </p>
-                            </div>
-                            <div class="flex flex-shrink-0 items-center gap-3">
-                                @if ($outlook['state'] === 'held')
-                                    <x-marketplace.badge color="danger">On hold</x-marketplace.badge>
-                                @elseif ($outlook['state'] === 'scheduled')
-                                    <x-marketplace.badge color="info">{{ $outlook['at']->isPast() ? 'Due now' : $outlook['at']->format('M j') }}</x-marketplace.badge>
-                                @else
-                                    <x-marketplace.badge color="warning">After shipping</x-marketplace.badge>
-                                @endif
-                                <span class="font-semibold text-gray-950">{{ money($so->payout_cents, $so->order->currency) }}</span>
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
+            <x-marketplace.upcoming-payouts :upcoming="$upcoming" :note="$payoutNote" />
         </x-filament::section>
 
         {{ $this->table }}

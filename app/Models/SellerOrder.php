@@ -101,6 +101,12 @@ class SellerOrder extends Model
         ]);
     }
 
+    /** The Stripe ledger lines linked to this seller order (its transfer, reversals, refunds), oldest first. */
+    public function ledgerEntries(): HasMany
+    {
+        return $this->hasMany(StripeBalanceTransaction::class)->orderBy('stripe_created_at');
+    }
+
     /** Every problem report ever opened for this seller order, newest first. */
     public function issues(): HasMany
     {

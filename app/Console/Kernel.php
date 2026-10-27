@@ -27,6 +27,11 @@ class Kernel extends ConsoleKernel
 
         // Read the suppliers' stock feeds into the dropshipped store listings (docs/PLAN.md 8.4).
         $schedule->command('marketplace:sync-supplier-stock')->hourly()->withoutOverlapping();
+
+        // Mirror Stripe's books (balance transactions, payouts, balances) of the platform and of every seller's account
+        // (docs/PLAN.md 11, R6), and compare them with the site's records once a day; new differences are mailed to the admins.
+        $schedule->command('stripe:ledger-sync --all --queue')->everyTenMinutes()->withoutOverlapping();
+        $schedule->command('stripe:reconcile')->dailyAt('04:17')->withoutOverlapping();
     }
 
     /**

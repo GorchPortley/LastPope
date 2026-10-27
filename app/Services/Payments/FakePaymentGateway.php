@@ -4,6 +4,7 @@ namespace App\Services\Payments;
 
 use App\Models\Order;
 use App\Models\SellerProfile;
+use App\Services\Payments\Concerns\SimulatesStripeLedger;
 use App\Services\Payments\Exceptions\InvalidWebhookException;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
 use Stripe\Exception\SignatureVerificationException;
@@ -22,6 +23,8 @@ use Stripe\Webhook;
  */
 class FakePaymentGateway implements PaymentGateway
 {
+    use SimulatesStripeLedger;
+
     /** @var array<int, array{method: string, args: array<string, mixed>}> */
     public array $calls = [];
 
@@ -85,21 +88,40 @@ class FakePaymentGateway implements PaymentGateway
     {
         $this->record(__FUNCTION__, compact('amountCents', 'destination', 'transferGroup', 'sourceCharge', 'meta'));
 
-        return $this->nextId('tr');
+        $id = $this->nextId('tr');
+        $this->recordTransfer($id, $destination, $amountCents, $sourceCharge, $transferGroup, $meta);
+
+        return $id;
     }
 
     public function refund(string $paymentIntentId, ?int $amountCents, array $meta = []): string
     {
         $this->record(__FUNCTION__, compact('paymentIntentId', 'amountCents', 'meta'));
 
-        return $this->nextId('re');
+        $id = $this->nextId('re');
+
+        // Like Stripe, a refund of a payment the fake ledger knows leaves a refund in the ledger.
+        foreach ($this->ledgerObjects as $object) {
+            if (($object['object'] ?? null) === 'charge' && ($object['payment_intent'] ?? null) === $paymentIntentId) {
+                $this->recordRefund($object['id'], $amountCents, ['id' => $id, 'metadata' => $meta]);
+                break;
+            }
+        }
+
+        return $id;
     }
 
     public function reverseTransfer(string $transferId, ?int $amountCents, array $meta = []): string
     {
         $this->record(__FUNCTION__, compact('transferId', 'amountCents', 'meta'));
 
-        return $this->nextId('trr');
+        $id = $this->nextId('trr');
+
+        if (isset($this->ledgerObjects[$transferId])) {
+            $this->recordTransferReversal($id, $transferId, $amountCents, $meta);
+        }
+
+        return $id;
     }
 
     public function constructWebhookEvent(string $payload, string $signature, string $secret): object
@@ -169,7 +191,7 @@ class FakePaymentGateway implements PaymentGateway
     {
         $this->calls = $this->counters = $this->accountStatuses = $this->failures = [];
 
-        return $this;
+        return $this->resetLedger();
     }
 
     private function record(string $method, array $args): void

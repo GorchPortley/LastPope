@@ -27,6 +27,7 @@ class Order extends Model
         'tax_cents',
         'total_cents',
         'platform_fee_cents',
+        'stripe_fee_cents',
         'shipping_address',
         'stripe_checkout_session_id',
         'stripe_payment_intent_id',
@@ -46,6 +47,7 @@ class Order extends Model
         'tax_cents' => 'integer',
         'total_cents' => 'integer',
         'platform_fee_cents' => 'integer',
+        'stripe_fee_cents' => 'integer',
         'shipping_address' => 'array',
         'paid_at' => 'datetime',
         'reserved_until' => 'datetime',
@@ -123,6 +125,12 @@ class Order extends Model
     public function issues(): HasMany
     {
         return $this->hasMany(OrderIssue::class)->latest('id');
+    }
+
+    /** The Stripe ledger lines linked to this order (payment, refunds, transfers, ...), oldest first. */
+    public function ledgerEntries(): HasMany
+    {
+        return $this->hasMany(StripeBalanceTransaction::class)->orderBy('stripe_created_at');
     }
 
     public function scopeStatus(Builder $query, OrderStatus ...$statuses): Builder

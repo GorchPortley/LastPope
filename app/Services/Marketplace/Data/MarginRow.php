@@ -11,7 +11,9 @@ use Illuminate\Support\Carbon;
  *   revenue    items + shipping charged for the platform's part of the order
  *   refunds    given back to the buyers
  *   costs      goods (unit cost x quantity, stock and supplier lines alike), supplier shipping, dropship fees
- *   stripeFee  an estimate: revenue x stripe_fee_bps + stripe_fee_fixed_cents per order (Stripe keeps its fee on refunds)
+ *   stripeFee  what Stripe charged for the payment when the ledger sync has read it (orders.stripe_fee_cents, for the platform's share of
+ *              the order when other sellers are in it too), else an estimate: revenue x stripe_fee_bps + stripe_fee_fixed_cents per order
+ *              (`estimatedFees` counts the orders whose fee is such an estimate; Stripe keeps its fee on refunds)
  *   margin     revenue - refunds - costs - stripeFee
  */
 final class MarginRow
@@ -28,7 +30,14 @@ final class MarginRow
         public readonly int $stripeFeeCents,
         public readonly bool $costsPending = false,
         public readonly int $orders = 1,
+        public readonly int $estimatedFees = 0,
     ) {
+    }
+
+    /** At least one of the orders has an estimated Stripe fee instead of the one Stripe charged. */
+    public function stripeFeeIsEstimate(): bool
+    {
+        return $this->estimatedFees > 0;
     }
 
     /** Items plus shipping charged. */
@@ -76,7 +85,7 @@ final class MarginRow
      */
     public static function total(iterable $rows): self
     {
-        $items = $shipping = $refunds = $goods = $supplierShipping = $fees = $stripe = $count = 0;
+        $items = $shipping = $refunds = $goods = $supplierShipping = $fees = $stripe = $count = $estimated = 0;
         $pending = false;
 
         foreach ($rows as $row) {
@@ -89,8 +98,9 @@ final class MarginRow
             $stripe += $row->stripeFeeCents;
             $pending = $pending || $row->costsPending;
             $count += $row->orders;
+            $estimated += $row->estimatedFees;
         }
 
-        return new self(null, null, $items, $shipping, $refunds, $goods, $supplierShipping, $fees, $stripe, $pending, $count);
+        return new self(null, null, $items, $shipping, $refunds, $goods, $supplierShipping, $fees, $stripe, $pending, $count, $estimated);
     }
 }

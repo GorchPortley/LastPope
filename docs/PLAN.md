@@ -671,3 +671,76 @@ on the site (missed webhook); failed seller payouts; disputes without a case.
 ### R6.4 Actual fees
 `orders.stripe_fee_cents` from the charge's balance transaction. MarginReport and stats use it; the estimate stays only
 until Stripe reports the fee and is marked "(est.)".
+
+### R6 implementation notes (where things live; done)
+- **Migrations (new files only, `2026_10_25_00000x`)**: `create_stripe_ledger_tables`, `add_stripe_fee_to_orders`, `create_stripe_discrepancies_table`.
+  - `stripe_balance_transactions` (PK `txn_...`, models `StripeBalanceTransaction`): `account` (NULL = platform), `livemode`, `type`, `reporting_category`,
+    `amount_cents` / `fee_cents` / `net_cents` (signed), `currency`, `stripe_created_at`, `available_on` (pending while in the future), `description`,
+    `fee_details`; the object behind it: `source_id`, `source_type`, and the ids found in it (`charge_id`, `payment_intent_id`, `transfer_id`,
+    `reversal_id`, `refund_id`, `dispute_id`, `payout_id`, `counterparty` = the account a transfer went to, `transfer_group`, `source_metadata` = only
+    the keys this site sets: order_id, order_number, seller_order_id(s), because the platform account is shared with Wave's billing); the links:
+    `link_status` (`LedgerLink`: linked / unlinked / other), `order_id`, `seller_order_id`, `seller_id` (nullOnDelete).
+  - `stripe_payouts` (`StripePayout`: status, arrival date, `failure_code` / `failure_message` with `failureExplanation()` in plain words,
+    `destination_label` "BANK ••••6789"), `stripe_balances` (`StripeBalance`: per `account_key` ('platform' | acct_), mode and currency:
+    available, pending, `in_transit` = sum of the payouts on their way, `connect_reserved`, `refreshed_at`), `stripe_sync_cursors`
+    (`StripeSyncCursor`: `synced_through` = start of the last complete pass, `resume_*` for a pass cut at the page limit, last error, failure
+    count), `orders.stripe_fee_cents` (nullable), `stripe_discrepancies` (`StripeDiscrepancy`, `DiscrepancyKind`; unique kind + key).
+  - Everything carries `livemode`, taken from the key (`App\Support\StripeMode`: `sk_live_` / `rk_live_`; a balance transaction has no such field).
+    Pages and the reconciliation only look at the current mode; cursors and balances exist once per mode, so switching from test to live starts clean.
+- **Gateway**: `PaymentGateway::listBalanceTransactions(?account, ?createdSince, ?startingAfter, limit)` (`expand[]=data.source`),
+  `listPayouts(...)` (`expand[]=data.destination`), `retrieveBalance(?account)`; `StripeGateway` runs them through `call()` with the
+  `stripe_account` request option for a connected account and returns Stripe's objects as arrays. `PaymentGatewayException::isPermanent()` tells a
+  refusal (unknown account, no permission, bad key) from a transient failure. `FakePaymentGateway` (trait `Concerns\SimulatesStripeLedger`) keeps a
+  ledger in memory in the shape of the real objects: `createTransfer` books the transfer on the platform and the `payment` (py_, `source_transfer`) on
+  the seller, `reverseTransfer` the `transfer_refund` + `payment_refund`, `refund` the `refund` (when the payment intent is a charge recorded in it);
+  test helpers `recordCharge`, `recordOrderCharge`, `recordSubscriptionCharge` (Wave), `recordRefund`, `recordDispute` / `closeDispute`,
+  `recordPayout` / `failPayout`, `alterLedgerTransaction`, `forgetLedgerTransaction`; the balance is computed from the transactions.
+- **Sync**: `Services\Marketplace\Ledger\LedgerSync::syncAccount(account, since, maxPages)`: balance transactions newest first from `synced_through`
+  minus the overlap (`marketplace.ledger.overlap_minutes`, 60), upserted by id in pages of 100 (links are not part of the update), payouts of the last
+  `payout_lookback_days` (45) again, then the balance; a failure is written to the cursor and rethrown. The cursor moves only when a pass reaches its
+  end; a pass cut at `maxPages` is continued by the next run (`resume_*`). `Jobs\SyncStripeLedger` (one per account: `ShouldBeUniqueUntilProcessing` +
+  `WithoutOverlapping`, backoff 30/120/300/900 s, queues itself again when a pass was cut, does not retry what Stripe refused for good, `queueFor()`
+  never throws). `stripe:ledger-sync {--account=} {--all} {--since=} {--queue}`; scheduled `--all --queue` every 10 minutes (`withoutOverlapping`),
+  an account with 5 failures in a row is queued only every 6 hours. Made-up demo accounts (`acct_demo...`) are skipped.
+  Webhooks only queue the sync (`LedgerEvents`): platform endpoint `balance.available`, `payout.*`, `transfer.*` (also the seller account the transfer
+  went to), `charge.refunded`, `charge.dispute.*`; Connect endpoint `payout.*`, `balance.available` of `event.account` (unknown accounts ignored). The
+  order handlers run first, the sync is queued after them.
+- **Linking** (`LedgerLinker`, by ids only): charge -> `orders.stripe_charge_id`, else the payment intent, else the order marker in the charge's metadata
+  (number and id must both match); refund -> the order of its charge, and the seller order when exactly one has that `stripe_refund_id`; dispute
+  adjustment -> the order of the charge; transfer / transfer reversal -> `seller_orders.stripe_transfer_id` (the reversal through its transfer); on a seller
+  account `payment` -> its `source_transfer` -> seller order, `payment_refund` -> the refunded payment's transfer (through the mirrored payment). No match:
+  `unlinked` if money should have an owner (transfers, payments with an order marker), else `other` (payouts, fees, Wave charges and their refunds and
+  disputes). Unlinked rows are tried again by every sync. The fee of a platform charge goes to `orders.stripe_fee_cents` (the page's charges, plus orders
+  paid in the last week that still have none). Limit: `seller_orders.stripe_refund_id` holds only the latest refund, so an earlier partial refund links to
+  the order but not to its seller order.
+- **Reconciliation** (`Reconciler`, `stripe:reconcile {--no-sync} {--no-mail}` daily 04:17, "Check now" on the page): seven checks / thirteen
+  `DiscrepancyKind`s as listed in R6.3 (charge missing / amount, refund total, transfer missing / amount / account / not received by the seller /
+  reversal total, orphan transfer, payment of an unpaid or unknown order, failed payout, dispute without case). **Tax rule**: Stripe's refunded total
+  for a charge matches when it equals the sum of `seller_orders.refunded_cents` (items + shipping), or, when every seller order is fully refunded, that
+  sum plus `orders.tax_cents`, because refunding a whole untouched order refunds the whole payment (`RefundService`). Guards: events younger than
+  `reconcile_grace_minutes` (30) or newer than the account's `synced_through` are left alone, orders paid before the ledger's first transaction, orders of
+  the other Stripe mode (`cs_test_` / `cs_live_` session id) and the demo data's (`ch_demo_`) are not checked, and a check that could not run (ledger never
+  synced) closes nothing. A difference is one row per kind + key; found again it only updates; no longer found it closes (`auto`); closed by an admin
+  (`manual`, note required) it stays closed while expected / actual stay the same and opens again, as new, when they change. Admins get one mail
+  (`Notifications\StripeDifferencesFound`, also a database notification, listed in the e-mail previews) with the differences nobody was told about
+  (`notified_at`), the first 15 in a table.
+- **Pages**: Filament group **Finance**: page `StripeLedger` (balance cards per currency, last sync / errors, "Sync now" = platform inline with a page
+  limit + the sellers queued, transactions table with type / account / date / link filters, search, "Open in Stripe" (`StripeBalanceTransaction::stripeUrl()`,
+  `/test/` in test mode), CSV of the filtered rows with formula-safe cells), footer widget `SellerBalances` (Stripe balance, next / last payout and the
+  money the site holds per seller), resource `StripeDiscrepancyResource` (slug `reconciliation`: tabs open / fixed or closed / all, close with note, open
+  again, "Check now", navigation badge), widget `FinanceStats` on the dashboard (open differences, balance, last read). Seller: Folio page
+  `dashboard/selling/earnings` (route `selling.earnings`, sidebar link "Earnings", linked from the selling dashboard) with `Services\Marketplace\Ledger\SellerEarnings`
+  (balance refreshed when older than `balance_max_age_minutes` (5) plus a queued sync, payouts with failures explained, transfers received as a Filament
+  table, `PayoutService::outlook()` list via the shared component `marketplace/upcoming-payouts`); "Paid out" on the selling dashboard is the net
+  sum of the seller's `payment` / `payment_refund` lines once their account was read (the site's records, flagged, before that).
+- **Fees**: `MarginReport::stripeFee()` uses `orders.stripe_fee_cents` (the store's share by items + shipping when other sellers are in the order),
+  else the estimate; `MarginRow::$estimatedFees` / `stripeFeeIsEstimate()`; "(est.)" on the Margins cards, header and cells, the CSV header and its new
+  column "Stripe fee estimated"; `MarketplaceStats` has a "Stripe fees, 30 days" stat (est. only for orders without a fee).
+- **Verified against Stripe's own definitions**: request parameters with `stripe/stripe-mock` (the real `StripeGateway` against it:
+  `tests/Feature/Marketplace/Ledger/StripeMockTest.php`, runs with `STRIPE_MOCK_URL=http://localhost:12111`), and every object the fake serves against the
+  OpenAPI spec (`FakeLedgerShapeTest` with `STRIPE_OPENAPI_SPEC=.../spec3.json`, `tests/Support/OpenApiShape.php`); both are skipped without the env var.
+  Not verifiable here: the live Stripe API (no keys), the deep links into the Stripe dashboard (paths are the well-known ones, not tried signed in),
+  and a real Connect account's balance transactions.
+- **Tests**: `tests/Feature/Marketplace/Ledger/*` (sync, linking, reconciliation, gateway + fake, job / command / webhooks, admin pages, seller Earnings, actual fees,
+  migrations), existing margin tests updated for the "(est.)" column.
+

@@ -336,3 +336,77 @@ function purchaseOrderOf(App\Models\Order $order, ?App\Models\Supplier $supplier
         ->when($supplier, fn ($q) => $q->where('supplier_id', $supplier->getKey()))
         ->firstOrFail();
 }
+
+/*
+|--------------------------------------------------------------------------
+| Stripe ledger (docs/PLAN.md 11, R6)
+|--------------------------------------------------------------------------
+*/
+
+/** Mirror the ledger of $account (null = the platform) from the fake gateway. */
+function syncLedger(?string $account = null, ?Carbon\CarbonInterface $since = null): App\Services\Marketplace\Data\LedgerSyncResult
+{
+    return app(App\Services\Marketplace\Ledger\LedgerSync::class)->syncAccount($account, $since);
+}
+
+/** Mirror the platform and every seller account. */
+function syncAllLedgers(): void
+{
+    foreach (app(App\Services\Marketplace\Ledger\LedgerSync::class)->syncAll() as $result) {
+        if ($result instanceof Throwable) {
+            throw $result;
+        }
+    }
+}
+
+/** Read the last few days of every ledger again (what `stripe:ledger-sync --all --since=...` does), for changes made long after the fact. */
+function resyncLedgers(int $days = 3): void
+{
+    foreach (app(App\Services\Marketplace\Ledger\LedgerSync::class)->syncAll(now()->subDays($days)) as $result) {
+        if ($result instanceof Throwable) {
+            throw $result;
+        }
+    }
+}
+
+/**
+ * paidListingOrder() with the buyer's charge in the fake Stripe ledger (as Checkout leaves it: total incl. shipping, order marker
+ * in the metadata). $listing attributes as in paidListingOrder().
+ *
+ * @return array{order: App\Models\Order, listing: App\Models\Listing, seller: App\Models\User, sellerOrder: App\Models\SellerOrder, charge: array<string, mixed>}
+ */
+function chargedListingOrder(?App\Models\User $buyer = null, ?App\Models\User $seller = null, int $cents = 6000, array $listing = []): array
+{
+    $x = paidListingOrder($buyer ?? App\Models\User::factory()->create(), $seller, $cents, $listing);
+    $x['charge'] = fakeGateway()->recordOrderCharge($x['order']);
+
+    return $x;
+}
+
+/** The ledger account (acct_...) of a seller. */
+function stripeAccountOf(App\Models\User $seller): string
+{
+    return (string) $seller->sellerProfile->stripe_account_id;
+}
+
+/**
+ * Pay a pending order the way Stripe and the webhook do: Stripe takes the buyer's money first (the charge is in the fake ledger,
+ * tax included when $tax is given), then the site books the payment (OrderFulfillment::markPaid, which pays out digital items).
+ */
+function chargeAndPay(App\Models\Order $order, int $tax = 0): App\Models\Order
+{
+    if ($tax > 0) {
+        $order->forceFill(['tax_cents' => $tax, 'total_cents' => $order->total_cents + $tax])->save();
+    }
+
+    $id = Illuminate\Support\Str::random(10);
+    fakeGateway()->recordCharge("ch_{$id}", $order->total_cents, [
+        'payment_intent' => "pi_{$id}",
+        'transfer_group' => $order->number,
+        'description' => 'Order '.$order->number,
+        'metadata' => ['order_id' => (string) $order->getKey(), 'order_number' => $order->number],
+    ]);
+    payOrder($order, "pi_{$id}", "ch_{$id}");
+
+    return $order->fresh();
+}

@@ -221,6 +221,64 @@ class StripeGateway implements PaymentGateway
         return $charge ? (string) $charge : null;
     }
 
+    public function listBalanceTransactions(?string $account, ?int $createdSince = null, ?string $startingAfter = null, int $limit = 100): array
+    {
+        $page = $this->call(fn () => $this->client()->balanceTransactions->all(
+            $this->listParams($createdSince, $startingAfter, $limit, 'data.source'),
+            $this->accountOptions($account),
+        ));
+
+        return $this->pageToArray($page);
+    }
+
+    public function listPayouts(?string $account, ?int $createdSince = null, ?string $startingAfter = null, int $limit = 100): array
+    {
+        $page = $this->call(fn () => $this->client()->payouts->all(
+            $this->listParams($createdSince, $startingAfter, $limit, 'data.destination'),
+            $this->accountOptions($account),
+        ));
+
+        return $this->pageToArray($page);
+    }
+
+    public function retrieveBalance(?string $account): array
+    {
+        $balance = $this->call(fn () => $this->client()->balance->retrieve(null, $this->accountOptions($account)));
+
+        return $balance->toArray();
+    }
+
+    /** @return array<string, mixed> */
+    private function listParams(?int $createdSince, ?string $startingAfter, int $limit, string $expand): array
+    {
+        $params = ['limit' => max(1, min(100, $limit)), 'expand' => [$expand]];
+
+        if ($createdSince !== null) {
+            $params['created'] = ['gte' => $createdSince];
+        }
+
+        if ($startingAfter !== null) {
+            $params['starting_after'] = $startingAfter;
+        }
+
+        return $params;
+    }
+
+    /** Request options for a call made on a connected account (the Stripe-Account header); none for the platform. */
+    private function accountOptions(?string $account): array
+    {
+        return $account === null ? [] : ['stripe_account' => $account];
+    }
+
+    /** @return array{data: array<int, array<string, mixed>>, has_more: bool} */
+    private function pageToArray(\Stripe\Collection $page): array
+    {
+        return [
+            'data' => array_map(fn ($object) => $object->toArray(), $page->data),
+            'has_more' => (bool) $page->has_more,
+        ];
+    }
+
     private function client(): StripeClient
     {
         if ($this->client === null) {

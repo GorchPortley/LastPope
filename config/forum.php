@@ -39,6 +39,10 @@ return [
     // Flarum user the key acts as for administrative calls (the first admin created by the installer).
     'admin_user_id' => (int) env('FLARUM_ADMIN_USER_ID', 1),
 
+    // That admin's password. A site account with the forum admin's e-mail is logged into the forum with it, because
+    // Flarum does not let the API key change the credentials of the account it acts as.
+    'admin_password' => env('FLARUM_ADMIN_PASSWORD'),
+
     // Requests made with the master API key are not throttled by Flarum 2. Should the forum still answer 429
     // ("slow down"), `forum:seed-demo`, which writes many posts in a row, waits this many seconds before it
     // tries that member again.

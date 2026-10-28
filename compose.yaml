@@ -76,7 +76,8 @@ x-app-env: &app-env
   # The app never needs these; do not hand them to PHP code.
   MARIADB_ROOT_PASSWORD: ""
   FLARUM_DB_PASSWORD: ""
-  FLARUM_ADMIN_PASSWORD: ""
+  # FLARUM_ADMIN_PASSWORD does reach the app: a site admin whose e-mail is the forum admin's is logged into that forum
+  # account with it (the API key may not reset its own account). The key itself already acts as any forum account.
 
 x-app-common: &app-common
   image: *app-image

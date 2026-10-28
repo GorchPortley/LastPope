@@ -60,6 +60,7 @@ class FlarumClient implements ForumClient
         private readonly UsernameSanitizer $usernames,
         private readonly int $connectTimeout = 3,
         private readonly int $timeout = 8,
+        private readonly ?string $adminPassword = null,
     ) {
     }
 
@@ -73,6 +74,7 @@ class FlarumClient implements ForumClient
             UsernameSanitizer::fromConfig(),
             (int) config('forum.connect_timeout', 3),
             (int) config('forum.timeout', 8),
+            config('forum.admin_password'),
         );
     }
 
@@ -137,7 +139,11 @@ class FlarumClient implements ForumClient
                 $id = $this->ensureUser($user);
                 $token = $this->requestToken($user, $password);
 
-                if ($token === null && $id !== null) {
+                if ($token === null && $id === $this->adminUserId) {
+                    // The member is the forum's own admin (same e-mail), the account the API key acts as: Flarum refuses
+                    // to reset its credentials through the key (401), so log in with the admin password from .env.
+                    $token = filled($this->adminPassword) ? $this->requestToken($user, (string) $this->adminPassword) : null;
+                } elseif ($token === null && $id !== null) {
                     $this->repairAccount($id, $user, $password);
                     $token = $this->requestToken($user, $password);
                 }

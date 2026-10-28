@@ -744,3 +744,28 @@ until Stripe reports the fee and is marked "(est.)".
 - **Tests**: `tests/Feature/Marketplace/Ledger/*` (sync, linking, reconciliation, gateway + fake, job / command / webhooks, admin pages, seller Earnings, actual fees,
   migrations), existing margin tests updated for the "(est.)" column.
 
+
+## 12. Revision R7: GA4 analytics (owner decisions)
+
+Today one GA4 tag (G-D6528Z9ZYR) is pasted into the app and marketing layouts, sends page views only, and runs on dev and
+production alike. Decisions: purchases and refunds **from the server** (Measurement Protocol), a **consent banner with
+Consent Mode v2**, and **no GA4 on dev** unless an ID is set there.
+
+- Config: `GA4_MEASUREMENT_ID` and `GA4_API_SECRET` in `.env` (config/analytics.php). Empty ID = no tag at all. One partial
+  replaces the two pasted snippets and serves every layout (app, marketing, auth pages where sensible). Production `.env`
+  gets G-D6528Z9ZYR; `.env.example` documents both keys.
+- Consent Mode v2: default denied (ad_storage, ad_user_data, ad_personalization, analytics_storage) before the tag; a small
+  banner in the site's style (accept / reject, remembered in a cookie, re-openable from the footer "Cookie settings")
+  updates consent. No GA cookies before consent.
+- Browser events (gtag, GA4 recommended names and ecommerce item shape: item_id, item_name, item_category (design / driver
+  / kit / used gear / completed speaker), item_brand (seller or SDLabs), price, quantity, currency): view_item_list,
+  select_item, view_item, add_to_cart, remove_from_cart, view_cart, begin_checkout, add_shipping_info, search, sign_up,
+  login, plus custom: file_download (design PDF/ZIP, snapshots), forum_open (discussion tab), listing_created,
+  design_published, seller_onboarding_started/completed, review_submitted, report_problem. Livewire actions dispatch a
+  browser event that one small script forwards to gtag, so server code decides what is sent.
+- user_id: an HMAC of the user id (never the raw id or e-mail), set on gtag config for signed-in users.
+- Server events (Measurement Protocol, queued job, never blocks checkout): purchase on payment (webhook markPaid), refund
+  (full and partial) from RefundService; transaction_id = order number; value, tax, shipping, items; client_id from the
+  `_ga` cookie captured at checkout (stored on the order) so the purchase joins the buyer's session; consent respected
+  (no client id / skip when the buyer denied analytics). Idempotent per order/refund.
+- Dev: no ID -> no tag, no MP calls. Docs: how to create the API secret, mark purchase as key event, DebugView.

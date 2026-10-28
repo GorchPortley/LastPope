@@ -31,13 +31,13 @@ final class Ga4
 
     public static function enabled(): bool
     {
-        return filled(config('analytics.measurement_id'));
+        return filled(config('ga4.measurement_id'));
     }
 
     /** The server-side calls need the API secret too. */
     public static function canSendFromServer(): bool
     {
-        return self::enabled() && filled(config('analytics.api_secret'));
+        return self::enabled() && filled(config('ga4.api_secret'));
     }
 
     public static function currency(): string
@@ -225,7 +225,7 @@ final class Ga4
 
     public static function consentGranted(Request $request): bool
     {
-        return $request->cookie((string) config('analytics.consent_cookie')) === 'granted';
+        return $request->cookie((string) config('ga4.consent_cookie')) === 'granted';
     }
 
     /**

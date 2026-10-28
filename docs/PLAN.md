@@ -751,7 +751,7 @@ Today one GA4 tag (G-D6528Z9ZYR) is pasted into the app and marketing layouts, s
 production alike. Decisions: purchases and refunds **from the server** (Measurement Protocol), a **consent banner with
 Consent Mode v2**, and **no GA4 on dev** unless an ID is set there.
 
-- Config: `GA4_MEASUREMENT_ID` and `GA4_API_SECRET` in `.env` (config/analytics.php). Empty ID = no tag at all. One partial
+- Config: `GA4_MEASUREMENT_ID` and `GA4_API_SECRET` in `.env` (config/ga4.php). Empty ID = no tag at all. One partial
   replaces the two pasted snippets and serves every layout (app, marketing, auth pages where sensible). Production `.env`
   gets G-D6528Z9ZYR; `.env.example` documents both keys.
 - Consent Mode v2: default denied (ad_storage, ad_user_data, ad_personalization, analytics_storage) before the tag; a small
@@ -772,7 +772,7 @@ Consent Mode v2**, and **no GA4 on dev** unless an ID is set there.
 
 ### R7 implementation notes (where things live; done)
 
-- **Config:** `config/analytics.php` (`GA4_MEASUREMENT_ID`, `GA4_API_SECRET`, consent cookie name `sdl_consent`). `Ga4::enabled()`
+- **Config:** `config/ga4.php` (`GA4_MEASUREMENT_ID`, `GA4_API_SECRET`, consent cookie name `sdl_consent`). `Ga4::enabled()`
   is the one switch: empty ID = no tag, no banner, no footer link, no flashed events, no server calls.
 - **Tag and forwarder:** `resources/themes/blank/partials/analytics.blade.php` (included first in `<head>` of both layouts,
   replacing the pasted snippets): Consent Mode v2 defaults denied, restores a stored "granted" before the tag, `user_id` on

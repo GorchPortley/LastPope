@@ -22,6 +22,8 @@ forum and (optionally) Stripe payments. No Docker experience needed; every comma
 - [17. Seasonal themes](#17-seasonal-themes)
 - [18. Dropshipping](#18-dropshipping)
 - [19. Stripe ledger and reconciliation](#19-stripe-ledger-and-reconciliation)
+- [20. Production and dev on one server](#20-production-and-dev-on-one-server)
+- [21. Analytics (GA4)](#21-analytics-ga4)
 
 ---
 
@@ -1451,3 +1453,27 @@ production with `git checkout production && git merge --ff-only dev && git push`
 `production` on GitHub); the production updater deploys it the same way. Each updater writes to its own log:
 `/var/log/lastpope-prod-deploy.log` and `/var/log/lastpope-deploy.log`. Which branch a folder deploys is `DEPLOY_BRANCH`
 in its `docker/deploy/deploy.env` (`install.sh --branch` sets it); the checkout must be on that branch.
+
+## 21. Analytics (GA4)
+
+The site sends page views, shop events (list views, product views, cart, checkout, downloads, ...) and, from the server,
+the **purchase** and **refund** of every order to Google Analytics 4. Visitors choose in a cookie banner first (Consent
+Mode v2: nothing is stored until they accept; the footer's "Cookie settings" reopens the choice). With an empty
+`GA4_MEASUREMENT_ID` there is no tag, no banner and no server call, so leave it empty on dev.
+
+1. **Production `.env` only:** `GA4_MEASUREMENT_ID=G-D6528Z9ZYR`.
+2. **API secret** (for the server-side purchase and refund): in GA4 go to Admin > Data streams > your web stream >
+   Measurement Protocol API secrets > Create, and put it in the `.env` as `GA4_API_SECRET=...`. Without it the browser
+   tag still works, but orders are not reported from the server.
+3. Restart so the new settings are read: `docker compose up -d` (the `queue` container sends the server events, so it
+   must be running).
+4. **Key event:** Admin > Events, find `purchase` (it appears after the first one) and switch on "Mark as key event".
+5. **DebugView:** install the "Google Analytics Debugger" Chrome extension, open the site, accept the banner, and
+   watch Admin > DebugView for the browser events (`view_item`, `add_to_cart`, ...). The server-side `purchase` and
+   `refund` do not appear in DebugView; check them in Reports > Realtime a few minutes after a test order. A failed
+   send is logged as "A GA4 server event could not be sent".
+
+What is sent: ecommerce items (`item_id`, `item_name`, `item_category`, `item_brand`, `price`, `quantity`), the order
+number as `transaction_id`, and a `user_id` that is an HMAC of the member id with `APP_KEY` (never the id or e-mail;
+changing `APP_KEY` changes every `user_id`). A purchase is only reported when the buyer accepted analytics before
+paying; the `_ga` client id and that choice are stored on the order at checkout.

@@ -7,6 +7,7 @@ use App\Exceptions\Marketplace\CheckoutException;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Services\Marketplace\CheckoutService;
+use App\Support\Analytics\Ga4;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -51,6 +52,9 @@ class CheckoutController extends Controller
         } catch (CheckoutException $e) {
             return $this->failed($request, $e);
         }
+
+        // For the server-side GA4 purchase (docs/PLAN.md 12): the buyer's GA client id and whether they allowed analytics.
+        $result->order->forceFill(Ga4::checkoutAttributes($request))->save();
 
         if ($request->expectsJson()) {
             return response()->json(['url' => $result->url, 'order' => $result->order->number]);

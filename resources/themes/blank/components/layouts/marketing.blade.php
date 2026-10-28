@@ -2,15 +2,7 @@
 <!DOCTYPE html>
 <html lang="{{ app()->getLocale() }}" class=""@if ($season !== \App\Support\SeasonalTheme::DEFAULT) data-season="{{ $season }}"@endif>
 <head>
-   
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-D6528Z9ZYR"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-D6528Z9ZYR');
-</script>
+    @include('theme::partials.analytics')
     @include('theme::partials.head', ['seo' => ($seo ?? null) ])
     @stack('head')
 </head>
@@ -26,6 +18,7 @@
 @livewire('notifications')
 @filamentScripts
 @livewireScripts
+@include('theme::partials.consent-banner')
 
 </body>
 </html>

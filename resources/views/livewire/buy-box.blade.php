@@ -41,7 +41,7 @@
             @case('owner')
                 <x-marketplace.notice level="info">This is your own {{ $kindWord }}.</x-marketplace.notice>
                 @if ($state['downloadUrl'])
-                    <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full">Download latest files</x-button>
+                    <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($p, 'latest') }}">Download latest files</x-button>
                 @endif
                 @break
 
@@ -50,7 +50,7 @@
                     <x-phosphor-check-circle class="h-5 w-5" /> In your library
                 </div>
                 @if ($state['downloadUrl'])
-                    <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full">Download</x-button>
+                    <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($p, 'latest') }}">Download</x-button>
                 @endif
                 <a href="{{ route('dashboard.library') }}" class="block text-center text-sm text-brand-700 underline hover:text-brand-900">Open my library</a>
                 @break

@@ -18,7 +18,7 @@
                         &middot; {{ $snapshot->created_at->format('M j, Y') }}
                     </p>
                 </div>
-                <x-filament::button tag="a" size="sm" :color="$loop->first ? 'primary' : 'gray'" href="{{ route('design-snapshots.download', $snapshot) }}">
+                <x-filament::button tag="a" size="sm" :color="$loop->first ? 'primary' : 'gray'" href="{{ route('design-snapshots.download', $snapshot) }}" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($design, $snapshot->snapshot_name) }}">
                     Download
                 </x-filament::button>
             </li>

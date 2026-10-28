@@ -4,6 +4,7 @@ use App\Enums\IssueReason;
 use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Models\Order;
 use App\Services\Marketplace\IssueService;
+use App\Support\Analytics\Ga4;
 use App\Support\Countries;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
@@ -134,6 +135,7 @@ new class extends Component implements HasForms, HasActions {
                 }
 
                 Notification::make()->success()->title('Problem reported')->body('We told the seller. You can follow it right here.')->send();
+                $this->dispatch('ga4', ...Ga4::payload('report_problem', ['transaction_id' => $this->order->number, 'reason' => $issue->reason->value]));
                 $this->reload();
             });
     }

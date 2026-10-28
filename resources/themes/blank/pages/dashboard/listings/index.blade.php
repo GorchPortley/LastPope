@@ -8,6 +8,7 @@ use App\Filament\Forms\MoneyInput;
 use App\Models\Design;
 use App\Models\Driver;
 use App\Models\Listing;
+use App\Support\Analytics\Ga4;
 use App\Services\Marketplace\ConnectOnboardingService;
 use App\Support\Countries;
 use Filament\Forms\Components\FileUpload;
@@ -327,7 +328,12 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->modalWidth('4xl')
                     ->slideOver()
                     ->form($this->listingSchema())
-                    ->mutateFormDataUsing(fn (array $data): array => $this->prepare($data)),
+                    ->mutateFormDataUsing(fn (array $data): array => $this->prepare($data))
+                    ->after(fn (Listing $record) => $this->dispatch('ga4', ...Ga4::payload('listing_created', [
+                        'item_id' => 'listing-'.$record->getKey(),
+                        'item_category' => str_replace('_', ' ', $record->category->value),
+                        'published' => $record->status === ListingStatus::ACTIVE,
+                    ]))),
             ])
             ->columns([
                 ToggleColumn::make('published')

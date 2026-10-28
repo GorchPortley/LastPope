@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Analytics\Ga4;
 use App\Support\AddressRules;
 use App\Support\Countries;
 use App\Services\Marketplace\CartService;
@@ -78,6 +79,7 @@ new class extends Component
                     <x-button tag="a" href="{{ route('cart') }}">Back to the cart</x-button>
                 </x-marketplace.empty-state>
             @else
+                <x-analytics.events :events="[Ga4::payload('begin_checkout', Ga4::ecommerce(array_map(fn ($line) => Ga4::cartLine($line), $summary->lines)))]" />
                 <div class="gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_24rem]">
                     <div class="space-y-6">
                         <x-marketplace.box>
@@ -182,7 +184,7 @@ new class extends Component
 
                             <div class="border-t border-gray-200 p-5">
                                 @if ($summary->canCheckout())
-                                    <form method="POST" action="{{ route('checkout.start') }}">
+                                    <form method="POST" action="{{ route('checkout.start') }}" @if ($summary->needsAddress) data-ga4-submit="{{ Ga4::attr('add_shipping_info', Ga4::ecommerce(array_map(fn ($line) => Ga4::cartLine($line), $summary->lines))) }}" @endif>
                                         @csrf
                                         @if ($summary->needsAddress)
                                             <input type="hidden" name="address_id" value="{{ $addressId }}">

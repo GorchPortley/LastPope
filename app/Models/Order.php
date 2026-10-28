@@ -29,6 +29,8 @@ class Order extends Model
         'platform_fee_cents',
         'stripe_fee_cents',
         'shipping_address',
+        'ga_client_id',
+        'analytics_consent',
         'stripe_checkout_session_id',
         'stripe_payment_intent_id',
         'stripe_charge_id',
@@ -49,6 +51,7 @@ class Order extends Model
         'platform_fee_cents' => 'integer',
         'stripe_fee_cents' => 'integer',
         'shipping_address' => 'array',
+        'analytics_consent' => 'boolean',
         'paid_at' => 'datetime',
         'reserved_until' => 'datetime',
     ];

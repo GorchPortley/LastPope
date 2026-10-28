@@ -73,6 +73,8 @@ render(function (View $view, string $uuid) {
             </x-marketplace.notice>
         @endif
 
+        <x-analytics.events :events="[\App\Support\Analytics\Ga4::payload('view_item', \App\Support\Analytics\Ga4::ecommerce([\App\Support\Analytics\Ga4::item($listing)]))]" />
+
         <!-- Content Container -->
         <div class="space-y-8">
             <!-- Top Section: Image and Details -->

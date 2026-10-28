@@ -807,6 +807,10 @@ The files belong to the containers' users (`www-data`, `mysql`), so use `sudo` t
 is ignored by git and left out of image builds. `docker/flarum/reset.sh` empties the forum folders instead of removing
 volumes once the data has moved.
 
+Ownership is repaired on every start: the one-shot `fix-permissions` service runs before `app` and `flarum`, hands anything
+in the site and forum storage that is not owned by `www-data` (uid 33) back to it, and exits (`docker compose ps -a` shows it
+as "Exited (0)", which is normal). So a folder Docker created as root, or a reset volume, no longer breaks uploads or the forum.
+
 ## 12. Updating
 
 ```bash

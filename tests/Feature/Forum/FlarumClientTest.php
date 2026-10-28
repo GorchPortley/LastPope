@@ -206,6 +206,28 @@ it('resets the forum password of an account that exists but does not match', fun
     ]);
 });
 
+it('replaces a forum password that no longer decrypts (APP_KEY changed) and resets the account to it', function () {
+    Http::fake([
+        FORUM_API.'/token' => Http::sequence()
+            ->push([], 401)
+            ->push([], 401)
+            ->push(['token' => 'repaired', 'userId' => 12]),
+        FORUM_API.'/users?*' => Http::response(['data' => [['id' => '12']]]),
+        FORUM_API.'/users/12' => Http::response(['data' => ['id' => '12']]),
+    ]);
+
+    $user = User::factory()->create(['email' => 'old@example.test']);
+    // what an encrypted value written with another APP_KEY looks like to this app
+    Illuminate\Support\Facades\DB::table('users')->where('id', $user->id)->update(['forum_password' => Illuminate\Support\Str::random(60)]);
+    $user = $user->fresh();
+
+    expect(flarum()->issueRememberToken($user))->toBe('repaired');
+
+    $patch = collect(recorded())->first(fn ($r) => $r[0] === 'PATCH');
+    expect($patch[2]['data']['attributes']['password'])->toBe($user->fresh()->forum_password)
+        ->and(strlen($user->fresh()->forum_password))->toBe(40);
+});
+
 it('never throws into the login when the forum is down, and backs off briefly', function () {
     Http::fake(fn () => throw new ConnectionException('connection refused'));
 

@@ -3,6 +3,7 @@
 namespace App\Services\Forum;
 
 use App\Models\User;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -626,10 +627,20 @@ class FlarumClient implements ForumClient
         }
     }
 
-    /** The app's per-member Flarum password; created on first use, never shown to the member. */
+    /**
+     * The app's per-member Flarum password; created on first use, never shown to the member. One that can no longer be
+     * decrypted (APP_KEY changed) is replaced like a missing one: the login then resets the forum account to it.
+     */
     private function forumPassword(User $user): string
     {
-        $password = $user->forum_password;
+        try {
+            $password = $user->forum_password;
+        } catch (DecryptException) {
+            Log::warning('The stored forum password could not be decrypted (APP_KEY changed?); a new one is set.', ['user_id' => $user->getKey()]);
+            $password = null;
+            // Saving compares with the stored value, which would fail to decrypt again: forget it first.
+            $user->setRawAttributes(['forum_password' => null] + $user->getAttributes(), true);
+        }
 
         if (blank($password)) {
             $password = Str::random(40);

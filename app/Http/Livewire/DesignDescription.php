@@ -5,6 +5,7 @@ namespace App\Http\Livewire;
 use Livewire\Component;
 use App\Models\Design;
 use App\Services\Forum\DesignDiscussionAudience;
+use App\Support\Analytics\Ga4;
 
 class DesignDescription extends Component
 {
@@ -40,6 +41,7 @@ class DesignDescription extends Component
 
         $author = auth()->user();
         $this->design->review($this->reviewContent, $author, $this->reviewRating, $this->reviewTitle);
+        $this->dispatch('ga4', ...Ga4::payload('review_submitted', ['item_id' => 'design-'.$this->design->getKey(), 'rating' => $this->reviewRating]));
         $this->reviewContent = '';
         $this->reviewTitle = '';
         $this->reviewRating = 5;

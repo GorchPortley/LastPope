@@ -3,12 +3,13 @@
     name / "By" / tag lines, a small spec table, View + Specs buttons and the sliding specs panel.
     Eager-load seller.sellerProfile, driver and design to keep the grid free of extra queries.
 --}}
-@props(['listing'])
+@props(['listing', 'listName' => 'Marketplace'])
 
 @php
     $photo = $listing->mainPhotoUrl();
     $shop = $listing->seller?->sellerProfile?->shop_name ?: $listing->seller?->name;
     $url = route('listing', ['uuid' => $listing->uuid]);
+    $select = \App\Support\Analytics\Ga4::selectItem($listName, $listing);
     $tag = match (true) {
         $listing->design !== null => 'Built from '.$listing->design->name,
         $listing->driver !== null => $listing->driver->fullName(),
@@ -26,7 +27,7 @@
             <div class="absolute right-6 top-6 bg-yellow-400 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">{{ $soldAs }}</div>
         @endif
 
-        <a href="{{ $url }}" class="block w-full">
+        <a href="{{ $url }}" data-ga4-click="{{ $select }}" class="block w-full">
             <div class="flex justify-center items-center h-48 md:h-56">
                 @if ($photo)
                     <img src="{{ $photo }}" class="max-h-full max-w-full object-contain" alt="{{ $listing->title }}">
@@ -69,7 +70,7 @@
 
         <!-- Button section -->
         <div class="flex mt-2 gap-2">
-            <x-button tag="a" href="{{ $url }}" class="flex-grow">View</x-button>
+            <x-button tag="a" href="{{ $url }}" data-ga4-click="{{ $select }}" class="flex-grow">View</x-button>
             <x-button
                 @click="showSpecs = true"
                 x-show="!showSpecs"
@@ -127,7 +128,7 @@
 
         <div class="p-4 pt-0">
             <div class="flex gap-2">
-                <x-button tag="a" href="{{ $url }}" class="flex-grow">View Details</x-button>
+                <x-button tag="a" href="{{ $url }}" data-ga4-click="{{ $select }}" class="flex-grow">View Details</x-button>
                 <x-button @click="showSpecs = false" color="danger" class="flex-grow">Close</x-button>
             </div>
         </div>

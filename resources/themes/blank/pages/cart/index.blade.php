@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\CartItem;
 use App\Models\Design;
 use App\Models\Listing;
 use App\Services\Marketplace\CartService;
+use App\Support\Analytics\Ga4;
 use function Laravel\Folio\{middleware, name};
 use Livewire\Volt\Component;
 
@@ -17,12 +19,42 @@ new class extends Component
 
     public function removeItem(int $cartItemId): void
     {
-        $this->announce(app(CartService::class)->remove(auth()->user(), $cartItemId));
+        $item = $this->ownItem($cartItemId);
+        $result = app(CartService::class)->remove(auth()->user(), $cartItemId);
+
+        $this->announce($result);
+        $this->trackQuantity($item, 0, $result);
     }
 
     public function updateQuantity(int $cartItemId, $quantity): void
     {
-        $this->announce(app(CartService::class)->updateQuantity(auth()->user(), $cartItemId, (int) $quantity));
+        $item = $this->ownItem($cartItemId);
+        $result = app(CartService::class)->updateQuantity(auth()->user(), $cartItemId, (int) $quantity);
+
+        $this->announce($result);
+        $this->trackQuantity($item, max(0, (int) $quantity), $result);
+    }
+
+    private function ownItem(int $cartItemId): ?CartItem
+    {
+        return CartItem::query()
+            ->whereHas('cart', fn ($cart) => $cart->where('user_id', auth()->id()))
+            ->with('purchasable')
+            ->find($cartItemId);
+    }
+
+    /** GA4 add_to_cart / remove_from_cart for the units a change added or took out (docs/PLAN.md 12). */
+    private function trackQuantity(?CartItem $item, int $newQuantity, $result): void
+    {
+        if ($item === null || ! $result->ok()) {
+            return;
+        }
+
+        $delta = $newQuantity - $item->quantity;
+
+        if ($delta !== 0) {
+            $this->dispatch('ga4', ...Ga4::payload($delta > 0 ? 'add_to_cart' : 'remove_from_cart', Ga4::ecommerce([Ga4::cartItem($item, abs($delta))])));
+        }
     }
 
     private function announce($result): void
@@ -56,6 +88,7 @@ new class extends Component
             @endif
 
             @if (! $summary->isEmpty())
+                <x-analytics.events :events="[Ga4::payload('view_cart', Ga4::ecommerce(array_map(fn ($line) => Ga4::cartLine($line), $summary->lines)))]" />
                 <div class="gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem]">
                     <div class="space-y-6">
                         @foreach ($summary->sellers as $group)

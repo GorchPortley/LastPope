@@ -9,6 +9,7 @@ use App\Models\Design;
 use App\Models\Listing;
 use App\Models\User;
 use App\Services\Marketplace\CartService;
+use App\Support\Analytics\Ga4;
 use App\Support\Countries;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -69,6 +70,11 @@ class BuyBox extends Component
 
         if ($result->ok()) {
             $this->dispatch('cart-updated');
+
+            // A free design goes straight to the library, so it is not a cart event.
+            if ($purchasable->purchasablePriceCents() > 0) {
+                $this->dispatch('ga4', ...Ga4::payload('add_to_cart', Ga4::ecommerce([Ga4::item($purchasable, $quantity)])));
+            }
         }
     }
 

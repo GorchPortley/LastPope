@@ -14,6 +14,9 @@ class EncryptCookies extends Middleware
     protected $except = [
         'theme',
         'flarum_session',
-        'flarum_remember'
+        'flarum_remember',
+        // Written by the browser (GA4 tag and the consent banner), read at checkout: see App\Support\Analytics\Ga4.
+        '_ga',
+        'sdl_consent',
     ];
 }

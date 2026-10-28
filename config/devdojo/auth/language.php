@@ -19,8 +19,11 @@ return [
         'sign_up' => 'Sign up',
         'social_auth_authenticated_message' => 'You have been authenticated via __social_providers_list__. Please login to that network below.',
         'change_email' => 'Change Email',
+        'couldnt_find_your_account' => 'Couldn’t find your account',
     ],
     'register' => [
+        'registrations_disabled' => 'Registrations are currently disabled.',
+        'email_registration_disabled' => 'Email registration is currently disabled. Please use social login.',
         'page_title' => 'Sign up',
         'headline' => 'Sign up',
         'subheadline' => 'Join Us!',

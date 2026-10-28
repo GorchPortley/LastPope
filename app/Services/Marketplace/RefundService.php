@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\SellerOrder;
 use App\Models\User;
 use App\Notifications\OrderRefunded;
+use App\Services\Analytics\Ga4Reporter;
 use App\Services\Marketplace\Data\RefundResult;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
 use App\Services\Payments\PaymentGateway;
@@ -223,6 +224,9 @@ class RefundService
 
         if ($notify !== null) {
             $this->notifyBuyer($notify[0], $notify[1], null);
+
+            // A refund made in the Stripe dashboard: the key is the total refunded so far, so each new amount counts once.
+            app(Ga4Reporter::class)->refund($notify[0], $notify[1], 'order-'.$notify[0]->getKey().'-total-'.$amountRefundedCents);
         }
     }
 
@@ -306,6 +310,14 @@ class RefundService
         if ($notify) {
             $this->notifyBuyer($result->order, $result->amountCents, $onlySellerOrderId !== null ? $result->sellerOrders[0] : null, $buyerNote);
         }
+
+        // Analytics (docs/PLAN.md 12): the GA4 `refund` event, queued, idempotent per Stripe refund, never throws.
+        app(Ga4Reporter::class)->refund(
+            $result->order,
+            $result->amountCents,
+            $result->refundId ?? 'order-'.$result->order->getKey().'-'.$result->amountCents,
+            $result->partial ? [] : $result->sellerOrders,
+        );
 
         return $result;
     }

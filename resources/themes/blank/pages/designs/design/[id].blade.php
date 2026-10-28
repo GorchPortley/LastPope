@@ -36,6 +36,7 @@ new class extends Component {
 <x-layouts.marketing>
     @volt('design')
     <div class="min-h-dvh dark:text-white">
+        <x-analytics.events :events="[\App\Support\Analytics\Ga4::payload('view_item', \App\Support\Analytics\Ga4::ecommerce([\App\Support\Analytics\Ga4::item($design)]))]" />
         <main class="mx-auto overflow-auto flex-grow bg-white max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
             <!-- Breadcrumb -->
             <nav class="mb-6" aria-label="Breadcrumb">

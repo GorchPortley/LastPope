@@ -38,6 +38,11 @@
         </div>
     </div>
     <div class="border-t border-brand-900">
-        <div class="mx-auto max-w-7xl px-4 py-4 text-sm text-brand-300 sm:px-6 lg:px-8">&copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.</div>
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-4 text-sm text-brand-300 sm:px-6 lg:px-8">
+            <span>&copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.</span>
+            @if (\App\Support\Analytics\Ga4::enabled())
+                <button type="button" class="underline hover:text-accent-200" data-cookie-settings>Cookie settings</button>
+            @endif
+        </div>
     </div>
 </footer>

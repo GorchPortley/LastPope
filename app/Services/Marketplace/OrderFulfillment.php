@@ -17,6 +17,7 @@ use App\Exceptions\Marketplace\InvalidOrderStateException;
 use App\Notifications\NewSale;
 use App\Notifications\OrderReceipt;
 use App\Notifications\SaleCancelled;
+use App\Services\Analytics\Ga4Reporter;
 use App\Services\Payments\Exceptions\PaymentGatewayException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -54,6 +55,7 @@ class OrderFulfillment
      *  - payouts: due seller orders are transferred (digital now; physical on shipment unless the
      *    payout trigger is "paid"); retried when the event is redelivered
      *  - notifications: receipt to the buyer, new-sale to every seller
+ *  - analytics: the GA4 `purchase` event is queued (Ga4Reporter; skipped without consent)
      */
     public function markPaid(Order $order, string $chargeId, string $paymentIntentId): bool
     {
@@ -116,6 +118,8 @@ class OrderFulfillment
         if ($fulfilled) {
             $this->notify($order);
             $this->purchaseOrders->processNew($newPurchaseOrders);
+            // Analytics (docs/PLAN.md 12): queued, idempotent, never throws.
+            app(Ga4Reporter::class)->purchase($order);
         }
 
         // Also on a redelivered event: retries refunds and payouts that failed the first time.

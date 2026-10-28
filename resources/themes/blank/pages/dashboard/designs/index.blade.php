@@ -3,6 +3,7 @@
 
 use App\Models\Design;
 use App\Models\Driver;
+use App\Support\Analytics\Ga4;
 use App\Models\DesignDriver;
 use App\Enums\DesignCategoryEnum;
 use App\Filament\Forms\MoneyInput;
@@ -170,6 +171,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->description('Manage your Designs here!')
             ->headerActions([
                 CreateAction::make()
+                    ->after(function (Design $record): void {
+                        if ($record->active) {
+                            $this->dispatch('ga4', ...Ga4::payload('design_published', ['item_id' => 'design-'.$record->getKey()]));
+                        }
+                    })
                     ->mutateFormDataUsing(function (array $data): array {
                         $data['user_id'] = auth()->id();
                         $data['card_image'] = $data['card_image'] ?? '/demo/Design_Placeholder.JPG';
@@ -452,6 +458,10 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         $data = $this->guardPublish(['active' => (bool) $state, 'price_cents' => $record->price_cents], $record);
                         $record->update(['active' => $data['active']]);
 
+                        if ($data['active'] && $record->wasChanged('active')) {
+                            $this->dispatch('ga4', ...Ga4::payload('design_published', ['item_id' => 'design-'.$record->getKey()]));
+                        }
+
                         return $data['active'];
                     }),
 
@@ -494,6 +504,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             ->send();
                     }),
                 EditAction::make()
+                    ->after(function (Design $record): void {
+                        if ($record->active && $record->wasChanged('active')) {
+                            $this->dispatch('ga4', ...Ga4::payload('design_published', ['item_id' => 'design-'.$record->getKey()]));
+                        }
+                    })
                     ->mutateFormDataUsing(fn (array $data, Design $record): array => $this->guardPublish($data, $record))
                     ->form([
                         Toggle::make('active')

@@ -744,3 +744,69 @@ until Stripe reports the fee and is marked "(est.)".
 - **Tests**: `tests/Feature/Marketplace/Ledger/*` (sync, linking, reconciliation, gateway + fake, job / command / webhooks, admin pages, seller Earnings, actual fees,
   migrations), existing margin tests updated for the "(est.)" column.
 
+
+## 12. Revision R7: GA4 analytics (owner decisions)
+
+Today one GA4 tag (G-D6528Z9ZYR) is pasted into the app and marketing layouts, sends page views only, and runs on dev and
+production alike. Decisions: purchases and refunds **from the server** (Measurement Protocol), a **consent banner with
+Consent Mode v2**, and **no GA4 on dev** unless an ID is set there.
+
+- Config: `GA4_MEASUREMENT_ID` and `GA4_API_SECRET` in `.env` (config/analytics.php). Empty ID = no tag at all. One partial
+  replaces the two pasted snippets and serves every layout (app, marketing, auth pages where sensible). Production `.env`
+  gets G-D6528Z9ZYR; `.env.example` documents both keys.
+- Consent Mode v2: default denied (ad_storage, ad_user_data, ad_personalization, analytics_storage) before the tag; a small
+  banner in the site's style (accept / reject, remembered in a cookie, re-openable from the footer "Cookie settings")
+  updates consent. No GA cookies before consent.
+- Browser events (gtag, GA4 recommended names and ecommerce item shape: item_id, item_name, item_category (design / driver
+  / kit / used gear / completed speaker), item_brand (seller or SDLabs), price, quantity, currency): view_item_list,
+  select_item, view_item, add_to_cart, remove_from_cart, view_cart, begin_checkout, add_shipping_info, search, sign_up,
+  login, plus custom: file_download (design PDF/ZIP, snapshots), forum_open (discussion tab), listing_created,
+  design_published, seller_onboarding_started/completed, review_submitted, report_problem. Livewire actions dispatch a
+  browser event that one small script forwards to gtag, so server code decides what is sent.
+- user_id: an HMAC of the user id (never the raw id or e-mail), set on gtag config for signed-in users.
+- Server events (Measurement Protocol, queued job, never blocks checkout): purchase on payment (webhook markPaid), refund
+  (full and partial) from RefundService; transaction_id = order number; value, tax, shipping, items; client_id from the
+  `_ga` cookie captured at checkout (stored on the order) so the purchase joins the buyer's session; consent respected
+  (no client id / skip when the buyer denied analytics). Idempotent per order/refund.
+- Dev: no ID -> no tag, no MP calls. Docs: how to create the API secret, mark purchase as key event, DebugView.
+
+### R7 implementation notes (where things live; done)
+
+- **Config:** `config/analytics.php` (`GA4_MEASUREMENT_ID`, `GA4_API_SECRET`, consent cookie name `sdl_consent`). `Ga4::enabled()`
+  is the one switch: empty ID = no tag, no banner, no footer link, no flashed events, no server calls.
+- **Tag and forwarder:** `resources/themes/blank/partials/analytics.blade.php` (included first in `<head>` of both layouts,
+  replacing the pasted snippets): Consent Mode v2 defaults denied, restores a stored "granted" before the tag, `user_id` on
+  config, and `window.sdlGa4.track()`. It forwards (a) `<x-analytics.events :events>` rendered by plain pages and what
+  `Ga4::flash()` queued in the session, (b) the window event `ga4` (`$this->dispatch('ga4', ...Ga4::payload(name, params))`
+  from Livewire, `$dispatch('ga4', {name, params})` from Alpine), (c) clicks / submits on `data-ga4-click` / `data-ga4-submit`
+  (sent with `transport_type: beacon`, so they survive leaving the page), (d) `search` is debounced to one event per search.
+- **Banner:** `partials/consent-banner.blade.php` (before `</body>` in both layouts; Filament buttons, fixed bottom bar,
+  stacks on phones). Choice in the first-party cookie `sdl_consent` (granted / denied, one year). Footer "Cookie settings"
+  (`data-cookie-settings`) reopens it; only the marketing footer has the link (the dashboard layout has no footer).
+  `sdl_consent` and `_ga` are in `EncryptCookies::$except` so checkout can read them.
+- **Helper:** `App\Support\Analytics\Ga4`: `item()` (Design / Driver / Listing; a store driver listing uses `driver-{id}` so
+  view_item and add_to_cart match), `cartLine()`, `cartItem()`, `orderItem()`, `ecommerce()` (currency from
+  `marketplace.currency`, value, items), `itemList()`, `selectItem()`, `download()`, `userId()` (HMAC-SHA256 with `APP_KEY`),
+  `flash()` / `pullFlashed()`, `clientId()` / `checkoutAttributes()`.
+- **Server side:** migration `2026_10_28_000001` adds `orders.ga_client_id` + `orders.analytics_consent` (NULL = before R7 =
+  treated as no consent) and the `analytics_events` table (unique key per order / refund, `sent_at` when GA4 accepted it).
+  `CheckoutController::store` stores the `_ga` client id and the consent choice (client id only when consent was granted).
+  `Ga4Reporter` (`purchase()` from `OrderFulfillment::markPaid`, `refund()` from `RefundService::process` and
+  `syncFromCharge`) builds the Measurement Protocol body and queues `SendGa4Event` (5 tries, back-off, `Http` client, logs
+  on final failure); the reporter catches everything, so checkout and the webhooks never see a GA4 problem. Purchase key
+  `purchase:{order number}`; refund key `refund:{Stripe refund id}` (dashboard refunds: order id + total refunded so far).
+  `value` is the items subtotal, with `tax` and `shipping` apart; a refund lists the items of fully refunded seller orders.
+- **Events and where they fire:** view_item_list / select_item in the three card containers (designs, drivers, listings;
+  `listName` prop); view_item on the design, driver and listing pages; add_to_cart in `BuyBox::add` (not for free
+  designs); add_to_cart / remove_from_cart in the cart page (quantity changes send the difference); view_cart; begin_checkout
+  and add_shipping_info (pay-form submit, physical carts only) on the checkout page; search in `TopSearchBar::updatedSearch`
+  and for `?q=` on the marketplace; login / sign_up through `TrackAuthEvents` (flashed, sent by the next full page; social
+  login counts as login); file_download on every snapshot download link (buy box, design Files tab, library, driver page);
+  forum_open on the design Discussion tab; listing_created, design_published (create, publish toggle, edit that publishes),
+  review_submitted (`DesignDescription::submitReview`), report_problem (orders page action), seller_onboarding_started
+  (the Connect Stripe buttons) and seller_onboarding_completed (flashed by `ConnectController::returned`).
+- **Not covered:** the devdojo auth pages (login / register) use the package's own layouts, so they send no page view; a
+  social sign-up that creates the account is not a `sign_up`; the Filament admin panel has no tag; events inside a Livewire
+  component that re-renders (pagination of the design / driver lists) are sent for the first page only.
+- **Tests:** `tests/Feature/Analytics/Ga4PagesTest.php` (tag, consent defaults, items, browser events) and
+  `Ga4ServerEventsTest.php` (purchase / refund payload, idempotency, consent / ID / secret skips, failure handling).

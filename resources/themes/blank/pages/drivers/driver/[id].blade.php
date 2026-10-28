@@ -126,6 +126,7 @@ new class extends Component {
 <x-layouts.marketing>
     @volt('driver')
     <div class="bg-zinc-200 min-h-dvh dark:text-white">
+        <x-analytics.events :events="[\App\Support\Analytics\Ga4::payload('view_item', \App\Support\Analytics\Ga4::ecommerce([\App\Support\Analytics\Ga4::item($driver, 1, $storeListing?->purchasablePriceCents())]))]" />
         <main class="mx-auto bg-white max-w-7xl px-4 sm:px-6 lg:px-8 min-h-full py-4">
             <!-- Breadcrumb -->
             <nav class="mb-6" aria-label="Breadcrumb">
@@ -305,7 +306,7 @@ new class extends Component {
                     @foreach($driver->snapshots as $snapshot)
                         <br>
                         <div>
-                            <a href="{{ route('driver-snapshots.download', $snapshot->id) }}" class="button">
+                            <a href="{{ route('driver-snapshots.download', $snapshot->id) }}" class="button" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($driver, $snapshot->snapshot_name) }}">
                                 <span class="text-gray-900">{{$snapshot->snapshot_name}}</span>
                                 <i class="ph ph-download-simple"></i>
                             </a>

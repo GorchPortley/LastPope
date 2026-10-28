@@ -130,7 +130,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             @break
                         @default
                             <p>Connect a Stripe account to be paid. Your balance, your payouts to your bank and the transfers for your sales will show up here.</p>
-                            <x-button tag="a" href="{{ route('selling.connect') }}">Connect Stripe</x-button>
+                            <x-button tag="a" href="{{ route('selling.connect') }}" data-ga4-click="{{ \App\Support\Analytics\Ga4::attr('seller_onboarding_started') }}">Connect Stripe</x-button>
                     @endswitch
                 </div>
             </x-filament::section>

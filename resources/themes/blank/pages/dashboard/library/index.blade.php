@@ -95,7 +95,10 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->label('Download')
                     ->icon('heroicon-m-arrow-down-tray')
                     ->visible(fn (Entitlement $record): bool => $latest($record) !== null)
-                    ->url(fn (Entitlement $record): ?string => $latest($record) ? route('design-snapshots.download', $latest($record)) : null),
+                    ->url(fn (Entitlement $record): ?string => $latest($record) ? route('design-snapshots.download', $latest($record)) : null)
+                    ->extraAttributes(fn (Entitlement $record): array => $latest($record) && $record->entitleable
+                        ? ['data-ga4-click' => (string) \App\Support\Analytics\Ga4::download($record->entitleable, $latest($record)->snapshot_name)]
+                        : []),
                 Action::make('versions')
                     ->label('All versions')
                     ->icon('heroicon-m-queue-list')

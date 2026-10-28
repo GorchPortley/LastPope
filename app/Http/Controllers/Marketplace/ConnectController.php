@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Marketplace;
 use App\Exceptions\Marketplace\ConnectException;
 use App\Http\Controllers\Controller;
 use App\Services\Marketplace\ConnectOnboardingService;
+use App\Support\Analytics\Ga4;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -43,6 +44,10 @@ class ConnectController extends Controller
             $profile = $connect->refreshStatus($user);
         } catch (ConnectException $e) {
             return $this->home()->with('error', $e->getMessage());
+        }
+
+        if ($profile->canReceivePayouts()) {
+            Ga4::flash('seller_onboarding_completed');
         }
 
         return $profile->canReceivePayouts()

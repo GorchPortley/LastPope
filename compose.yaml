@@ -129,6 +129,21 @@ services:
     logging: *default-logging
 
   # -------------------------------------------------------------------------
+  # Runs once before the site and the forum start, then exits. The containers run as www-data (uid 33) and cannot fix
+  # ownership themselves; a folder Docker created (a new data/ folder, an emptied or new volume) belongs to root, which
+  # breaks uploads and the forum ("Permission denied", "Unable to create a directory"). Only what is not owned by
+  # www-data is touched, so a normal start changes nothing.
+  fix-permissions:
+    image: alpine:3.22
+    restart: "no"
+    command: ["sh", "-c", "for d in /fix/*; do find \"$$d\" ! -user 33 -exec chown 33:33 {} +; done; echo storage owned by www-data"]
+    volumes:
+      - ${VOL_APP_STORAGE:-app-storage}:/fix/app-storage
+      - ${VOL_APP_LOGS:-app-logs}:/fix/app-logs
+      - ${VOL_FLARUM_STORAGE:-flarum-storage}:/fix/flarum-storage
+      - ${VOL_FLARUM_ASSETS:-flarum-assets}:/fix/flarum-assets
+    logging: *default-logging
+
   app:
     <<: *app-common
     build:
@@ -156,6 +171,8 @@ services:
       retries: 5
       start_period: 120s # first start runs all migrations
     depends_on:
+      fix-permissions:
+        condition: service_completed_successfully
       mariadb:
         condition: service_healthy
       redis:
@@ -317,6 +334,8 @@ services:
       retries: 5
       start_period: 180s # first start: install; upgrade of a 1.x forum: migrations
     depends_on:
+      fix-permissions:
+        condition: service_completed_successfully
       mariadb:
         condition: service_healthy
     logging: *default-logging

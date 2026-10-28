@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Listeners\TrackAuthEvents;
 use App\Listeners\UserLoggedIn;
 use App\Listeners\UserLoggedOut;
 use App\Listeners\UserCreated;
@@ -24,14 +25,16 @@ class EventServiceProvider extends ServiceProvider
              SendEmailVerificationNotification::class
          ],
         Login::class => [
-            UserLoggedIn::class
+            UserLoggedIn::class,
+            TrackAuthEvents::class.'@handleLogin',
         ],
         Logout::class => [
             UserLoggedOut::class
         ],
         // The forum account uses its own random password, so password resets need no forum sync.
         Registered::class => [
-            UserCreated::class
+            UserCreated::class,
+            TrackAuthEvents::class.'@handleRegistered',
         ],
     ];
 

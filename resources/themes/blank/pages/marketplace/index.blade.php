@@ -239,6 +239,9 @@ render(function (View $view) {
                         </x-marketplace.empty-state>
                     </div>
                 @else
+                    @if (filled($term = trim((string) request()->query('q'))))
+                        <x-analytics.events :events="[\App\Support\Analytics\Ga4::payload('search', ['search_term' => $term])]" />
+                    @endif
                     <x-marketing.listing-card-container :listings="$listings" />
                 @endif
 

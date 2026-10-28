@@ -269,11 +269,11 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             @break
                         @case('incomplete')
                             <p class="text-gray-700">You started the Stripe setup but did not finish it. Continue where you left off.</p>
-                            <x-button tag="a" href="{{ route('selling.connect') }}">Continue Stripe setup</x-button>
+                            <x-button tag="a" href="{{ route('selling.connect') }}" data-ga4-click="{{ \App\Support\Analytics\Ga4::attr('seller_onboarding_started') }}">Continue Stripe setup</x-button>
                             @break
                         @default
                             <p class="text-gray-700">Connect a Stripe account to get paid. Free designs work without it, but you need it to <strong>publish paid designs</strong> and listings. Setup takes a few minutes.</p>
-                            <x-button tag="a" href="{{ route('selling.connect') }}">Connect Stripe</x-button>
+                            <x-button tag="a" href="{{ route('selling.connect') }}" data-ga4-click="{{ \App\Support\Analytics\Ga4::attr('seller_onboarding_started') }}">Connect Stripe</x-button>
                     @endswitch
                 </div>
             </x-filament::section>

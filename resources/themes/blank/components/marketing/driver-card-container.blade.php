@@ -2,9 +2,12 @@
     'drivers',
     'cols' => 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
     'padded' => true,
+    'listName' => 'Drivers',
 ])
+<x-analytics.events :events="count($drivers) ? [\App\Support\Analytics\Ga4::itemList($listName, $drivers)] : []" />
 <div {{ $attributes->class(['grid gap-4', $cols, 'p-4' => $padded]) }}>
     @foreach($drivers as $driver)
+        @php($select = \App\Support\Analytics\Ga4::selectItem($listName, $driver))
         <div x-data="{ showSpecs: false }" wire:key="{{$driver->id}}" class="relative flex flex-col bg-white rounded-lg border-2 border-gray-100 hover:shadow-lg shadow-sm overflow-hidden h-full">
             <!-- Driver image section -->
             <div class="relative pt-4 px-4">
@@ -15,7 +18,7 @@
                     </div>
                 @endif
                 
-                <a href="/drivers/driver/{{$driver->id}}" class="block w-full">
+                <a href="/drivers/driver/{{$driver->id}}" data-ga4-click="{{ $select }}" class="block w-full">
                     <div class="flex justify-center items-center h-48 md:h-56">
                         <img
                             src="/storage/{{ is_array($driver->card_image) && !empty($driver->card_image) ? $driver->card_image[0] : $driver->card_image }}"
@@ -59,7 +62,7 @@
 
                 <!-- Button section -->
                 <div class="flex mt-2 gap-2">
-                    <x-button tag="a" href="/drivers/driver/{{$driver->id}}" class="flex-grow">View</x-button>
+                    <x-button tag="a" href="/drivers/driver/{{$driver->id}}" data-ga4-click="{{ $select }}" class="flex-grow">View</x-button>
                     <x-button 
                         @click="showSpecs = true" 
                         x-show="!showSpecs" 
@@ -104,7 +107,7 @@
                 
                 <div class="p-4 pt-0">
                     <div class="flex gap-2">
-                    <x-button tag="a" href="/drivers/driver/{{$driver->id}}" class="flex-grow">View Details</x-button>
+                    <x-button tag="a" href="/drivers/driver/{{$driver->id}}" data-ga4-click="{{ $select }}" class="flex-grow">View Details</x-button>
                         <x-button @click="showSpecs = false" color="danger" class="flex-grow">Close</x-button>
                     </div>
                 </div>

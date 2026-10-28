@@ -206,6 +206,26 @@ it('resets the forum password of an account that exists but does not match', fun
     ]);
 });
 
+it('logs the forum admin (same e-mail as the site account) in with the admin password, never resetting that account', function () {
+    Http::fake([
+        FORUM_API.'/token' => Http::sequence()
+            ->push([], 401)
+            ->push([], 401)
+            ->push(['token' => 'admin-session', 'userId' => 1]),
+        FORUM_API.'/users?*' => Http::response(['data' => [['id' => '1']]]),
+        FORUM_API.'/users/1' => Http::response(['data' => ['id' => '1']]),
+    ]);
+
+    $client = new FlarumClient('https://shop.test/forum', 'http://flarum.test:8000/forum', 'master-key-123', 1, new UsernameSanitizer(['forumadmin']), 3, 8, 'forum-admin-pw');
+    $owner = User::factory()->create(['email' => 'owner@example.test', 'forum_password' => 'pw-from-app']);
+
+    expect($client->issueRememberToken($owner))->toBe('admin-session');
+
+    expect(collect(recorded())->where(0, 'PATCH'))->toBeEmpty();
+    $tokenCalls = collect(recorded())->filter(fn ($r) => str_ends_with($r[1], '/token'))->values();
+    expect($tokenCalls->last()[2])->toMatchArray(['identification' => 'owner@example.test', 'password' => 'forum-admin-pw']);
+});
+
 it('replaces a forum password that no longer decrypts (APP_KEY changed) and resets the account to it', function () {
     Http::fake([
         FORUM_API.'/token' => Http::sequence()

@@ -1415,35 +1415,35 @@ volumes, images and port) and its own updater. Nothing is shared between them, n
 | | Production folder | Dev folder |
 |---|---|---|
 | Branch it deploys | `production` | `dev` |
-| `COMPOSE_PROJECT_NAME` in `.env` | `lastpope` (or leave it out) | `lastpope-dev` |
-| `CADDY_HTTP_BIND` / `CADDY_HTTPS_BIND` | `127.0.0.1:8880` / `127.0.0.1:8443` | `127.0.0.1:8881` / `127.0.0.1:8444` |
+| `COMPOSE_PROJECT_NAME` in `.env` | `lastpope-prod` | `lastpope` (or leave it out) |
+| `CADDY_HTTP_BIND` / `CADDY_HTTPS_BIND` | `127.0.0.1:8890` / `127.0.0.1:8891` | `127.0.0.1:8880` / `127.0.0.1:8881` |
 | `APP_DOMAIN` | `sdlabs.cc` | `dev.sdlabs.cc` |
 | `STACK_ENV` | `production` | `demo` (demo content) or `production` |
-| Updater units | `lastpope-deploy.*` | `lastpope-dev-deploy.*` |
+| Updater units | `lastpope-prod-deploy.*` | `lastpope-deploy.*` |
 
 **Why it matters:** before this, `compose.yaml` had a fixed project name, so starting the stack in one folder replaced
 the containers of the other and both used the same volumes. `COMPOSE_PROJECT_NAME` now names the project, the volumes
-(`lastpope-dev_mariadb-data`, ...) and the images. `docker/deploy/install.sh` refuses to install an updater for a project
+(`lastpope-prod_mariadb-data`, ...) and the images. `docker/deploy/install.sh` refuses to install an updater for a project
 name that another folder already uses.
 
-**Switching an existing server over** (production keeps the name `lastpope` and therefore its current data; the dev copy
-starts with empty volumes):
+**Switching an existing server over.** The dev copy keeps the name `lastpope` and therefore the data it has now;
+production gets the new name `lastpope-prod` and starts with empty volumes (its own database, uploads and forum).
 
-1. Dev folder, `.env`: set `COMPOSE_PROJECT_NAME=lastpope-dev`, the dev ports above and `APP_DOMAIN=dev.sdlabs.cc`.
-   Production folder, `.env`: the production ports and domain (leave `COMPOSE_PROJECT_NAME` out or set `lastpope`).
-2. Production folder: `git fetch && git checkout production && sudo docker compose up -d --build`, then
-   `sudo docker/deploy/install.sh --branch production` (if the dev folder had an updater under the old name,
-   run `sudo docker/deploy/install.sh --uninstall` there first, before changing its `.env`).
-3. Dev folder: `git fetch && git checkout dev && sudo docker compose up -d --build`, then the first-run steps of
-   [section 7](#7-first-run-base-data-and-the-first-admin-user) and the forum setup of [section 8](#8-forum) (it has its own,
-   empty database and forum), then `sudo docker/deploy/install.sh --branch dev`.
-4. Your nginx: the `dev.sdlabs.cc` server block proxies to `127.0.0.1:8881`, the production one to `127.0.0.1:8880`
-   (both including the `/ws/app/` WebSocket block of [Behind an existing web server](#behind-an-existing-web-server-nginx-apache-webmin)).
-5. Stripe: use test keys and test webhook destinations (pointing at `dev.sdlabs.cc`) in the dev `.env`, live ones in
-   production.
+1. Production folder: `sudo docker/setup.sh --behind-proxy --proxy-port 8890` if it has no `.env` yet, then set
+   `COMPOSE_PROJECT_NAME=lastpope-prod`, `APP_DOMAIN=sdlabs.cc`, `STACK_ENV=production` and the ports above in `.env`.
+   `git fetch && git checkout production && sudo docker compose up -d --build`, then the first run of
+   [section 7](#7-first-run-base-data-and-the-first-admin-user) and the forum setup of [section 8](#8-forum), then
+   `sudo docker/deploy/install.sh --branch production`.
+2. Dev folder: `git fetch && git checkout dev`, `sudo docker compose down` (removes the containers, keeps the volumes,
+   so they are recreated from this folder) and `sudo docker compose up -d --build`, then
+   `sudo docker/deploy/install.sh --branch dev`.
+3. Your nginx: `sdlabs.cc` proxies to `127.0.0.1:8890`, `dev.sdlabs.cc` to `127.0.0.1:8880` (both including the
+   `/ws/app/` WebSocket block of [Behind an existing web server](#behind-an-existing-web-server-nginx-apache-webmin)).
+4. Stripe: live keys and live webhook destinations (pointing at `sdlabs.cc`) in the production `.env`, test ones
+   (pointing at `dev.sdlabs.cc`) in the dev `.env`.
 
 **Day to day:** push to `dev`; the dev updater deploys it once the tests pass on GitHub. When it is good, bring it to
 production with `git checkout production && git merge --ff-only dev && git push` (or a pull request from `dev` to
 `production` on GitHub); the production updater deploys it the same way. Each updater writes to its own log:
-`/var/log/lastpope-deploy.log` and `/var/log/lastpope-dev-deploy.log`. Which branch a folder deploys is `DEPLOY_BRANCH`
+`/var/log/lastpope-prod-deploy.log` and `/var/log/lastpope-deploy.log`. Which branch a folder deploys is `DEPLOY_BRANCH`
 in its `docker/deploy/deploy.env` (`install.sh --branch` sets it); the checkout must be on that branch.

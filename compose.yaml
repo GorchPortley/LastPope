@@ -15,7 +15,7 @@
 # For local development add the override file:  docker compose -f compose.yaml -f compose.dev.yaml up
 
 # One copy of the stack per folder. Production and a dev copy on the same server need different names (and different
-# CADDY_HTTP_BIND ports): set COMPOSE_PROJECT_NAME in each folder's .env, e.g. lastpope (production) and lastpope-dev.
+# CADDY_HTTP_BIND ports): set COMPOSE_PROJECT_NAME in each folder's .env, e.g. lastpope-prod (production) and lastpope (dev).
 # The name also prefixes the containers, volumes and images, so the two never share data. See docs/DEPLOY.md, section 20.
 name: ${COMPOSE_PROJECT_NAME:-lastpope}
 

@@ -20,7 +20,7 @@ yarn-error.log
 /.vscode
 /.fleet
 .DS_Store
-
+/data/*
 # Wave ignores.
 /public/.well-known
 /public/demo

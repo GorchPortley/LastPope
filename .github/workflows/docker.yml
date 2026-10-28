@@ -10,7 +10,7 @@ name: Docker stack
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, production, dev]
     paths:
       - 'docker/**'
       - 'compose*.yaml'

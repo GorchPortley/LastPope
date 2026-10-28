@@ -14,12 +14,15 @@
 # All settings come from `.env` (create it with `docker/setup.sh`). See docs/DEPLOY.md.
 # For local development add the override file:  docker compose -f compose.yaml -f compose.dev.yaml up
 
-name: lastpope
+# One copy of the stack per folder. Production and a dev copy on the same server need different names (and different
+# CADDY_HTTP_BIND ports): set COMPOSE_PROJECT_NAME in each folder's .env, e.g. lastpope (production) and lastpope-dev.
+# The name also prefixes the containers, volumes and images, so the two never share data. See docs/DEPLOY.md, section 20.
+name: ${COMPOSE_PROJECT_NAME:-lastpope}
 
 # ---------------------------------------------------------------------------
 # Shared definitions for the containers that run the Laravel code (app, queue, scheduler, reverb).
 # ---------------------------------------------------------------------------
-x-app-image: &app-image lastpope-app:local
+x-app-image: &app-image ${COMPOSE_PROJECT_NAME:-lastpope}-app:local
 
 x-app-env: &app-env
   # Pre-wired infrastructure. These override whatever .env says (the .env copy of
@@ -267,7 +270,7 @@ services:
       context: docker/flarum
       secrets:
         - composer_auth # optional, see docs/DEPLOY.md ("Could not authenticate against github.com")
-    image: lastpope-flarum:2.0.2
+    image: ${COMPOSE_PROJECT_NAME:-lastpope}-flarum:2.0.2
     restart: unless-stopped
     environment:
       # The start-up scripts of the image: install / migrate / API key / extensions. Only this container does that.
@@ -321,7 +324,7 @@ services:
   # (same image, no web server; see docker/flarum/bin/flarum-scheduler). It shares the storage volume
   # with the forum, so the administration can see that the scheduler is alive.
   flarum-scheduler:
-    image: lastpope-flarum:2.0.2
+    image: ${COMPOSE_PROJECT_NAME:-lastpope}-flarum:2.0.2
     restart: unless-stopped
     command: ["flarum-scheduler"]
     stop_signal: SIGTERM

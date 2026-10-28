@@ -5,12 +5,16 @@
 #   sudo docker/deploy/install.sh                 install; runs as root (you use sudo for docker anyway)
 #   sudo docker/deploy/install.sh --user alice    run as the user "alice" instead (must be in the docker group)
 #   sudo docker/deploy/install.sh --uninstall     stop and remove the timer (your settings and backups stay)
+#   sudo docker/deploy/install.sh --branch dev    deploy this branch (stored as DEPLOY_BRANCH in deploy.env)
 #
-# What it creates:
-#   /etc/systemd/system/lastpope-deploy.service   one run of docker/deploy/auto-deploy.sh
-#   /etc/systemd/system/lastpope-deploy.timer     starts the service 2 minutes after boot and every 2 minutes
-#   /etc/logrotate.d/lastpope-deploy              keeps /var/log/lastpope-deploy.log from growing forever
-#   docker/deploy/deploy.env                      your settings, copied from deploy.env.example (only if missing)
+# One updater per folder: production and a dev copy on the same server each run their own. The units are named after
+# COMPOSE_PROJECT_NAME in the folder's .env (lastpope -> lastpope-deploy, lastpope-dev -> lastpope-dev-deploy).
+#
+# What it creates (NAME = COMPOSE_PROJECT_NAME, default lastpope):
+#   /etc/systemd/system/NAME-deploy.service   one run of docker/deploy/auto-deploy.sh
+#   /etc/systemd/system/NAME-deploy.timer     starts the service 2 minutes after boot and every 2 minutes
+#   /etc/logrotate.d/NAME-deploy              keeps /var/log/NAME-deploy.log from growing forever
+#   docker/deploy/deploy.env                  your settings, copied from deploy.env.example (only if missing)
 #
 # Safe to run again (it just rewrites the files). Full guide: docs/DEPLOY.md, "Automatic updates".
 
@@ -19,21 +23,19 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
 SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
 LOGROTATE_DIR="${LOGROTATE_DIR:-/etc/logrotate.d}"
-LOG_FILE=/var/log/lastpope-deploy.log
-SERVICE=lastpope-deploy.service
-TIMER=lastpope-deploy.timer
-
 RUN_USER=""
 UNINSTALL=0
+BRANCH_SETTING=""
 
 usage() {
-  sed -n '3,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --user) RUN_USER="${2:-}"; [ -n "$RUN_USER" ] || { echo "--user needs a name" >&2; exit 2; }; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
+    --branch) BRANCH_SETTING="${2:-}"; [ -n "$BRANCH_SETTING" ] || { echo "--branch needs a name" >&2; exit 2; }; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -44,6 +46,14 @@ warn() { printf '  WARN %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "run this with sudo:  sudo $0 $*"
+
+# The compose project of this folder names the units, so every folder (production, dev) gets its own updater.
+PROJECT="$(sed -n -E 's/^COMPOSE_PROJECT_NAME=["'"'"']?([A-Za-z0-9_-]+).*/\1/p' "$REPO/.env" 2>/dev/null | tail -n 1)"
+PROJECT="${PROJECT:-lastpope}"
+UNIT="${PROJECT}-deploy"
+LOG_FILE="/var/log/${UNIT}.log"
+SERVICE="${UNIT}.service"
+TIMER="${UNIT}.timer"
 
 # systemd really running? (false in containers and WSL1: files are still written, nothing is enabled)
 HAVE_SYSTEMD=0
@@ -60,7 +70,7 @@ if [ "$UNINSTALL" = 1 ]; then
     systemctl disable --now "$TIMER" 2>/dev/null || true
     systemctl stop "$SERVICE" 2>/dev/null || true
   fi
-  rm -f "$SYSTEMD_DIR/$SERVICE" "$SYSTEMD_DIR/$TIMER" "$LOGROTATE_DIR/lastpope-deploy"
+  rm -f "$SYSTEMD_DIR/$SERVICE" "$SYSTEMD_DIR/$TIMER" "$LOGROTATE_DIR/$UNIT"
   sysctl_do daemon-reload
   ok "timer and service removed"
   echo
@@ -70,7 +80,11 @@ if [ "$UNINSTALL" = 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------------------------
-echo "Installing the automatic updater for $REPO ..."
+echo "Installing the automatic updater for $REPO (project $PROJECT, units $UNIT.*) ..."
+
+# Two folders with the same project name would replace each other's containers and share their data.
+OTHER="$(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null | sort -u | grep -vxF "$REPO" | head -n 1 || true)"
+[ -z "$OTHER" ] || die "project '$PROJECT' is already used by $OTHER. Give this folder its own COMPOSE_PROJECT_NAME in .env (e.g. lastpope-dev) and its own CADDY_HTTP_BIND port first (docs/DEPLOY.md, section 20)."
 
 case "$REPO" in
   *[[:space:]]* | *\"* | *\'* | *\\* | *%*) die "the folder name ($REPO) must not contain spaces or quotes; move the project to a plain path such as /SDLabs" ;;
@@ -119,6 +133,15 @@ if [ ! -f "$REPO/docker/deploy/deploy.env" ]; then
 else
   ok "kept your existing docker/deploy/deploy.env"
 fi
+if [ -n "$BRANCH_SETTING" ]; then
+  if grep -qE '^#?DEPLOY_BRANCH=' "$REPO/docker/deploy/deploy.env"; then
+    sed -i -E "s|^#?DEPLOY_BRANCH=.*|DEPLOY_BRANCH=$BRANCH_SETTING|" "$REPO/docker/deploy/deploy.env"
+  else
+    printf '\nDEPLOY_BRANCH=%s\n' "$BRANCH_SETTING" >>"$REPO/docker/deploy/deploy.env"
+  fi
+  ok "deploys branch $BRANCH_SETTING (DEPLOY_BRANCH in docker/deploy/deploy.env)"
+  [ "$BRANCH" = "$BRANCH_SETTING" ] || warn "the checkout is on '${BRANCH:-a fixed commit}': run 'git checkout $BRANCH_SETTING' here, or the updater stays paused"
+fi
 chmod 600 "$REPO/docker/deploy/deploy.env"
 [ -z "$RUN_USER" ] || chown "$RUN_USER" "$REPO/docker/deploy/deploy.env"
 
@@ -127,7 +150,7 @@ touch "$LOG_FILE" 2>/dev/null || warn "cannot create $LOG_FILE (the updater will
 chmod 640 "$LOG_FILE" 2>/dev/null || true
 [ -z "$RUN_USER" ] || chown "$RUN_USER" "$LOG_FILE" 2>/dev/null || true
 if [ -d "$LOGROTATE_DIR" ]; then
-  cat >"$LOGROTATE_DIR/lastpope-deploy" <<EOF
+  cat >"$LOGROTATE_DIR/$UNIT" <<EOF
 $LOG_FILE {
     weekly
     rotate 8
@@ -137,7 +160,7 @@ $LOG_FILE {
     copytruncate
 }
 EOF
-  ok "log rotation: $LOGROTATE_DIR/lastpope-deploy"
+  ok "log rotation: $LOGROTATE_DIR/$UNIT"
 fi
 
 # --- systemd units ------------------------------------------------------------------------------
@@ -145,7 +168,7 @@ mkdir -p "$SYSTEMD_DIR"
 {
   cat <<EOF
 [Unit]
-Description=LastPope automatic deploy (checks GitHub, updates the Docker stack)
+Description=LastPope automatic deploy of $REPO (checks GitHub, updates the Docker stack)
 After=network-online.target docker.service
 Wants=network-online.target
 
@@ -154,6 +177,7 @@ Type=oneshot
 WorkingDirectory=$REPO
 ExecStart=$REPO/docker/deploy/auto-deploy.sh
 Environment=HOME=$RUN_HOME
+Environment=DEPLOY_LOG=$LOG_FILE
 # A build can take several minutes; give it room but never hang forever.
 TimeoutStartSec=2h
 # Be nice to the website while it builds.
@@ -187,14 +211,14 @@ sysctl_do enable --now "$TIMER"
 cat <<EOF
 
 Done. The server now checks GitHub every 2 minutes${RUN_USER:+ (running as $RUN_USER)}.
-Following branch: ${BRANCH:-"(none: detached HEAD)"}
+Following branch: ${BRANCH_SETTING:-${BRANCH:-"(none: detached HEAD)"}}
 
   See what it would do right now (changes nothing):  sudo $REPO/docker/deploy/auto-deploy.sh --dry-run
-  Watch it live:                                     journalctl -u lastpope-deploy -f
+  Watch it live:                                     journalctl -u $UNIT -f
   History:                                           less $LOG_FILE
-  Next / last run:                                   systemctl list-timers lastpope-deploy.timer
-  Pause updates:                                     sudo systemctl stop lastpope-deploy.timer
-  Resume:                                            sudo systemctl start lastpope-deploy.timer
+  Next / last run:                                   systemctl list-timers $TIMER
+  Pause updates:                                     sudo systemctl stop $TIMER
+  Resume:                                            sudo systemctl start $TIMER
   Remove completely:                                 sudo $REPO/docker/deploy/install.sh --uninstall
 
 Settings (phone notifications, private repository token, ...): $REPO/docker/deploy/deploy.env

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Notification;
 
 /** Server-side purchase and refund through the GA4 Measurement Protocol (docs/PLAN.md 12). */
 beforeEach(function () {
-    config(['analytics.measurement_id' => 'G-TEST123', 'analytics.api_secret' => 'secret-xyz', 'marketplace.physical_payout_trigger' => 'shipped']);
+    config(['ga4.measurement_id' => 'G-TEST123', 'ga4.api_secret' => 'secret-xyz', 'marketplace.physical_payout_trigger' => 'shipped']);
     Http::fake(['www.google-analytics.com/*' => Http::response('', 204)]);
     Notification::fake();
     $this->buyer = User::factory()->create();
@@ -77,8 +77,8 @@ it('sends nothing without consent, without a client id, without an id or without
     'consent denied' => [['ga_client_id' => '1.2', 'analytics_consent' => false], []],
     'consent unknown (order from before R7)' => [['ga_client_id' => '1.2', 'analytics_consent' => null], []],
     'no client id' => [['ga_client_id' => null, 'analytics_consent' => true], []],
-    'no measurement id' => [['ga_client_id' => '1.2', 'analytics_consent' => true], ['analytics.measurement_id' => null]],
-    'no API secret' => [['ga_client_id' => '1.2', 'analytics_consent' => true], ['analytics.api_secret' => null]],
+    'no measurement id' => [['ga_client_id' => '1.2', 'analytics_consent' => true], ['ga4.measurement_id' => null]],
+    'no API secret' => [['ga_client_id' => '1.2', 'analytics_consent' => true], ['ga4.api_secret' => null]],
 ]);
 
 it('does not let a failing GA4 call break the payment, and sends again when the job is retried', function () {
@@ -134,7 +134,7 @@ it('stores the GA client id and the consent choice on the order at checkout', fu
 });
 
 it('renders the pages that send events without errors', function () {
-    config(['analytics.measurement_id' => 'G-TEST123']);
+    config(['ga4.measurement_id' => 'G-TEST123']);
     $seller = onboardedSeller();
     $driverListing = storeListing();
     $listing = sellableListing($seller, 4000);

@@ -4,7 +4,7 @@
     sdl_consent (granted / denied) by window.sdlGa4.setConsent() from partials/analytics. Anything with
     data-cookie-settings (the footer's "Cookie settings") opens it again.
 --}}
-@if (filled(config('analytics.measurement_id')))
+@if (filled(config('ga4.measurement_id')))
     <div id="cookie-consent" role="dialog" aria-live="polite" aria-label="Cookie settings" hidden
          class="fixed inset-x-0 bottom-0 z-[60] border-t-2 border-gray-100 bg-white shadow-lg">
         <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
@@ -21,7 +21,7 @@
     <script>
         (function (d) {
             var banner = d.getElementById('cookie-consent');
-            var chosen = new RegExp('(?:^|;\\s*)' + {{ \Illuminate\Support\Js::from(config('analytics.consent_cookie')) }} + '=(granted|denied)');
+            var chosen = new RegExp('(?:^|;\\s*)' + {{ \Illuminate\Support\Js::from(config('ga4.consent_cookie')) }} + '=(granted|denied)');
 
             if (!d.cookie.match(chosen)) { banner.hidden = false; }
 

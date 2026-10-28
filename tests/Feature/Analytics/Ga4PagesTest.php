@@ -11,11 +11,11 @@ use Livewire\Livewire;
 /** GA4 in the browser (docs/PLAN.md 12): the tag, Consent Mode, the banner and the events the pages render. */
 function withGa4(string $id = 'G-TEST123'): void
 {
-    config(['analytics.measurement_id' => $id]);
+    config(['ga4.measurement_id' => $id]);
 }
 
 it('renders no tag, no banner and no cookie link without a measurement id', function () {
-    config(['analytics.measurement_id' => null]);
+    config(['ga4.measurement_id' => null]);
 
     $html = $this->get('/')->assertOk()->getContent();
 

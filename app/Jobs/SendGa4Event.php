@@ -57,9 +57,9 @@ class SendGa4Event implements ShouldQueue
 
         $response = Http::timeout(5)
             ->asJson()
-            ->post(config('analytics.collect_url').'?'.http_build_query([
-                'measurement_id' => config('analytics.measurement_id'),
-                'api_secret' => config('analytics.api_secret'),
+            ->post(config('ga4.collect_url').'?'.http_build_query([
+                'measurement_id' => config('ga4.measurement_id'),
+                'api_secret' => config('ga4.api_secret'),
             ]), $this->body);
 
         if ($response->failed()) {

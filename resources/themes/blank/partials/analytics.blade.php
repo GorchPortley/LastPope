@@ -11,7 +11,7 @@
          - clicks and form submits on elements with data-ga4-click / data-ga4-submit (a JSON {name, params}),
        and sends `search` once the visitor stops typing.
 --}}
-@php($ga4Id = config('analytics.measurement_id'))
+@php($ga4Id = config('ga4.measurement_id'))
 @if (filled($ga4Id))
 <script>
     window.dataLayer = window.dataLayer || [];
@@ -21,7 +21,7 @@
         wait_for_update: 500
     });
     (function () {
-        var match = document.cookie.match(/(?:^|;\s*){{ preg_quote(config('analytics.consent_cookie')) }}=(granted|denied)/);
+        var match = document.cookie.match(/(?:^|;\s*){{ preg_quote(config('ga4.consent_cookie')) }}=(granted|denied)/);
         if (match && match[1] === 'granted') {
             gtag('consent', 'update', {ad_storage: 'granted', ad_user_data: 'granted', ad_personalization: 'granted', analytics_storage: 'granted'});
         }
@@ -32,7 +32,7 @@
 <script async src="https://www.googletagmanager.com/gtag/js?id={{ urlencode($ga4Id) }}"></script>
 <script>
     (function (w, d) {
-        var cookieName = {{ \Illuminate\Support\Js::from(config('analytics.consent_cookie')) }};
+        var cookieName = {{ \Illuminate\Support\Js::from(config('ga4.consent_cookie')) }};
         var searchTimer = null;
 
         function track(name, params, beacon) {

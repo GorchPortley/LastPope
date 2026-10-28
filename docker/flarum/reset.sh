@@ -94,8 +94,15 @@ PROJECT="$(compose config 2>/dev/null | sed -n 's/^name: *//p' | head -n 1)"
 [ -n "$PROJECT" ] || die "could not read the compose project name (does 'docker compose config' work?)."
 
 VOLUMES=()
+FOLDERS=()
 for name in flarum-storage flarum-assets flarum-data; do
-  if docker volume inspect "${PROJECT}_${name}" >/dev/null 2>&1; then
+  # Moved to a host folder (docker/data/move-to-host.sh): empty that folder instead of removing a volume.
+  key="VOL_${name^^}"; key="${key//-/_}"
+  folder="$(env_get "$key")"
+  if [ -n "$folder" ]; then
+    [[ "$folder" = /* ]] || folder="$ROOT/${folder#./}"
+    [ -d "$folder" ] && FOLDERS+=("$folder")
+  elif docker volume inspect "${PROJECT}_${name}" >/dev/null 2>&1; then
     VOLUMES+=("${PROJECT}_${name}")
   fi
 done
@@ -107,7 +114,8 @@ cat <<EOF
 ${BOLD}This DELETES the whole forum of ${DOMAIN}${RESET}
 
   * the forum database "${FORUM_DB}": all discussions, posts, member accounts, settings
-  * the forum volumes: ${VOLUMES[*]:-(none found)}
+  * the forum volumes: ${VOLUMES[*]:-(none found)}${FOLDERS[*]:+
+  * the contents of the forum folders: ${FOLDERS[*]}}
   * the site's stored links to forum discussions and accounts (php artisan forum:unlink)
 
 The forum is then installed again, empty. The site itself is not touched. This cannot be undone: back up
@@ -130,6 +138,12 @@ compose rm -f flarum flarum-scheduler >/dev/null 2>&1 || true
 for volume in "${VOLUMES[@]}"; do
   docker volume rm "$volume" >/dev/null || die "could not remove volume $volume (is another container still using it?)."
   ok "removed volume $volume"
+done
+
+# The folders themselves stay (with their owner, so the forum can write into them again); only their contents go.
+for folder in "${FOLDERS[@]}"; do
+  docker run --rm -v "$folder:/d" alpine:3.22 find /d -mindepth 1 -delete || die "could not empty $folder."
+  ok "emptied $folder"
 done
 
 # --- 2. drop and recreate the forum database ---------------------------------------------------------------

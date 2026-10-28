@@ -779,6 +779,34 @@ docker compose up -d
 Replace `STAMP` with the date part of your backup file names. The passwords in the restored `.env`
 must be the ones the database was created with, which is why `.env` is part of the backup.
 
+### Where the data lives
+
+By default everything the site stores (uploads and design files, logs, the database, the forum's files, certificates) is
+in Docker volumes, which only Docker can see. To have it in plain folders in the project instead, run once:
+
+```bash
+cd /SDLabs
+sudo docker/data/move-to-host.sh          # or: sudo docker/data/move-to-host.sh /path/elsewhere
+```
+
+It stops the site for a moment, copies every volume into `data/<name>` (owners and permissions kept), adds `VOL_*`
+settings to `.env` that point `compose.yaml` at those folders, and starts the site again. The old volumes stay until you
+remove them with the command it prints. Afterwards:
+
+| Folder | What is in it |
+|---|---|
+| `data/app-storage` | uploads, design files, snapshots, the PDFs |
+| `data/app-logs` | the site's logs (`laravel.log`) |
+| `data/flarum-assets` | forum avatars, uploaded files (fof/upload), compiled JS/CSS |
+| `data/flarum-storage` | forum logs, caches, sessions |
+| `data/mariadb-data` | the database files: copy them only with the database stopped; use a dump (above) for backups |
+| `data/redis-data`, `data/caddy-data`, `data/caddy-config` | cache/queue, HTTPS certificates, Caddy's settings |
+
+The files belong to the containers' users (`www-data`, `mysql`), so use `sudo` to read them (`sudo ls data/app-storage`,
+`sudo tail data/app-logs/laravel.log`). Do not change their owners: the containers must still be able to write. `data/`
+is ignored by git and left out of image builds. `docker/flarum/reset.sh` empties the forum folders instead of removing
+volumes once the data has moved.
+
 ## 12. Updating
 
 ```bash

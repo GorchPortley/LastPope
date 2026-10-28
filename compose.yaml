@@ -84,8 +84,8 @@ x-app-common: &app-common
       required: false
   environment: *app-env
   volumes:
-    - app-storage:/var/www/html/storage/app
-    - app-logs:/var/www/html/storage/logs
+    - ${VOL_APP_STORAGE:-app-storage}:/var/www/html/storage/app
+    - ${VOL_APP_LOGS:-app-logs}:/var/www/html/storage/logs
   logging: &default-logging
     driver: json-file
     options:
@@ -110,8 +110,8 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is empty - run docker/setup.sh first}
     volumes:
       - ./docker/caddy:/etc/caddy:ro
-      - caddy-data:/data # certificates: do not lose this volume
-      - caddy-config:/config
+      - ${VOL_CADDY_DATA:-caddy-data}:/data # certificates: do not lose this volume
+      - ${VOL_CADDY_CONFIG:-caddy-config}:/config
     depends_on:
       app:
         condition: service_started
@@ -229,7 +229,7 @@ services:
       FLARUM_DB_USERNAME: ${FLARUM_DB_USERNAME:-flarum}
       FLARUM_DB_PASSWORD: ${FLARUM_DB_PASSWORD:?FLARUM_DB_PASSWORD is empty - run docker/setup.sh first}
     volumes:
-      - mariadb-data:/var/lib/mysql
+      - ${VOL_MARIADB_DATA:-mariadb-data}:/var/lib/mysql
       - ./docker/mariadb/initdb.d:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
@@ -250,7 +250,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is empty - run docker/setup.sh first}
       REDISCLI_AUTH: ${REDIS_PASSWORD}
     volumes:
-      - redis-data:/data
+      - ${VOL_REDIS_DATA:-redis-data}:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
@@ -304,8 +304,8 @@ services:
       PHP_MAX_EXECUTION_TIME: "120"
       TZ: ${TZ:-UTC}
     volumes:
-      - flarum-storage:/var/www/html/storage # caches, logs, sessions, GDPR exports
-      - flarum-assets:/var/www/html/public/assets # compiled JS/CSS, avatars, uploads (fof/upload), logo
+      - ${VOL_FLARUM_STORAGE:-flarum-storage}:/var/www/html/storage # caches, logs, sessions, GDPR exports
+      - ${VOL_FLARUM_ASSETS:-flarum-assets}:/var/www/html/public/assets # compiled JS/CSS, avatars, uploads (fof/upload), logo
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8000/forum/api"]
       interval: 15s
@@ -336,7 +336,7 @@ services:
       FLARUM_DB_PREFIX: flarum_
       TZ: ${TZ:-UTC}
     volumes:
-      - flarum-storage:/var/www/html/storage
+      - ${VOL_FLARUM_STORAGE:-flarum-storage}:/var/www/html/storage
     healthcheck:
       test: ["CMD-SHELL", "find /tmp/flarum-scheduler.alive -mmin -3 | grep -q ."]
       interval: 30s
@@ -352,6 +352,9 @@ secrets:
   composer_auth:
     environment: COMPOSER_AUTH # only used while building the image; empty is fine
 
+# Where the data lives. By default in Docker volumes (only reachable through Docker). To keep it in plain folders in
+# this directory instead (./data/<name>, readable with sudo), run docker/data/move-to-host.sh once: it copies every
+# volume there and sets the VOL_* settings in .env that the mounts above use. See "Where the data lives" in docs/DEPLOY.md.
 volumes:
   mariadb-data:
   redis-data:

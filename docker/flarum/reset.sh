@@ -133,7 +133,8 @@ fi
 info
 info "${BOLD}1/4${RESET} stopping the forum..."
 compose stop flarum flarum-scheduler >/dev/null 2>&1 || true
-compose rm -f flarum flarum-scheduler >/dev/null 2>&1 || true
+# fix-permissions (finished, but its container still uses the forum volumes) is recreated by the next start.
+compose rm -f -s flarum flarum-scheduler fix-permissions >/dev/null 2>&1 || true
 
 for volume in "${VOLUMES[@]}"; do
   docker volume rm "$volume" >/dev/null || die "could not remove volume $volume (is another container still using it?)."

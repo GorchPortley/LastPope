@@ -21,6 +21,9 @@ FROM ${PHP_IMAGE} AS php-base
 
 USER root
 
+RUN apt-get update
+RUN apt-get upgrade -y
+
 # Already in the base image: pdo_mysql, redis, zip, pcntl, opcache, mbstring, xml, curl, ...
 # Added here: gd (images, PDF/dompdf), exif, intl (Number::currency, Filament), bcmath.
 RUN install-php-extensions gd exif intl bcmath \

@@ -62,6 +62,8 @@ resources/themes/.gitignore
 
 # Private files (design/driver source files and snapshot ZIPs; never public)
 /storage/app/private
+app/analytics/service-account-credentials.json
+/config/analytics.php
 
 # Server-only files (never committed): local compose tweaks, auto-deploy settings, database dumps
 /compose.override.yaml

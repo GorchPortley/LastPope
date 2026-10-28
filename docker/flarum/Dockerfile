@@ -32,6 +32,9 @@ FROM ${PHP_IMAGE} AS php-base
 
 USER root
 
+RUN apt-get update
+RUN apt-get upgrade -y
+
 # Already in the base image: pdo_mysql, zip, dom, fileinfo, mbstring, openssl, tokenizer, curl, opcache, ...
 # Added here: gd (Flarum refuses to install without it: avatars, image uploads), exif (rotates photos by
 # their camera orientation) and intl (proper plural forms in the translations; Flarum falls back to a

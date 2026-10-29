@@ -4,6 +4,8 @@ Every design on SDLabs is built from drivers, and every driver in a design has t
 
 Adding a driver is free. You don't need a Stripe account or anything else set up.
 
+A driver entry holds **the manufacturer's information only**: their datasheet numbers and the measurement files they publish. Your own measurements of a driver belong in your design, where you add the driver to it (see [Publishing a speaker design](/blog/guides/publishing-a-design)). That way the catalogue stays a clean reference, and everyone's real-world measurements sit next to the builds they came from.
+
 ## Before you start
 
 Check that the driver isn't already there. Go to **Drivers** in the top menu and search for the brand and model. If someone has already added it, use theirs. Duplicates make the database harder to search for everyone.
@@ -13,8 +15,8 @@ Check that the driver isn't already there. Go to **Drivers** in the top menu and
 Things worth having on hand:
 
 - The manufacturer's datasheet (for the Thiele/Small parameters)
-- A photo of the driver. Your own is best; the manufacturer's product shot is fine.
-- Any measurements you've taken yourself: frequency response, impedance, or both
+- The manufacturer's published FRD and ZMA files, if they offer them (many do, on the product page)
+- A photo of the driver. The manufacturer's product shot works well.
 
 ## 1. Open My Drivers
 
@@ -41,7 +43,7 @@ In your dashboard, open **Manage My Data → My Drivers** in the sidebar. This l
 
 - **Driver Image**: upload one or more photos. The first one is used on the driver's card.
 - **Summary**: one or two plain sentences. This shows on the card in search results.
-- **Description**: as long as you like. Build notes, how it measured compared to the datasheet, what it's good and bad at. You can add images here too.
+- **Description**: what the manufacturer says about it: cone and motor materials, intended use, mounting notes. You can add images here too.
 
 ## 4. Factory specs
 
@@ -51,15 +53,17 @@ Put your own measurements somewhere else. Designers record what *they* measured 
 
 [SCREENSHOT: the Factory Specs table partly filled in]
 
-## 5. Measurement files
+## 5. Manufacturer files
 
-Open **Driver File Uploads** if you have measurements:
+Open **Driver File Uploads** and add the files the manufacturer provides:
 
-- **Frequency Measurements**: FRD or similar text files
-- **Impedance Measurements**: ZMA or similar
-- **Other Files**: anything else useful, such as the datasheet PDF or your test setup notes
+- **Frequency Measurements**: the manufacturer's FRD files
+- **Impedance Measurements**: the manufacturer's ZMA files
+- **Other Files**: the datasheet PDF, drawings or other documents from the manufacturer
 
-Keep the filenames meaningful (`0deg-1m-baffle.frd` beats `meas3.frd`). They're kept as you named them.
+Only upload files that came from the manufacturer. If you've measured the driver yourself, upload those files with your design instead, under the driver's entry in **Design Drivers**.
+
+Filenames are kept as uploaded, so leave the manufacturer's names as they are.
 
 ## 6. Save, then switch it on
 

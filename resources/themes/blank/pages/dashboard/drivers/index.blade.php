@@ -31,6 +31,7 @@ use App\Filament\Forms\MoneyInput;
 use App\Jobs\BuildDriverSnapshot;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use App\Http\Livewire\Concerns\AutosavesFormDrafts;
 use Livewire\Volt\Component;
 use App\Models\Driver;
 use Maatwebsite\Excel\Facades\Excel;
@@ -44,7 +45,7 @@ name('dashboard.drivers');
 
 
 new class extends Component implements HasForms, Tables\Contracts\HasTable {
-    use InteractsWithForms, InteractsWithTable;
+    use InteractsWithForms, InteractsWithTable, AutosavesFormDrafts;
 
     public ?array $data = [];
 
@@ -97,6 +98,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->description('Manage your Drivers here!')
             ->headerActions([
                 CreateAction::make()
+                    ->autosavesDraft()
                     ->mutateFormDataUsing(function (array $data): array {
                         $data['user_id'] = auth()->id();
                         if (auth()->user()->hasRole('manufacturer')) {
@@ -310,6 +312,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                     ->icon('phosphor-eye')
                     ->url(fn($record): string => route('driver', ['id' => $record->id])),
                 EditAction::make()
+                    ->autosavesDraft()
                     ->form([
                         Toggle::make('active'),
                         Hidden::make('storage_key')

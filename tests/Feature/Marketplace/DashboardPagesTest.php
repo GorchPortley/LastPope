@@ -19,7 +19,7 @@ function createDesignData(array $overrides = []): array
     return $overrides + [
         'name' => 'Test Monitor',
         'card_image' => [UploadedFile::fake()->image('front.jpg')],
-        'category' => 'TWO_WAY',
+        'category' => 'Two-Way',
         'price_cents' => '12.50',
         'build_cost_cents' => '200',
         'active' => false,
@@ -108,7 +108,7 @@ it('stores uploaded driver files on the private disk under the storage key', fun
 
     dashboardPage($this, $user, '/dashboard/drivers')
         ->callTableAction('create', data: [
-            'brand' => 'Aurelia', 'model' => 'T-3', 'category' => 'TWEETER', 'size' => 1, 'impedance' => 4, 'power' => 50,
+            'brand' => 'Aurelia', 'model' => 'T-3', 'category' => 'Tweeter', 'size' => 1, 'impedance' => 4, 'power' => 50,
             'active' => false,
             'frequency_files' => [UploadedFile::fake()->create('t3.frd', 1)],
             'impedance_files' => [UploadedFile::fake()->create('t3.zma', 1)],
@@ -179,7 +179,7 @@ it('edits a design and keeps its storage key and files location', function () {
     Storage::disk('public')->put($design->card_image[0], 'image'); // the edit form needs the stored picture
 
     dashboardPage($this, $user, '/dashboard/designs')
-        ->callTableAction('edit', $design, data: ['name' => 'After', 'category' => 'TWO_WAY', 'price_cents' => '9.99', 'active' => false])
+        ->callTableAction('edit', $design, data: ['name' => 'After', 'category' => 'Two-Way', 'price_cents' => '9.99', 'active' => false])
         ->assertHasNoTableActionErrors();
 
     expect($design->refresh()->name)->toBe('After')
@@ -194,7 +194,7 @@ it('creates a driver with an MSRP', function () {
         ->callTableAction('create', data: [
             'brand' => 'Aurelia',
             'model' => 'T-1',
-            'category' => 'TWEETER',
+            'category' => 'Tweeter',
             'size' => 1,
             'impedance' => 4,
             'power' => 50,
@@ -215,7 +215,7 @@ it('leaves the MSRP empty when it is not filled in', function () {
 
     dashboardPage($this, $user, '/dashboard/drivers')
         ->callTableAction('create', data: [
-            'brand' => 'Aurelia', 'model' => 'T-2', 'category' => 'TWEETER', 'size' => 1, 'impedance' => 4, 'power' => 50,
+            'brand' => 'Aurelia', 'model' => 'T-2', 'category' => 'Tweeter', 'size' => 1, 'impedance' => 4, 'power' => 50,
             'msrp_cents' => '', 'active' => false,
         ])
         ->assertHasNoTableActionErrors();
@@ -248,4 +248,30 @@ it('lists the digital products a user got in the library', function () {
     dashboardPage($this, $user, '/dashboard/library')
         ->assertSee('Library Design')
         ->assertDontSee('Revoked Design');
+});
+
+it('restores an unsaved design edit, driver rows included, and saves it without duplicating the rows', function () {
+    $user = User::factory()->create();
+    $design = Design::factory()->for($user, 'designer')->create(['name' => 'Before', 'price_cents' => 0]);
+    Storage::disk('public')->put($design->card_image[0], 'image'); // the edit form needs the stored picture
+    $component = \App\Models\DesignDriver::factory()->for($design)->create(['quantity' => 1, 'driver_id' => Driver::factory()->create(['active' => true])->id]);
+
+    $page = dashboardPage($this, $user, '/dashboard/designs')
+        ->mountTableAction('edit', $design)
+        ->set('mountedTableActionsData.0.name', 'Half-edited')
+        ->set('mountedTableActionsData.0.components.record-'.$component->id.'.quantity', 3)
+        ->call('saveFormDraft')
+        ->call('unmountTableAction');
+
+    $page->mountTableAction('edit', $design)
+        ->assertTableActionDataSet(['name' => 'Half-edited', 'components.record-'.$component->id.'.quantity' => 3])
+        ->callMountedTableAction()
+        ->assertHasNoTableActionErrors();
+
+    expect($design->refresh()->name)->toBe('Half-edited')
+        ->and($design->components()->count())->toBe(1)
+        ->and($component->refresh()->quantity)->toBe(3);
+
+    // saved, so the draft is gone
+    expect(\Illuminate\Support\Facades\Cache::get('form-draft:'.$user->id.':'.$page->instance()->getName().':edit:'.$design->id))->toBeNull();
 });

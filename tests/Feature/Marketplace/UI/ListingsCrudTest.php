@@ -8,6 +8,7 @@ use App\Models\Driver;
 use App\Models\Listing;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -364,4 +365,43 @@ it('drops the link that does not belong to the type when it saves', function () 
 
     expect($kit->design_id)->toBe($design->id)->and($kit->driver_id)->toBeNull()
         ->and($gear->driver_id)->toBe($driver->id)->and($gear->design_id)->toBeNull();
+});
+
+it('keeps an unsaved listing form as a draft, restores it on reopening and forgets it once saved', function () {
+    $seller = onboardedSeller();
+
+    $page = voltPage($this, $seller, '/dashboard/listings', 'dashboard.listings')
+        ->mountTableAction('create')
+        ->setTableActionData(['title' => 'Half-written listing', 'published' => true])
+        ->call('saveFormDraft')
+        ->call('unmountTableAction');
+
+    $draft = Cache::get('form-draft:'.$seller->id.':'.$page->instance()->getName().':create:new');
+    expect($draft['data']['title'])->toBe('Half-written listing')
+        ->and($draft['data'])->not->toHaveKey('published');
+
+    $page->mountTableAction('create')
+        ->assertTableActionDataSet(['title' => 'Half-written listing'])
+        ->assertNotified('Restored your unsaved changes')
+        ->call('discardFormDraft')
+        ->assertTableActionDataSet(['title' => null]);
+
+    $page->call('unmountTableAction')
+        ->mountTableAction('create')
+        ->assertNotNotified();
+});
+
+it('forgets the draft when the form is saved', function () {
+    $seller = onboardedSeller();
+    $page = voltPage($this, $seller, '/dashboard/listings', 'dashboard.listings');
+
+    $page->mountTableAction('create')
+        ->setTableActionData(['title' => 'Saved one'])
+        ->call('saveFormDraft')
+        ->call('unmountTableAction')
+        ->callTableAction('create', data: listingFormData(['title' => 'Saved one']))
+        ->assertHasNoTableActionErrors();
+
+    expect(Listing::where('title', 'Saved one')->exists())->toBeTrue()
+        ->and(Cache::get('form-draft:'.$seller->id.':'.$page->instance()->getName().':create:new'))->toBeNull();
 });

@@ -1,57 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="A woofer seen from the front">
-  <!-- Blog post placeholder: a woofer from the front in the site's default palette (App\Support\BrandColors). -->
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
-      <stop offset="0" stop-color="#581c87"/>
-      <stop offset="1" stop-color="#3b0764"/>
-    </radialGradient>
-    <radialGradient id="surround" cx="45%" cy="40%" r="60%">
-      <stop offset="0.80" stop-color="#4b5563"/>
-      <stop offset="0.92" stop-color="#374151"/>
-      <stop offset="1" stop-color="#1f2937"/>
-    </radialGradient>
-    <radialGradient id="cone" cx="45%" cy="40%" r="65%">
-      <stop offset="0" stop-color="#374151"/>
-      <stop offset="1" stop-color="#111827"/>
-    </radialGradient>
-    <radialGradient id="cap" cx="38%" cy="34%" r="70%">
-      <stop offset="0" stop-color="#a855f7"/>
-      <stop offset="0.55" stop-color="#7e22ce"/>
-      <stop offset="1" stop-color="#3b0764"/>
-    </radialGradient>
-  </defs>
-
-  <rect width="1200" height="675" fill="url(#bg)"/>
-
+  <!-- Blog post placeholder: a square-frame woofer in the site's default palette (App\Support\BrandColors). -->
+  <rect width="1200" height="675" fill="#f3e8ff"/>
   <g transform="translate(600 337.5)">
-    <!-- frame -->
-    <circle r="305" fill="#1f2937"/>
-    <circle r="305" fill="none" stroke="#6b21a8" stroke-width="3"/>
-    <!-- mounting screws -->
-    <g fill="#fbbf24" stroke="#b45309" stroke-width="2">
-      <circle cx="0" cy="-277" r="9"/>
-      <circle cx="196" cy="-196" r="9"/>
-      <circle cx="277" cy="0" r="9"/>
-      <circle cx="196" cy="196" r="9"/>
-      <circle cx="0" cy="277" r="9"/>
-      <circle cx="-196" cy="196" r="9"/>
-      <circle cx="-277" cy="0" r="9"/>
-      <circle cx="-196" cy="-196" r="9"/>
-    </g>
-    <!-- gasket -->
-    <circle r="258" fill="none" stroke="#111827" stroke-width="6"/>
-    <!-- surround -->
-    <circle r="252" fill="url(#surround)"/>
-    <!-- cone -->
-    <circle r="212" fill="url(#cone)"/>
-    <g fill="none" stroke="#4b5563" stroke-opacity="0.35" stroke-width="2">
-      <circle r="185"/>
-      <circle r="155"/>
-      <circle r="125"/>
-    </g>
-    <!-- dust cap with an accent ring -->
-    <circle r="92" fill="none" stroke="#f59e0b" stroke-width="5"/>
-    <circle r="86" fill="url(#cap)"/>
-    <ellipse cx="-26" cy="-30" rx="30" ry="18" fill="#ffffff" fill-opacity="0.18" transform="rotate(-35 -26 -30)"/>
+    <rect x="-290" y="-290" width="580" height="580" rx="48" fill="#3b0764"/>
+    <g fill="#fbbf24"><circle cx="-245" cy="-245" r="14"/><circle cx="245" cy="-245" r="14"/><circle cx="245" cy="245" r="14"/><circle cx="-245" cy="245" r="14"/></g>
+    <circle r="250" fill="#7e22ce"/>
+    <circle r="212" fill="#2e0650"/>
+    <circle r="78" fill="#a855f7"/>
   </g>
 </svg>

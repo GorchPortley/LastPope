@@ -8,8 +8,8 @@
         public function with(): array
         {
             return [
-                'posts' => \Wave\Post::where('STATUS', 'PUBLISHED')->orderBy('created_at', 'DESC')->paginate(6),
-                'categories' => \Wave\Category::all()
+                'posts' => \Wave\Post::published()->with(['category', 'user'])->latest()->paginate(9),
+                'categories' => \Wave\Category::orderBy('name')->get(),
             ];
         }
     }
@@ -17,29 +17,29 @@
 
 <x-layouts.marketing
     :seo="[
-        'title' => 'Blog',
-        'description' => 'Our Blog',
+        'title' => 'Blog - '.config('app.name'),
+        'description' => 'News, guides and build stories from '.config('app.name').'.',
     ]">
     @volt('blog')
-    <x-container class="py-2 sm:py-10">
-        <div class="relative pt-6">
-            <x-marketing.heading
-                title="From The Blog"
-                description="Check out some of our latest blog posts below."
-                align="left"
-            />
+    <x-marketplace.page :crumbs="[['Home', url('/')], ['Blog', null]]">
+        <h1 class="text-3xl font-bold text-gray-900">From the blog</h1>
+        <p class="mt-2 text-lg text-gray-600 italic">News, guides and build stories.</p>
 
-            <x-marketing.blog-categories :categories="$categories"/>
+        <div class="mt-6">
+            <x-marketing.blog-categories :categories="$categories" />
+        </div>
 
-            <div class="grid gap-5 mx-auto mt-10 sm:grid-cols-2 lg:grid-cols-3">
+        @if ($posts->isEmpty())
+            <x-marketplace.empty-state heading="Nothing here yet" description="The first posts are on their way." icon="phosphor-newspaper" class="mt-8" />
+        @else
+            <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 <x-marketing.posts-loop :posts="$posts" />
             </div>
-        </div>
 
-        <div class="flex justify-center my-10">
-            {{ $posts->links('theme::partials.pagination') }}
-        </div>
-
-    </x-container>
+            <div class="flex justify-center my-10">
+                {{ $posts->links('theme::partials.pagination') }}
+            </div>
+        @endif
+    </x-marketplace.page>
     @endvolt
 </x-layouts.marketing>

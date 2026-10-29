@@ -118,7 +118,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         Select::make('category')
                             ->required()
                             ->options(collect(DriverCategoryEnum::cases())->mapWithKeys(fn ($case) => [
-                                $case->name => $case->value,
+                                $case->value => $case->value,
                             ])->toArray()),
                         TextInput::make('size')
                             ->required()
@@ -321,7 +321,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         TextInput::make('tag'),
                         Select::make('category')
                             ->options(collect(DriverCategoryEnum::cases())->mapWithKeys(fn ($case) => [
-                                $case->name => $case->value,
+                                $case->value => $case->value,
                             ])->toArray()),                            
                         TextInput::make('size')
                             ->numeric(),

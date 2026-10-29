@@ -38,6 +38,7 @@ use Filament\Tables\{Actions\Action,
 };
 use FilamentTiptapEditor\Enums\TiptapOutput;
 use FilamentTiptapEditor\TiptapEditor;
+use App\Http\Livewire\Concerns\AutosavesFormDrafts;
 use Livewire\Volt\Component;
 use function Laravel\Folio\{middleware, name};
 
@@ -46,7 +47,7 @@ name('dashboard.designs');
 
 new class extends Component implements HasForms, Tables\Contracts\HasTable {
 
-    use InteractsWithForms, InteractsWithTable;
+    use InteractsWithForms, InteractsWithTable, AutosavesFormDrafts;
 
     public ?array $data = [];
 
@@ -171,6 +172,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->description('Manage your Designs here!')
             ->headerActions([
                 CreateAction::make()
+                    ->autosavesDraft()
                     ->after(function (Design $record): void {
                         if ($record->active) {
                             $this->dispatch('ga4', ...Ga4::payload('design_published', ['item_id' => 'design-'.$record->getKey()]));
@@ -504,6 +506,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             ->send();
                     }),
                 EditAction::make()
+                    ->autosavesDraft()
                     ->after(function (Design $record): void {
                         if ($record->active && $record->wasChanged('active')) {
                             $this->dispatch('ga4', ...Ga4::payload('design_published', ['item_id' => 'design-'.$record->getKey()]));

@@ -39,6 +39,7 @@ use FilamentTiptapEditor\Enums\TiptapOutput;
 use FilamentTiptapEditor\TiptapEditor;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
+use App\Http\Livewire\Concerns\AutosavesFormDrafts;
 use Livewire\Volt\Component;
 use function Laravel\Folio\{middleware, name};
 
@@ -46,7 +47,7 @@ middleware('auth');
 name('dashboard.listings');
 
 new class extends Component implements HasForms, Tables\Contracts\HasTable {
-    use InteractsWithForms, InteractsWithTable;
+    use InteractsWithForms, InteractsWithTable, AutosavesFormDrafts;
 
     // Photos, rich-text attachments: public disk under listings/{uuid}/... (the uuid is filled in when the
     // create form opens, so the folder is known while files upload).
@@ -322,6 +323,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             ->description('Kits, finished speakers and used gear you sell in the marketplace.')
             ->headerActions([
                 CreateAction::make()
+                    ->autosavesDraft()
                     ->label('New listing')
                     ->createAnother(false)
                     ->modalHeading('New listing')
@@ -391,6 +393,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                         ->color('gray')
                         ->url(fn (Listing $record): string => route('listing', ['uuid' => $record->uuid])),
                     EditAction::make()
+                        ->autosavesDraft()
                         ->modalHeading(fn (Listing $record): string => 'Edit '.$record->title)
                         ->modalWidth('4xl')
                         ->slideOver()

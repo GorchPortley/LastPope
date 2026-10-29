@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Support\SeasonalTheme;
+use Filament\Tables\Actions\Action as TableAction;
+use Filament\Tables\Contracts\HasTable;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
@@ -38,6 +40,18 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->setSchemaDefaultLength();
+
+        // Dashboard form modals that keep a draft while open (see AutosavesFormDrafts). They also stop closing on a
+        // stray click outside or on Escape; the close button and Cancel still work.
+        TableAction::macro('autosavesDraft', function (): TableAction {
+            /** @var TableAction $this */
+            return $this
+                ->closeModalByClickingAway(false)
+                ->closeModalByEscaping(false)
+                ->extraModalWindowAttributes(['wire:poll.10s' => 'saveFormDraft'], merge: true)
+                ->afterFormFilled(fn (HasTable $livewire) => $livewire->restoreFormDraft())
+                ->afterFormValidated(fn (HasTable $livewire) => $livewire->forgetFormDraft());
+        });
 
         // Wave forgets its cached settings when one is saved or deleted; drop the memoised season with it.
         $forgetSeason = fn () => $this->app->make(SeasonalTheme::class)->flush();

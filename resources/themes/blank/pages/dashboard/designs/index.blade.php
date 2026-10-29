@@ -236,7 +236,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->required()
                                     ->hint('What type of speaker is your design?')
                                     ->options(collect(DesignCategoryEnum::cases())->mapWithKeys(fn ($case) => [
-                                        $case->name => $case->value,
+                                        $case->value => $case->value,
                                     ])->toArray()),
                                 MoneyInput::make('price_cents')
                                     ->label('Price')
@@ -562,7 +562,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                     ->required()
                                     ->hint('What type of speaker is your design?')
                                     ->options(collect(DesignCategoryEnum::cases())->mapWithKeys(fn ($case) => [
-                                        $case->name => $case->value,
+                                        $case->value => $case->value,
                                     ])->toArray()),
                                 MoneyInput::make('price_cents')
                                     ->label('Price')
@@ -806,8 +806,9 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                 TextInput::make('tag')
                     ->maxLength(255),
                 Select::make('category')
-                    ->options(['Subwoofer' => 'Subwoofer', 'Full-Range' => 'Full-Range', 'Two-Way' => 'Two-Way'
-                        , 'Three-Way' => 'Three-Way', 'Four-Way+' => 'Four-Way+', 'Portable' => 'Portable', 'Esoteric' => 'Esoteric']),
+                    ->options(collect(DesignCategoryEnum::cases())->mapWithKeys(fn ($case) => [
+                        $case->value => $case->value,
+                    ])->toArray()),
                 MoneyInput::make('price_cents'),
                 MoneyInput::make('build_cost_cents'),
                 TextInput::make('impedance')

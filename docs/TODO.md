@@ -6,17 +6,10 @@ Working rules for all of these are the same as in `docs/PLAN.md` §2 and §7: pu
 
 ## Owner's list
 
-### 1. Admin CRUD pages for drivers, users and designs, at parity with the database
-The Filament resources in `app/Filament/Resources/` (`DriverResource`, `UserResource`, `DesignResource`) don't expose every column. For example, `DesignResource` has no owner field and `DriverResource` shows `user_id` only as a column. Go through each table's migrations and model `$fillable`/casts and give admins a field for every column: owner, `official`, `storage_key` (read-only), JSON fields (specs, file lists), snapshots, forum slug.
+### 1. Admin CRUD pages for drivers, users and designs, at parity with the database: DONE (2026-10-30)
+`DesignResource`, `DriverResource` and `UserResource` now edit every column (secrets excepted: password can be replaced, two-factor reset), with relation managers (design: drivers, snapshots, access, listings; driver: designs using it, snapshots, listings; user: designs, drivers, listings, orders, library) and a "Transfer ownership" action (`app/Services/Catalogue/OwnershipTransfer.php`). Tests: `tests/Feature/Admin/CatalogueAdminTest.php`.
 
-Include a **"Transfer ownership"** action on designs and drivers. Changing `user_id` by hand works, but leaves loose ends; the action should do all of these:
-- Set the new owner.
-- Set `official = 1` when the new owner is a manufacturer (drivers).
-- Resync the forum discussion audience (`SyncForumVisibility::dispatch($design)`); the Flarum author stays the original uploader.
-- Optionally grant the old owner an entitlement (admin grant) so they keep the files of a paid design.
-- Log the change.
-
-What a transfer does **not** change: past seller orders and payouts keep their seller (`seller_orders.seller_id` is fixed at payment). A paid design whose new owner has no Stripe account shows "Not available" until they connect. Snapshots keep the old designer's name until a new one is made.
+Still open from this item: `drivers.size` is an integer column, so 6.5" drivers can't be stored exactly (needs a new migration to make it decimal). Reviews (`HasReviewRating`) have no admin page yet.
 
 ### 2. Author role for the blog, without admin access
 Guest writers need to write posts without access to the admin panel, which is admins-only via `wave/src/User.php::canAccessPanel`. Plan agreed in chat:

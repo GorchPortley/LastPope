@@ -58,7 +58,7 @@ When the card shows **Active**, you can publish paid designs and marketplace lis
 
 - **Designs:** your share is sent as soon as the buyer has paid.
 - **Physical items:** your share is sent 14 days after you mark the order as shipped. This protects buyers if a parcel goes missing or arrives broken.
-- **If the buyer reports a problem**, the payout waits until it's sorted out. See [Buying designs and gear](/blog/guides/buying-on-sdlabs) for how problem reports work.
+- **If the buyer reports a problem**, the payout waits until it's sorted out. See [Buying designs and gear](/blog/tutorials/buying-on-sdlabs) for how problem reports work.
 
 After that, Stripe pays your balance into your bank on its normal schedule, usually a few days later.
 
@@ -80,5 +80,5 @@ After that, Stripe pays your balance into your bank on its normal schedule, usua
 
 ## Next
 
-- [Publishing a speaker design](/blog/guides/publishing-a-design)
-- [Selling kits, speakers and used gear](/blog/guides/selling-in-the-marketplace)
+- [Publishing a speaker design](/blog/tutorials/publishing-a-design)
+- [Selling kits, speakers and used gear](/blog/tutorials/selling-in-the-marketplace)

@@ -42,8 +42,8 @@ If you've built something worth sharing, publish it. A design can be free or pai
 
 You'll need every driver in your design to be in the driver database first. If one is missing, add it. It only takes a few minutes and anyone can do it.
 
-- [Adding a driver to the database](/blog/guides/adding-a-driver)
-- [Publishing a speaker design](/blog/guides/publishing-a-design)
+- [Adding a driver to the database](/blog/tutorials/adding-a-driver)
+- [Publishing a speaker design](/blog/tutorials/publishing-a-design)
 
 Designers who know CSS can style their own description, with headings, lists and tables in their own look. It's optional, in the Advanced section of the design form.
 

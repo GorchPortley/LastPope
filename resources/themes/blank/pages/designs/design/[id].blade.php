@@ -52,7 +52,16 @@ new class extends Component {
     }
 } ?>
 
-<x-layouts.marketing>
+@php
+    // the page head (title, description, share image); the page itself loads the design in its Volt component
+    $designSeo = \App\Models\Design::find($id);
+@endphp
+<x-layouts.marketing :seo="$designSeo ? [
+    'title' => $designSeo?->name.' - '.$designSeo?->category.' speaker design - '.config('app.name'),
+    'description' => \Illuminate\Support\Str::limit(trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags((string) tiptap_converter()->asHtml((string) $designSeo?->summary))))) ?: (string) $designSeo?->tag, 160),
+    'image' => \App\Support\Thumbnails::url(is_array($designSeo?->card_image) ? ($designSeo?->card_image[0] ?? null) : $designSeo?->card_image, 960) ?? url('/og_image.png'),
+    'type' => 'product',
+] : null">
     @volt('design')
     @php
         $docNo = 'SDL-D-'.str_pad((string) $design->id, 4, '0', STR_PAD_LEFT);

@@ -231,3 +231,14 @@ it('shows the low end the designer entered for the drivers instead of a computed
         ->assertSeeInOrder(['Low end', '38 Hz'])
         ->assertDontSee('−3 dB low end')->assertDontSee('&minus;3 dB', false);
 });
+
+it('gives design and driver pages their own title and description', function () {
+    $design = documentedDesign(['name' => 'Harbor Test', 'category' => 'Two-Way', 'summary' => '<p>A small sealed monitor.</p>']);
+    $this->get('/designs/design/'.$design->id)->assertOk()
+        ->assertSee('<title>Harbor Test - Two-Way speaker design - '.config('app.name').'</title>', false)
+        ->assertSee('content="A small sealed monitor."', false);
+
+    $driver = Driver::factory()->create(['active' => true, 'brand' => 'Aurelia', 'model' => 'X9', 'category' => 'Woofer']);
+    $this->get('/drivers/driver/'.$driver->id)->assertOk()
+        ->assertSee('<title>Aurelia X9 - Woofer driver - '.config('app.name').'</title>', false);
+});

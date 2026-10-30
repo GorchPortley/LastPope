@@ -13,7 +13,8 @@ return [
     ],
     'background' => [
         'color' => '#3B0764',
-        'image' => '/storage/auth/background.jpg',
+        // No picture: the overlay above it was fully opaque, and the file never existed (a 404 on every sign-in page).
+        'image' => null,
         'image_overlay_color' => '#3B0764',
         'image_overlay_opacity' => '1',
     ],

@@ -48,6 +48,8 @@ Today there's a frequency-response viewer (`app/Http/Livewire/FrequencyResponseV
 
 ## Also noted in earlier chats
 
+- **Sitemap.** `/sitemap.xml` returns 404 (found in a crawl of the live site on 2026-10-30; robots.txt allows everything). Generate one listing the home and browse pages, every published design and active driver, blog posts and public profiles, with `lastmod` from `updated_at`. Serve it from a route or a scheduled command that writes `public/sitemap.xml`, and add a `Sitemap:` line to robots.txt.
+
 - **Image serving.** Done (2026-10-30):
   - Avatars (`app/Support/Avatars.php`).
   - Resized WebP thumbnails, made on first request (`app/Support/Thumbnails.php`), on cards, galleries and blog cards.

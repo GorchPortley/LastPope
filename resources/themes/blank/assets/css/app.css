@@ -1,4 +1,8 @@
+@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource/azeret-mono/400.css';
+@import '@fontsource/azeret-mono/500.css';
 @import './component-styles.css';
+@import './design-page.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -134,4 +138,53 @@ html, body{
 .scrollbar-hidden {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+}
+
+/*
+ * Datasheet look (docs/STYLE.md). Shared building blocks for the public pages; utilities do the rest.
+ */
+@layer components {
+  /* Headings and labels: narrow, uppercase, tight. */
+  .sd-title { @apply font-condensed font-bold uppercase leading-none tracking-[0.01em] text-ink; }
+  .sd-label { @apply font-condensed text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-2; }
+  .sd-num { @apply font-mono tabular-nums; }
+
+  /* A white sheet with a rule-coloured border: cards, panels, sections. No rounding, no shadow. */
+  .sd-sheet { @apply border border-rule bg-white; }
+  .sd-section-head { @apply flex flex-wrap items-end justify-between gap-x-5 gap-y-2 border-b-2 border-ink pb-2; }
+
+  /* Buttons: square, 2 px ink border, narrow uppercase label. .sd-btn-go is the one main action. */
+  .sd-btn { @apply inline-flex items-center justify-center gap-2 border-2 border-ink bg-white px-[18px] py-[11px] font-condensed text-[15px] font-semibold uppercase leading-none tracking-[0.05em] text-ink no-underline transition-colors hover:bg-ink hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500; }
+  .sd-btn-go { @apply border-brand-800 bg-brand-800 text-white hover:border-brand-900 hover:bg-brand-900; }
+  .sd-btn-sm { @apply px-[11px] py-[7px] text-[13px]; }
+
+  /* Small tags on photos: type (ink) and official (amber). */
+  .sd-pill { @apply bg-ink px-2 py-[5px] font-condensed text-xs font-semibold uppercase leading-none tracking-[0.06em] text-white; }
+  .sd-seal { @apply bg-accent-500 px-[7px] py-[5px] font-condensed text-[11px] font-semibold uppercase leading-none tracking-[0.06em] text-ink; }
+
+  /*
+   * Text written by members in the rich editor (design summary, description, driver notes): the site's default look.
+   * A designer's own CSS (designs.description_css) is scoped to .sd-rich-{design id} on top of this.
+   */
+  /* `contain: paint` keeps whatever a designer's own CSS positions inside the block (absolute or fixed children are clipped to it). */
+  .sd-rich { @apply max-w-[72ch] text-[17px] leading-[1.65] text-ink; contain: paint; isolation: isolate; }
+  .sd-rich p { color: inherit; }
+  .sd-rich > * + * { margin-top: 0.9em; }
+  .sd-rich > :first-child { margin-top: 0; }
+  .sd-rich h1, .sd-rich h2, .sd-rich h3 { @apply mt-[1.5em] font-condensed leading-tight text-ink; }
+  .sd-rich h1 { @apply text-3xl font-bold; }
+  .sd-rich h2 { @apply border-b border-rule pb-1 text-2xl font-bold uppercase tracking-[0.02em]; }
+  .sd-rich h3 { @apply text-lg font-semibold; }
+  .sd-rich a { @apply text-brand-800 underline; }
+  .sd-rich ul { @apply list-disc pl-[1.3em]; }
+  .sd-rich ol { @apply list-decimal pl-[1.3em]; }
+  .sd-rich li + li { margin-top: .25em; }
+  .sd-rich blockquote { @apply border-l-[3px] border-accent-500 bg-paper px-3.5 py-2 text-ink-2; }
+  .sd-rich code { @apply bg-paper px-1 font-mono text-[0.88em]; }
+  .sd-rich pre { @apply overflow-x-auto bg-ink px-3.5 py-3 font-mono text-[13px] leading-normal text-white; }
+  .sd-rich pre code { @apply bg-transparent p-0 text-inherit; }
+  .sd-rich table { @apply block w-full overflow-x-auto border-collapse text-[15px]; }
+  .sd-rich th, .sd-rich td { @apply border-b border-rule py-1.5 pr-2.5 text-left align-top; }
+  .sd-rich img { @apply h-auto max-w-full border border-rule; }
+  .sd-rich hr { @apply border-rule; }
 }

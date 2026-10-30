@@ -19,7 +19,8 @@ render(function (View $view, string $slug) {
         'seller' => $user,
         'listings' => Listing::query()->marketplace()->forSale()->with(['seller.sellerProfile', 'driver', 'design'])
             ->where('seller_id', $user->getKey())->latest()->paginate(12, ['*'], 'listings')->withQueryString(),
-        'designs' => Design::query()->active()->with('designer', 'reviews')->where('user_id', $user->getKey())->latest()->limit(12)->get(),
+        'designs' => Design::query()->active()->with(['designer.roles', 'designer.sellerProfile'])->withAvg('reviews', 'rating')->withCount(['reviews', 'components'])
+            ->where('user_id', $user->getKey())->latest()->limit(12)->get(),
     ]);
 });
 ?>
@@ -30,47 +31,54 @@ render(function (View $view, string $slug) {
 
 <x-layouts.marketing :seo="['title' => $profile->shop_name.' - '.config('app.name'), 'description' => \Illuminate\Support\Str::limit((string) ($profile->bio ?: 'Shop on '.config('app.name')), 160), 'image' => url('/og_image.png')]">
     <x-marketplace.page :crumbs="[['Marketplace', route('marketplace')], [$profile->shop_name, null]]">
-        <div class="space-y-8">
-            <!-- Shop header -->
-            <div class="flex flex-col gap-6 sm:flex-row sm:items-center">
-                <div class="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-brand-950 text-3xl font-bold text-white">{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($profile->shop_name, 0, 1)) }}</div>
+        <div class="space-y-10">
+            <!-- Shop header sheet -->
+            <header class="sd-sheet flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
+                <div class="flex h-20 w-20 flex-shrink-0 items-center justify-center bg-ink font-condensed text-4xl font-bold uppercase text-white" aria-hidden="true">{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($profile->shop_name, 0, 1)) }}</div>
                 <div class="min-w-0 flex-1">
-                    <h1 class="text-3xl font-bold text-gray-900">{{ $profile->shop_name }}</h1>
-                    <p class="mt-2 text-lg text-gray-600 italic">
-                        @if ($profile->country)<x-phosphor-map-pin class="mr-0.5 inline h-4 w-4 align-text-bottom" />{{ \App\Support\Countries::name($profile->country) }} &middot; @endif
-                        Selling since {{ $profile->created_at->format('F Y') }}
+                    <p class="sd-label">Shop</p>
+                    <h1 class="sd-title mt-1 text-3xl sm:text-4xl">{{ $profile->shop_name }}</h1>
+                    <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[13px] text-ink-2">
+                        @if ($profile->country)<span><x-phosphor-map-pin class="mr-0.5 inline h-4 w-4 align-text-bottom" />{{ \App\Support\Countries::name($profile->country) }}</span>@endif
+                        <span>Selling since {{ $profile->created_at->format('F Y') }}</span>
+                        @if ($profile->canReceivePayouts())
+                            <x-marketplace.badge color="success">Verified payouts</x-marketplace.badge>
+                        @endif
                     </p>
-                    @if ($profile->canReceivePayouts())
-                        <p class="mt-2"><x-marketplace.badge color="success">Verified payouts</x-marketplace.badge></p>
-                    @endif
                     @if (filled($profile->bio))
-                        <p class="mt-3 max-w-3xl whitespace-pre-line text-gray-700">{{ $profile->bio }}</p>
+                        <p class="mt-3 max-w-3xl whitespace-pre-line text-base text-ink-2">{{ $profile->bio }}</p>
                     @endif
                 </div>
                 @unless ($isOwner)
                     <div class="flex-shrink-0">
-                        <x-button tag="a" :href="auth()->check() ? url('/chatify/'.$seller->getKey()) : route('login')">
-                            <x-phosphor-chat-circle class="mr-1 inline h-4 w-4" /> Contact seller
-                        </x-button>
+                        <a href="{{ auth()->check() ? url('/chatify/'.$seller->getKey()) : route('login') }}" class="sd-btn sd-btn-go">
+                            <x-phosphor-chat-circle class="h-4 w-4" /> Contact seller
+                        </a>
                     </div>
                 @endunless
-            </div>
+            </header>
 
             <!-- Listings -->
-            <x-marketplace.section title="Listings" :count="$listings->total()" id="shop-listings">
+            <section id="shop-listings" aria-labelledby="shop-listings-title">
+                <div class="sd-section-head mb-4">
+                    <h2 id="shop-listings-title" class="sd-title text-3xl">Listings <span class="font-mono text-sm font-normal normal-case tracking-normal text-ink-2">({{ $listings->total() }})</span></h2>
+                </div>
                 @if ($listings->isEmpty())
-                    <x-marketplace.empty-state heading="No listings for sale right now" description="Check back later, or have a look at the designs below." icon="phosphor-tag" :bordered="false" />
+                    <x-marketplace.empty-state heading="No listings for sale right now" description="Check back later, or have a look at the designs below." icon="phosphor-tag" />
                 @else
-                    <x-marketing.listing-card-container :listings="$listings" cols="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" :padded="false" />
-                    <div class="flex gap-4 justify-center mt-8">{{ $listings->links() }}</div>
+                    <x-marketing.listing-card-container :listings="$listings" :padded="false" />
+                    <div class="mt-8 flex justify-center gap-4">{{ $listings->links() }}</div>
                 @endif
-            </x-marketplace.section>
+            </section>
 
             <!-- Designs -->
             @if ($designs->isNotEmpty())
-                <x-marketplace.section title="Designs" :count="$designs->count()" id="shop-designs">
-                    <x-marketing.design-card-container :designs="$designs" cols="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" :padded="false" />
-                </x-marketplace.section>
+                <section id="shop-designs" aria-labelledby="shop-designs-title">
+                    <div class="sd-section-head mb-4">
+                        <h2 id="shop-designs-title" class="sd-title text-3xl">Designs <span class="font-mono text-sm font-normal normal-case tracking-normal text-ink-2">({{ $designs->count() }})</span></h2>
+                    </div>
+                    <x-marketing.design-card-container :designs="$designs" :padded="false" />
+                </section>
             @endif
         </div>
     </x-marketplace.page>

@@ -224,8 +224,11 @@ it('draws real curves in the viewers: the design sum is flat and a driver shows 
 
     $driver = Driver::where('model', 'A16-W')->firstOrFail();
     $driverViewer = Livewire::test(DriverFrequencyResponseViewer::class, ['driver' => $driver]);
-    expect($driverViewer->get('chartData'))->toHaveCount(1)
-        ->and(count($driverViewer->get('chartData')[0]['data']))->toBeGreaterThan(300);
+    // the driver chart (App\Support\ResponseChartData): one line per file, thinned for drawing, not added up
+    $chart = $driverViewer->viewData('chart');
+    expect($chart['series'])->toHaveCount(1)
+        ->and(count($chart['series'][0]['points']))->toBeGreaterThan(20)
+        ->and($chart['summed'])->toBeFalse();
 });
 
 it('writes driver specs that match the curves', function () {

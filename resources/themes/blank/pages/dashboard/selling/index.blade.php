@@ -204,6 +204,14 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
             'stripe' => $stripe,
             'upcoming' => $upcoming,
             'payoutNote' => $payouts->timingNote(),
+            // The fee this seller pays, from MARKETPLACE_FEE_BPS / MARKETPLACE_FEE_FIXED_CENTS or their own commission.
+            'feeNote' => $user->isPlatformSeller() ? null : (function () use ($user): string {
+                $bps = app(\App\Services\Marketplace\FeeCalculator::class)->bpsFor($user);
+                $fixed = max(0, (int) config('marketplace.fee_fixed_cents', 0));
+                $rate = rtrim(rtrim(number_format($bps / 100, 2), '0'), '.').' %';
+
+                return config('app.name').' keeps '.$rate.' of the item price'.($fixed > 0 ? ' plus '.money($fixed).' per order' : '').' on each sale. Shipping is all yours.';
+            })(),
             'stats' => [
                 'orders' => (int) $totals->orders,
                 'gross' => (int) $totals->gross,
@@ -255,6 +263,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                             @break
                         @case('active')
                             <p class="text-gray-700">Payments for your paid items are transferred to your bank through Stripe. You can publish paid designs and listings. {{ $payoutNote }}</p>
+                            @if ($feeNote)<p class="text-gray-700" data-fee-note>{{ $feeNote }}</p>@endif
                             <div class="flex flex-wrap gap-3">
                                 <x-button tag="a" href="{{ route('selling.earnings') }}">Your earnings and payouts</x-button>
                                 <x-button tag="a" href="{{ route('selling.dashboard-link') }}" color="gray">Open Stripe dashboard</x-button>

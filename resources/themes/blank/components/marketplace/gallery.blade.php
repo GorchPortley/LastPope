@@ -1,67 +1,73 @@
 {{--
-    Image carousel with the look of the one on the design and driver pages (square, rounded, round arrow
-    buttons, dots), driven by Alpine so it needs no extra script. `images` is a list of URLs, or (to show resized
-    copies) a list of stored public-disk paths with `paths` set: those become 960 px WebP thumbnails with a 1600 px
-    one for high-density screens (App\Support\Thumbnails).
+    Photo gallery of the detail pages (design, driver, listing): one main picture in a square-cornered frame, previous /
+    next buttons and a row of thumbnails under it, both only when there is more than one picture. Driven by Alpine.
+
+    `images` is a list of URLs, or (to show resized copies) a list of stored public-disk paths with `paths` set: those
+    become 960 px WebP pictures with a 1600 px one for high-density screens, and 160 px thumbnails (App\Support\Thumbnails).
+    `ratio` is 'square' (default, for drivers and listings) or '4:3' (designs); `fit` is 'contain' (default, on white)
+    or 'cover'.
 --}}
-@props(['images' => [], 'alt' => '', 'paths' => false])
+@props(['images' => [], 'alt' => '', 'paths' => false, 'ratio' => 'square', 'fit' => 'contain'])
 
 @php
     $images = collect($images)->filter()->values()->map(fn ($image) => $paths
-        ? ['src' => \App\Support\Thumbnails::url($image, 960), 'srcset' => \App\Support\Thumbnails::srcset($image, [960, 1600])]
-        : ['src' => $image, 'srcset' => ''])->all();
+        ? [
+            'src' => \App\Support\Thumbnails::url($image, 960),
+            'srcset' => \App\Support\Thumbnails::srcset($image, [960, 1600]),
+            'thumb' => \App\Support\Thumbnails::url($image, 160),
+        ]
+        : ['src' => $image, 'srcset' => '', 'thumb' => $image])->all();
 @endphp
 
 <div
     x-data="{ index: 0, count: {{ count($images) }}, next() { this.index = (this.index + 1) % this.count }, prev() { this.index = (this.index - 1 + this.count) % this.count } }"
     @keydown.left.prevent="prev()" @keydown.right.prevent="next()"
     {{ $attributes->class(['relative w-full']) }}
+    data-gallery
 >
-    <div class="relative overflow-hidden rounded-lg aspect-square w-full">
+    <div @class([
+        'relative w-full overflow-hidden border border-rule',
+        'aspect-square bg-white' => $ratio !== '4:3',
+        'aspect-[4/3] bg-hair' => $ratio === '4:3',
+    ])>
         @forelse ($images as $image)
-            <div class="w-full h-full" @if (! $loop->first) x-cloak @endif x-show="index === {{ $loop->index }}">
+            <div class="h-full w-full" @if (! $loop->first) x-cloak @endif x-show="index === {{ $loop->index }}">
                 <img
                     src="{{ $image['src'] }}"
-                    @if ($image['srcset'] !== '') srcset="{{ $image['srcset'] }}" sizes="(min-width: 1024px) 600px, 100vw" @endif
+                    @if ($image['srcset'] !== '') srcset="{{ $image['srcset'] }}" sizes="(min-width: 1024px) 700px, 100vw" @endif
                     decoding="async"
                     alt="{{ $alt }} - image {{ $loop->iteration }}"
-                    class="absolute block w-full h-full object-contain"
+                    @class(['absolute block h-full w-full', 'object-cover' => $fit === 'cover', 'object-contain' => $fit !== 'cover'])
                     @if (! $loop->first) loading="lazy" @endif
                 >
             </div>
         @empty
-            <div class="flex h-full w-full flex-col items-center justify-center bg-gray-50 text-gray-400">
+            <div class="flex h-full w-full flex-col items-center justify-center bg-paper text-ink-3">
                 <x-phosphor-image-duotone class="h-16 w-16" />
                 <span class="mt-2 text-sm">No photo</span>
             </div>
         @endforelse
 
         @if (count($images) > 1)
-            <div class="absolute z-30 flex justify-center w-full space-x-3 bottom-5">
-                @foreach ($images as $image)
-                    <button type="button" @click="index = {{ $loop->index }}" aria-label="Slide {{ $loop->iteration }}"
-                            :aria-current="index === {{ $loop->index }}"
-                            :class="index === {{ $loop->index }} ? 'bg-white' : 'bg-white/50'"
-                            class="w-3 h-3 invert rounded-full"></button>
-                @endforeach
-            </div>
-
-            <button type="button" @click="prev()" class="invert absolute top-0 start-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none">
-                <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/30 group-hover:bg-white/50 group-focus:ring-4 group-focus:ring-white group-focus:outline-none">
-                    <svg class="w-4 h-4 text-white rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
-                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
-                    </svg>
-                    <span class="sr-only">Previous</span>
-                </span>
+            <button type="button" @click="prev()" aria-label="Previous photo" class="absolute start-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center border border-ink bg-white text-ink hover:bg-ink hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-500">
+                <svg class="h-4 w-4 !w-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/></svg>
             </button>
-            <button type="button" @click="next()" class="invert absolute top-0 end-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none">
-                <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/30 group-hover:bg-white/50 group-focus:ring-4 group-focus:ring-white group-focus:outline-none">
-                    <svg class="w-4 h-4 text-white rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
-                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/>
-                    </svg>
-                    <span class="sr-only">Next</span>
-                </span>
+            <button type="button" @click="next()" aria-label="Next photo" class="absolute end-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center border border-ink bg-white text-ink hover:bg-ink hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-500">
+                <svg class="h-4 w-4 !w-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/></svg>
             </button>
+            <p class="sd-num absolute bottom-0 end-0 z-10 bg-ink px-2 py-1 text-[11px] text-white" aria-live="polite"><span x-text="index + 1"></span> / {{ count($images) }}</p>
         @endif
     </div>
+
+    @if (count($images) > 1)
+        <div class="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-6" data-gallery-thumbs>
+            @foreach ($images as $image)
+                <button type="button" @click="index = {{ $loop->index }}" aria-label="Show photo {{ $loop->iteration }}" :aria-current="index === {{ $loop->index }}"
+                        class="aspect-square overflow-hidden border bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-500"
+                        :class="index === {{ $loop->index }} ? 'border-ink' : 'border-rule opacity-70 hover:opacity-100'">
+                    <img src="{{ $image['thumb'] }}" alt="" loading="lazy" decoding="async" class="h-full w-full object-cover">
+                </button>
+            @endforeach
+        </div>
+    @endif
 </div>

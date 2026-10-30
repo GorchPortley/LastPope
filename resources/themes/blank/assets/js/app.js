@@ -16,8 +16,11 @@ import 'flowbite';
 // Alpine plugins must be registered on the Alpine instance Livewire 3 ships (window.Alpine); do not import a
 // second copy of Alpine here.
 import focus from '@alpinejs/focus';
+import responseChart from './response-chart';
 document.addEventListener('alpine:init', () => {
     window.Alpine.plugin(focus);
+    // the measured-response chart of the design page
+    window.Alpine.data('responseChart', responseChart);
 });
 
 window.sidebarLinkDemo = function(event){

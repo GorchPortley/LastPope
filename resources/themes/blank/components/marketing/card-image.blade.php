@@ -1,8 +1,9 @@
 {{--
     The picture of a design, driver or listing card: a 480 px WebP thumbnail (960 px on high-density screens) made on
     first use by App\Support\Thumbnails, loaded lazily. A missing picture falls back to the placeholder once.
+    `fit` is "contain" (drivers, other callers) or "cover" (design and listing photos that fill their frame).
 --}}
-@props(['path' => null, 'alt' => ''])
+@props(['path' => null, 'alt' => '', 'fit' => 'contain'])
 
 @php
     $src = \App\Support\Thumbnails::url($path, 480);
@@ -16,6 +17,9 @@
     alt="{{ $alt }}"
     loading="lazy"
     decoding="async"
-    {{ $attributes->class(['max-h-full max-w-full object-contain']) }}
+    {{ $attributes->class([
+        'max-h-full max-w-full object-contain' => $fit !== 'cover',
+        'block h-full w-full object-cover' => $fit === 'cover',
+    ]) }}
     onerror="this.onerror=null; this.removeAttribute('srcset'); this.src='{{ $fallback }}'"
 >

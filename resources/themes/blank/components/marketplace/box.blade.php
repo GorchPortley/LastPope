@@ -1,6 +1,6 @@
-{{-- A plain card of the public pages: the border, corners and shadow of the design / driver cards. --}}
+{{-- A plain sheet of the public pages: white, 1 px rule border, square, no shadow. --}}
 @props(['padding' => 'p-5'])
 
-<div {{ $attributes->class(['rounded-lg border-2 border-gray-100 bg-white shadow-sm', $padding]) }}>
+<div {{ $attributes->class(['border border-rule bg-white', $padding]) }}>
     {{ $slot }}
 </div>

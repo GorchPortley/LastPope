@@ -276,6 +276,17 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                             ->extraInputAttributes(['style' => 'min-height: 12rem;']),
                                         KeyValue::make('bill_of_materials')
                                             ->hint('The BOM of your design'),
+                                        Section::make('Advanced')
+                                            ->collapsible()
+                                            ->collapsed()
+                                            ->schema([
+                                                Textarea::make('description_css')
+                                                    ->label('Page styles (CSS)')
+                                                    ->helperText('Optional, for designers who know CSS. Applies only to your summary, description and driver notes. Rules for anything else on the page, @import, url() and fixed positioning are removed. Leave empty to use the site\'s style.')
+                                                    ->rows(8)
+                                                    ->maxLength(20000)
+                                                    ->extraInputAttributes(['class' => 'font-mono text-sm', 'spellcheck' => 'false']),
+                                            ]),
                                         Section::make('Design File Uploads')
                                             ->description('Upload your design files here')
                                             ->collapsible()
@@ -602,6 +613,17 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                                         KeyValue::make('bill_of_materials')
                                             ->hint('The BOM of your design')
                                             ->live(),
+                                        Section::make('Advanced')
+                                            ->collapsible()
+                                            ->collapsed()
+                                            ->schema([
+                                                Textarea::make('description_css')
+                                                    ->label('Page styles (CSS)')
+                                                    ->helperText('Optional, for designers who know CSS. Applies only to your summary, description and driver notes. Rules for anything else on the page, @import, url() and fixed positioning are removed. Leave empty to use the site\'s style.')
+                                                    ->rows(8)
+                                                    ->maxLength(20000)
+                                                    ->extraInputAttributes(['class' => 'font-mono text-sm', 'spellcheck' => 'false']),
+                                            ]),
                                         Section::make('Design File Uploads')
                                             ->description('Upload your design files here')
                                             ->collapsible()

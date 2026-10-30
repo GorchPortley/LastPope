@@ -4,14 +4,14 @@
 --}}
 @props([
     'listings',
-    'cols' => 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
+    'cols' => 'grid-cols-[repeat(auto-fill,minmax(250px,1fr))]',
     'padded' => true,
     'listName' => 'Marketplace',
 ])
 
 <x-analytics.events :events="count($listings) ? [\App\Support\Analytics\Ga4::itemList($listName, $listings)] : []" />
 
-<div {{ $attributes->class(['grid gap-4', $cols, 'p-4' => $padded]) }}>
+<div {{ $attributes->class(['grid gap-[18px]', $cols, 'p-4' => $padded]) }}>
     @foreach ($listings as $listing)
         <x-marketing.listing-card :listing="$listing" :list-name="$listName" wire:key="listing-{{ $listing->id }}" />
     @endforeach

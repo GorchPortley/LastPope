@@ -1,6 +1,7 @@
 {{--
-    One marketplace listing as a card, modelled on the cards of design-card-container: image on top, centred
-    name / "By" / tag lines, a small spec table, View + Specs buttons and the sliding specs panel.
+    One marketplace listing as a card (docs/STYLE.md "Cards"), the counterpart of the design and driver cards: photo first,
+    type pill, "Pair / Set" seal, name, "By" shop, a mono row of condition / origin / stock, then the price and a Specs
+    button that slides the full specification panel over the card.
     Eager-load seller.sellerProfile, driver and design to keep the grid free of extra queries.
 --}}
 @props(['listing', 'listName' => 'Marketplace'])
@@ -10,78 +11,40 @@
     $shop = $listing->seller?->sellerProfile?->shop_name ?: $listing->seller?->name;
     $url = route('listing', ['uuid' => $listing->uuid]);
     $select = \App\Support\Analytics\Ga4::selectItem($listName, $listing);
-    $tag = match (true) {
-        $listing->design !== null => 'Built from '.$listing->design->name,
-        $listing->driver !== null => $listing->driver->fullName(),
-        default => $listing->category->label(),
-    };
     $soldAs = $listing->isLot() ? ($listing->units_per_lot === 2 ? 'Pair' : 'Set of '.$listing->units_per_lot) : 'Single item';
     $domestic = $listing->shipping_domestic_cents > 0 ? money($listing->shipping_domestic_cents) : 'Free';
 @endphp
 
-<div x-data="{ showSpecs: false }" {{ $attributes->class(['relative flex flex-col bg-white rounded-lg border-2 border-gray-100 hover:shadow-lg shadow-sm overflow-hidden h-full']) }} data-listing-card="{{ $listing->uuid }}">
-    <!-- Listing image section -->
-    <div class="relative pt-4 px-4">
-        <div class="absolute left-6 top-6 max-w-[60%] truncate bg-brand-950 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">{{ $listing->category->label() }}</div>
-        @if ($listing->isLot())
-            <div class="absolute right-6 top-6 bg-yellow-400 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">{{ $soldAs }}</div>
+<article x-data="{ showSpecs: false }" {{ $attributes->class(['group relative flex h-full flex-col overflow-hidden border border-rule bg-white transition-colors hover:border-ink']) }} data-listing-card="{{ $listing->uuid }}">
+    <div class="relative aspect-[4/3] overflow-hidden bg-hair">
+        @if ($photo)
+            <x-marketing.card-image :path="$photo" :alt="$listing->title" fit="cover" class="transition-transform duration-300 group-hover:scale-[1.04]" />
+        @else
+            <div class="flex h-full w-full items-center justify-center"><x-phosphor-image-duotone class="h-16 w-16 text-ink-3" /></div>
         @endif
-
-        <a href="{{ $url }}" data-ga4-click="{{ $select }}" class="block w-full">
-            <div class="flex justify-center items-center h-48 md:h-56">
-                @if ($photo)
-                    <x-marketing.card-image :path="$photo" :alt="$listing->title" />
-                @else
-                    <x-phosphor-image-duotone class="h-16 w-16 text-gray-300" />
-                @endif
-            </div>
-        </a>
+        <span class="sd-pill absolute left-2.5 top-2.5 max-w-[60%] truncate">{{ $listing->category->label() }}</span>
+        @if ($listing->isLot())
+            <span class="sd-seal absolute right-2.5 top-2.5">{{ $soldAs }}</span>
+        @endif
     </div>
 
-    <!-- Listing details section -->
-    <div class="flex flex-col flex-grow p-4">
-        <h2 class="text-lg font-semibold text-center mb-1 line-clamp-2 min-h-[3.5rem]">{{ $listing->title }}</h2>
-        <p class="text-gray-600 text-center text-sm mb-1 line-clamp-1">By: {{ $shop }}</p>
-        <p class="text-gray-800 text-center text-sm mb-3 line-clamp-1">{{ $tag }}</p>
-
-        <!-- Specs table -->
-        <div class="mt-auto">
-            <table class="w-full mb-4 text-sm">
-                <tbody>
-                    <tr>
-                        <td class="py-1 font-medium">Condition</td>
-                        <td class="text-gray-600 text-right">{{ $listing->condition->label() }}</td>
-                    </tr>
-                    <tr>
-                        <td class="py-1 font-medium">Price</td>
-                        <td class="text-gray-600 text-right">{{ money($listing->price_cents) }}@if ($listing->isLot()) <span class="text-xs">per {{ $listing->units_per_lot === 2 ? 'pair' : 'set' }}</span>@endif</td>
-                    </tr>
-                    <tr>
-                        <td class="py-1 font-medium whitespace-nowrap">Ships from</td>
-                        <td class="text-gray-600 text-right">{{ $listing->ships_from_country }}</td>
-                    </tr>
-                    <tr>
-                        <td class="py-1 font-medium">In stock</td>
-                        <td class="text-gray-600 text-right">{{ $listing->quantity }}</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Button section -->
-        <div class="flex mt-2 gap-2">
-            <x-button tag="a" href="{{ $url }}" data-ga4-click="{{ $select }}" class="flex-grow">View</x-button>
-            <x-button
-                @click="showSpecs = true"
-                x-show="!showSpecs"
-                color="success"
-                class="px-3 whitespace-nowrap">
-                Specs
-            </x-button>
+    <div class="flex flex-1 flex-col gap-2 px-3.5 pb-3.5 pt-3">
+        <h2 class="font-condensed text-[21px] font-bold leading-[1.1] text-ink line-clamp-2">
+            <a href="{{ $url }}" data-ga4-click="{{ $select }}" class="text-ink no-underline after:absolute after:inset-0 after:content-['']">{{ $listing->title }}</a>
+        </h2>
+        <p class="truncate text-sm text-ink-2">By: {{ $shop }}</p>
+        <p class="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs leading-snug text-ink-2">
+            <span>{{ $listing->condition->label() }}</span>
+            <span>Ships from {{ $listing->ships_from_country }}</span>
+            <span>{{ $listing->quantity }} in stock</span>
+        </p>
+        <div class="mt-auto flex items-center justify-between gap-2.5 border-t border-dotted border-rule pt-2.5">
+            <span class="font-condensed text-xl font-bold leading-none text-ink">{{ money($listing->price_cents) }}@if ($listing->isLot()) <span class="font-sans text-xs font-normal text-ink-2">per {{ $listing->units_per_lot === 2 ? 'pair' : 'set' }}</span>@endif</span>
+            <button type="button" @click="showSpecs = true" x-show="!showSpecs" class="sd-btn sd-btn-sm relative z-10 whitespace-nowrap">Specs</button>
         </div>
     </div>
 
-    <!-- Sliding specs panel -->
+    <!-- Specs panel, slides over the card -->
     <div
         x-show="showSpecs"
         x-cloak
@@ -91,46 +54,44 @@
         x-transition:leave="transition ease-in duration-300"
         x-transition:leave-start="translate-y-0"
         x-transition:leave-end="translate-y-full"
-        class="absolute inset-0 bg-white shadow-lg flex flex-col">
+        class="absolute inset-0 z-20 flex flex-col bg-white">
 
-        <div class="p-4 flex-grow overflow-auto">
-            <h3 class="text-lg font-semibold text-center mb-4 line-clamp-2">{{ $listing->title }} Specifications</h3>
+        <div class="flex-grow overflow-auto p-3.5">
+            <h3 class="mb-3 font-condensed text-lg font-bold uppercase leading-tight text-ink line-clamp-2">{{ $listing->title }} Specifications</h3>
 
             <table class="w-full border-collapse text-sm">
                 <tbody>
-                    <tr class="border-b">
-                        <td class="py-2 font-medium">Condition</td>
-                        <td class="py-2 text-right">{{ $listing->condition->label() }}</td>
+                    <tr class="border-b border-hair">
+                        <td class="py-2 text-ink-2">Condition</td>
+                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->condition->label() }}</td>
                     </tr>
-                    <tr class="border-b">
-                        <td class="py-2 font-medium">Sold as</td>
-                        <td class="py-2 text-right">{{ $soldAs }}</td>
+                    <tr class="border-b border-hair">
+                        <td class="py-2 text-ink-2">Sold as</td>
+                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $soldAs }}</td>
                     </tr>
-                    <tr class="border-b">
-                        <td class="py-2 font-medium">In stock</td>
-                        <td class="py-2 text-right">{{ $listing->quantity }}</td>
+                    <tr class="border-b border-hair">
+                        <td class="py-2 text-ink-2">In stock</td>
+                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->quantity }}</td>
                     </tr>
-                    <tr class="border-b">
-                        <td class="py-2 font-medium">Shipping ({{ $listing->ships_from_country }})</td>
-                        <td class="py-2 text-right">{{ $domestic }}</td>
+                    <tr class="border-b border-hair">
+                        <td class="py-2 text-ink-2">Shipping ({{ $listing->ships_from_country }})</td>
+                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $domestic }}</td>
                     </tr>
-                    <tr class="border-b">
-                        <td class="py-2 font-medium">Handling time</td>
-                        <td class="py-2 text-right">{{ $listing->handling_days }} {{ \Illuminate\Support\Str::plural('day', $listing->handling_days) }}</td>
+                    <tr class="border-b border-hair">
+                        <td class="py-2 text-ink-2">Handling time</td>
+                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->handling_days }} {{ \Illuminate\Support\Str::plural('day', $listing->handling_days) }}</td>
                     </tr>
-                    <tr class="border-b">
-                        <td class="py-2 font-medium">Returns</td>
-                        <td class="py-2 text-right">{{ $listing->returns_accepted ? 'Accepted' : 'No returns' }}</td>
+                    <tr class="border-b border-hair">
+                        <td class="py-2 text-ink-2">Returns</td>
+                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->returns_accepted ? 'Accepted' : 'No returns' }}</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
-        <div class="p-4 pt-0">
-            <div class="flex gap-2">
-                <x-button tag="a" href="{{ $url }}" data-ga4-click="{{ $select }}" class="flex-grow">View Details</x-button>
-                <x-button @click="showSpecs = false" color="danger" class="flex-grow">Close</x-button>
-            </div>
+        <div class="flex gap-2 p-3.5 pt-0">
+            <a href="{{ $url }}" data-ga4-click="{{ $select }}" class="sd-btn sd-btn-go sd-btn-sm flex-grow">View details</a>
+            <button type="button" @click="showSpecs = false" class="sd-btn sd-btn-sm flex-grow">Close</button>
         </div>
     </div>
-</div>
+</article>

@@ -92,7 +92,7 @@ it('never shows the Thiele/Small parameters of a driver', function () {
         ->assertDontSee('0.395')->assertDontSee('23.4')->assertDontSee('Qts')->assertDontSee('Vas')->assertDontSee('Thiele');
 });
 
-it('draws the response chart with its midband level and -3 dB point', function () {
+it('draws the response chart with its midband level', function () {
     $design = documentedDesign();
 
     $this->get('/designs/design/'.$design->id)
@@ -222,4 +222,12 @@ it('offers the full picture in a viewer and lists card specs as stacked rows', f
 
     $this->get('/designs')->assertOk()
         ->assertSee('data-card-specs', false)->assertSee('Impedance')->assertSee('120 W');
+});
+
+it('shows the low end the designer entered for the drivers instead of a computed -3 dB point', function () {
+    $design = documentedDesign(['price_cents' => 0]);
+
+    $this->get('/designs/design/'.$design->id)->assertOk()
+        ->assertSeeInOrder(['Low end', '38 Hz'])
+        ->assertDontSee('−3 dB low end')->assertDontSee('&minus;3 dB', false);
 });

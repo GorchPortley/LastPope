@@ -5,7 +5,7 @@
     are no usable measurement files. Used by the design page and the driver page (`empty` is the text for no files; a
     chart made with from($response, false) shows the lines without a sum).
 --}}
-@props(['chart' => null, 'empty' => 'No measurement files.'])
+@props(['chart' => null, 'empty' => 'No measurement files.', 'showLowEnd' => true])
 
 @php
     use App\Support\ResponseChartData;
@@ -42,7 +42,9 @@
                 <span x-show="at" x-cloak>At <b class="font-medium text-ink" x-text="at && at.f"></b> the level is <b class="font-medium text-ink" x-text="at && at.db"></b></span>
             @endif
             <span>Midband <b class="font-medium text-ink">{{ $chart['midband'] !== null ? number_format($chart['midband'], 1).' dB' : '-' }}</b></span>
-            <span>&minus;3 dB <b class="font-medium text-ink">{{ $chart['f3'] !== null ? ResponseChartData::hz($chart['f3']) : '-' }}</b></span>
+            @if ($showLowEnd)
+                <span>&minus;3 dB <b class="font-medium text-ink">{{ $chart['f3'] !== null ? ResponseChartData::hz($chart['f3']) : '-' }}</b></span>
+            @endif
         </div>
     </section>
 @endif

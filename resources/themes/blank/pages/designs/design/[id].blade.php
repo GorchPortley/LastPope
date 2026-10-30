@@ -132,7 +132,11 @@ new class extends Component {
                                 <tr><td>Impedance</td><td>{{ $num($design->impedance) !== null ? $num($design->impedance).' Ω' : '-' }}</td></tr>
                                 <tr><td>Power</td><td>{{ $num($design->power) !== null ? $num($design->power).' W' : '-' }}</td></tr>
                                 <tr><td>Drivers</td><td>{{ $driverCount }} ({{ $bandCount }} {{ $bandCount === 1 ? 'band' : 'bands' }})</td></tr>
-                                <tr><td>&minus;3 dB low end</td><td>{{ $chart && $chart['f3'] !== null ? ResponseChartData::hz($chart['f3']) : '-' }}</td></tr>
+                                {{-- the lowest band edge the designer entered for their drivers, not a figure computed from the measurements --}}
+                                @php
+                                    $lowEnd = $design->components->pluck('low_frequency')->filter(fn ($f) => (float) $f > 0)->min();
+                                @endphp
+                                <tr><td>Low end</td><td>{{ $lowEnd ? ResponseChartData::hz((float) $lowEnd) : '-' }}</td></tr>
                                 <tr><td>Build cost</td><td>{{ $design->build_cost_cents ? '≈ '.money((int) $design->build_cost_cents) : '-' }}</td></tr>
                                 <tr><td>Published</td><td>{{ $design->created_at?->format('j M Y') ?? '-' }}</td></tr>
                             </tbody>
@@ -163,7 +167,7 @@ new class extends Component {
 
         <div class="mx-auto w-full max-w-7xl pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:px-6 lg:px-8">
             {{-- Measured response --}}
-            <x-design.response-chart :chart="$chart" />
+            <x-design.response-chart :chart="$chart" :show-low-end="false" />
 
             {{-- About: summary, then description --}}
             @php

@@ -2,6 +2,7 @@
 @import '@fontsource/azeret-mono/400.css';
 @import '@fontsource/azeret-mono/500.css';
 @import './component-styles.css';
+@import './design-page.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -165,7 +166,9 @@ html, body{
    * Text written by members in the rich editor (design summary, description, driver notes): the site's default look.
    * A designer's own CSS (designs.description_css) is scoped to .sd-rich-{design id} on top of this.
    */
-  .sd-rich { @apply max-w-[72ch] text-[17px] leading-[1.65] text-ink; }
+  /* `contain: paint` keeps whatever a designer's own CSS positions inside the block (absolute or fixed children are clipped to it). */
+  .sd-rich { @apply max-w-[72ch] text-[17px] leading-[1.65] text-ink; contain: paint; isolation: isolate; }
+  .sd-rich p { color: inherit; }
   .sd-rich > * + * { margin-top: 0.9em; }
   .sd-rich > :first-child { margin-top: 0; }
   .sd-rich h1, .sd-rich h2, .sd-rich h3 { @apply mt-[1.5em] font-condensed leading-tight text-ink; }

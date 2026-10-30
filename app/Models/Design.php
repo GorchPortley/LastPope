@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Contracts\Purchasable;
 use App\Models\Concerns\HasStorageKey;
 use App\Models\Concerns\IsDigitalPurchasable;
+use App\Support\ScopedCss;
 use Database\Factories\DesignFactory;
 use Digikraaft\ReviewRating\Traits\HasReviewRating;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,6 +48,7 @@ class Design extends Model implements Purchasable
         'power',
         'summary',
         'description',
+        'description_css',
         'bill_of_materials',
         'frd_files',
         'enclosure_files',
@@ -72,6 +74,12 @@ class Design extends Model implements Purchasable
     public static function storagePrefix(): string
     {
         return 'designs';
+    }
+
+    /** The designer's own CSS, cleaned and limited to this design's text blocks (".sd-rich-{id}"); '' when there is none. */
+    public function descriptionStyles(): string
+    {
+        return ScopedCss::sanitize((string) $this->description_css, '.sd-rich-'.$this->getKey());
     }
 
     public function snapshots(): HasMany

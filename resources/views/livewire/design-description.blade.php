@@ -1,340 +1,117 @@
-@push('head')
-<style>
-    .tiptap-content table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 1.25rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
+{{--
+    The last two sheets of the design page: Reviews (with the form) and Discussion (the forum thread).
+    The other sections (response, about, drivers, parts, files, builds) are drawn by the page itself.
+--}}
+@php
+    $forum = app(\App\Services\Forum\ForumClient::class);
+    $thread = $design->forum_slug && $forum->enabled();
+@endphp
 
-    .tiptap-content table th,
-    .tiptap-content table td {
-        border: 1px solid #e0e0e0;
-        padding: 0.75rem;
-        text-align: left;
-    }
-
-    .tiptap-content table th {
-        background-color: #f5f5f5;
-        font-weight: bold;
-    }
-
-    .tiptap-content table tr:nth-child(even) {
-        background-color: #f9f9f9;
-    }
-
-    .tiptap-content table tr:hover {
-        background-color: #f0f0f0;
-    }
-
-    .tiptap-content table th p,
-    .tiptap-content table td p {
-        margin: 0;
-        padding: 0;
-    }
-
-    .tiptap-content .filament-tiptap-grid-builder {
-        display: grid;
-        gap: 1rem;
-        width: 100%;
-    }
-
-    .tiptap-content .filament-tiptap-grid-builder[data-cols="3"] {
-        grid-template-columns: repeat(3, 1fr);
-    }
-
-    .tiptap-content .filament-tiptap-grid-builder[data-cols="2"] {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .tiptap-content .filament-tiptap-grid-builder[data-cols="4"] {
-        grid-template-columns: repeat(4, 1fr);
-    }
-
-    .tiptap-content .filament-tiptap-grid-builder__column {
-        border-radius: 0.5rem;
-        padding: 1rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .tiptap-content .filament-tiptap-grid-builder__column h2 {
-        margin-bottom: 0.75rem;
-    }
-
-    @media (max-width: 640px) {
-        .tiptap-content .filament-tiptap-grid-builder {
-            grid-template-columns: 1fr !important;
-        }
-
-        .tiptap-content table {
-            font-size: 0.875rem;
-        }
-
-        .tiptap-content table th,
-        .tiptap-content table td {
-            padding: 0.5rem;
-        }
-    }
-</style>
-@endpush
-
-<div x-data="{ selectedTab: 'summary' }" class="w-full">
-    <div @keydown.right.prevent="$focus.wrap().next()" @keydown.left.prevent="$focus.wrap().previous()" class="flex gap-2 overflow-x-auto border-b border-neutral-300 dark:border-neutral-700" role="tablist" aria-label="tab options">
-        <button @click="selectedTab = 'summary'" :aria-selected="selectedTab === 'summary'" :tabindex="selectedTab === 'summary' ? '0' : '-1'" :class="selectedTab === 'summary' ? 'font-bold text-black border-b-2 border-black dark:border-white dark:text-white' : 'text-neutral-600 font-medium dark:text-neutral-300 dark:hover:border-b-neutral-300 dark:hover:text-white hover:border-b-2 hover:border-b-neutral-800 hover:text-neutral-900'" class="h-min px-4 py-2 text-sm" type="button" role="tab" aria-controls="tabpanelSummary">Summary</button>
-        <button @click="selectedTab = 'description'" :aria-selected="selectedTab === 'description'" :tabindex="selectedTab === 'description' ? '0' : '-1'" :class="selectedTab === 'description' ? 'font-bold text-black border-b-2 border-black dark:border-white dark:text-white' : 'text-neutral-600 font-medium dark:text-neutral-300 dark:hover:border-b-neutral-300 dark:hover:text-white hover:border-b-2 hover:border-b-neutral-800 hover:text-neutral-900'" class="h-min px-4 py-2 text-sm" type="button" role="tab" aria-controls="tabpanelDescription">Description</button>
-        <button @click="selectedTab = 'discussion'; $dispatch('ga4', {name: 'forum_open', params: {content_type: 'design', item_id: 'design-{{ $design->getKey() }}'}})" :aria-selected="selectedTab === 'discussion'" :tabindex="selectedTab === 'discussion' ? '0' : '-1'" :class="selectedTab === 'discussion' ? 'font-bold text-black border-b-2 border-black dark:border-white dark:text-white' : 'text-neutral-600 font-medium dark:text-neutral-300 dark:hover:border-b-neutral-300 dark:hover:text-white hover:border-b-2 hover:border-b-neutral-800 hover:text-neutral-900'" class="h-min px-4 py-2 text-sm" type="button" role="tab" aria-controls="tabpanelDiscussion">Discussion</button>
-        <button @click="selectedTab = 'components'" :aria-selected="selectedTab === 'components'" :tabindex="selectedTab === 'components' ? '0' : '-1'" :class="selectedTab === 'components' ? 'font-bold text-black border-b-2 border-black dark:border-white dark:text-white' : 'text-neutral-600 font-medium dark:text-neutral-300 dark:hover:border-b-neutral-300 dark:hover:text-white hover:border-b-2 hover:border-b-neutral-800 hover:text-neutral-900'" class="h-min px-4 py-2 text-sm" type="button" role="tab" aria-controls="tabpanelComponents">Component Details</button>
-        <button @click="selectedTab = 'files'" :aria-selected="selectedTab === 'files'" :tabindex="selectedTab === 'files' ? '0' : '-1'" :class="selectedTab === 'files' ? 'font-bold text-black border-b-2 border-black dark:border-white dark:text-white' : 'text-neutral-600 font-medium dark:text-neutral-300 dark:hover:border-b-neutral-300 dark:hover:text-white hover:border-b-2 hover:border-b-neutral-800 hover:text-neutral-900'" class="h-min px-4 py-2 text-sm" type="button" role="tab" aria-controls="tabpanelFiles">Files</button>
-        <button @click="selectedTab = 'reviews'" :aria-selected="selectedTab === 'reviews'" :tabindex="selectedTab === 'reviews' ? '0' : '-1'" :class="selectedTab === 'reviews' ? 'font-bold text-black border-b-2 border-black dark:border-white dark:text-white' : 'text-neutral-600 font-medium dark:text-neutral-300 dark:hover:border-b-neutral-300 dark:hover:text-white hover:border-b-2 hover:border-b-neutral-800 hover:text-neutral-900'" class="h-min px-4 py-2 text-sm" type="button" role="tab" aria-controls="tabpanelReviews">Reviews ({{ $designReviewQty }})</button>
-    </div>
-    <div class="px-2 py-4 text-neutral-600 dark:text-neutral-300">
-    <div x-show="selectedTab === 'summary'" id="tabpanelSummary" class="w-full min-h-[300px]" role="tabpanel" aria-label="summary">
-                    <livewire:frequency-response-viewer :design="$design" />
-        @if(trim(strip_tags(tiptap_converter()->asHtml($design->summary))) || $design->frequencyResponse)
-
-            <div class="w-full prose max-w-none">
-                <div class="tiptap-content w-full">
-                    {!! tiptap_converter()->asHtml($design->summary) !!}
-                </div>
+<div>
+    <x-design.section id="reviews" title="Reviews" data-design-reviews>
+        <x-slot:header>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                @if ($designRating)
+                    <span class="inline-flex items-center gap-2 text-sm text-ink-2">
+                        <span class="sd-stars" style="--p: {{ round($designRating) * 20 }}%" role="img" aria-label="{{ number_format($designRating, 1) }} out of 5"></span>
+                        <span class="sd-num text-xs">{{ number_format($designRating, 1) }} ({{ $designReviewQty }})</span>
+                    </span>
+                @else
+                    <span class="text-sm text-ink-3">No ratings yet</span>
+                @endif
+                @if (Auth::check())
+                    <a href="#design-review-form" class="sd-btn sd-btn-sm">Write a Review</a>
+                @else
+                    <a href="{{ route('login') }}" class="sd-btn sd-btn-sm">Write a Review</a>
+                @endif
             </div>
-        @else
-            <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
-                <p>No summary data submitted</p>
-            </div>
-        @endif
-    </div>
-    
-    <div class="w-full min-h-[300px]" x-show="selectedTab === 'description'" id="tabpanelDescription" role="tabpanel" aria-label="description">
-        @if(trim(strip_tags(tiptap_converter()->asHtml($design->description))))
-            <div class="w-full prose max-w-none">
-                <div class="tiptap-content w-full">
-                    {!! tiptap_converter()->asHtml($design->description) !!}
-                </div>
-            </div>
-        @else
-            <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
-                <p>No description data submitted</p>
-            </div>
-        @endif
-    </div>
-    
-    <div class="min-h-[300px]" x-show="selectedTab === 'discussion'" id="tabpanelDiscussion" role="tabpanel" aria-label="discussion">
-        @if($design->forum_slug && app(\App\Services\Forum\ForumClient::class)->enabled())
-            @if($this->canSeeDiscussion)
-                <iframe src="{{ app(\App\Services\Forum\ForumClient::class)->embedUrl($design->forum_slug) }}" style="width:100%; height: 800px;"></iframe>
-            @else
-                <div class="flex items-center justify-center h-[300px] py-8 text-gray-500" data-discussion-locked>
-                    <p>The discussion for this design is open to buyers. {{ auth()->check() ? 'Buy this design to join it.' : 'Log in to buy this design and join it.' }}</p>
-                </div>
-            @endif
-        @else
-            <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
-                <p>No discussion data available</p>
-            </div>
-        @endif
-    </div>
+        </x-slot:header>
 
-    <div x-show="selectedTab === 'components'" id="tabpanelcomponents" role="tabpanel" class="w-full min-h-[300px]" aria-label="components">
-        @if(count($design->components) > 0)
-            <div>
-                <div class="w-full">
-                    @foreach($design->components as $component)
-                    <div x-data="{ isOpen: true }" class="border-t border-gray-200 pt-8">
-                        <button @click="isOpen = !isOpen" class="flex items-center justify-between w-full text-xl font-semibold text-gray-900 pb-4 border-b-2 border-zinc-400">
-                            <span>
-                                {{$component->driver->brand}} - {{$component->driver->model}}
-                            </span>
-                            <svg
-                                class="w-6 h-6 transition-transform"
-                                :class="{ 'rotate-180': !isOpen }"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-                        <div
-                            x-show="isOpen"
-                            x-transition:enter="transition ease-out duration-200"
-                            x-transition:enter-start="opacity-0 -translate-y-2"
-                            x-transition:enter-end="opacity-100 translate-y-0"
-                            x-transition:leave="transition ease-in duration-150"
-                            x-transition:leave-start="opacity-100 translate-y-0"
-                            x-transition:leave-end="opacity-0 -translate-y-2"
-                            class="divide-y divide-gray-200">
-                            <div class="w-full prose max-w-none">
-                                <div class="tiptap-content w-full">
-                                    {!! tiptap_converter()->asHtml($component->description) !!}
-                                </div>
-                            </div>
+        <div class="max-w-4xl">
+            <div class="mb-8">
+                @forelse ($designReviews as $review)
+                    <article class="grid gap-1 border-b border-hair py-3 first:pt-0">
+                        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                            <span class="sd-stars" style="--p: {{ (int) $review['rating'] * 20 }}%" role="img" aria-label="{{ (int) $review['rating'] }} out of 5"></span>
+                            <span class="sd-num text-xs text-ink-3">{{ \Carbon\Carbon::parse($review['created_at'])->format('M d, Y') }}</span>
                         </div>
-                    </div>
-                    @endforeach
-                </div>
-            </div>
-        @else
-            <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
-                <p>No component data submitted</p>
-            </div>
-        @endif
-    </div>
-
-    <div class="min-h-[300px]" x-show="selectedTab === 'files'" id="tabpanelFiles" role="tabpanel" aria-label="files">
-        @if(count($design->snapshots) > 0 && $this->hasAccess)
-            <div>
-                <div class="w-full">
-                    @foreach($design->snapshots as $snapshot)
-                    <br>
-                    <div>
-                        <a href="{{ route('design-snapshots.download', $snapshot->id) }}" class="button" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($design, $snapshot->snapshot_name) }}">
-                            <span>{{$snapshot->snapshot_name}}</span>
-                            <i class="ph ph-download-simple"></i>
-                        </a>
-                    </div>
-                    @endforeach
-                </div>
-            </div>
-        @elseif(count($design->snapshots) > 0)
-            <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
-                <p>{{ auth()->check() ? 'Get this design to download its files.' : 'Log in to download this design\'s files.' }}</p>
-            </div>
-        @else
-            <div class="flex items-center justify-center h-[300px] py-8 text-gray-500">
-                <p>No files submitted</p>
-            </div>
-        @endif
-    </div>
-    
-    <div class="min-h-[300px]" x-show="selectedTab === 'reviews'" id="tabpanelReviews" role="tabpanel" aria-label="reviews">
-        <div class="w-full pb-8 max-w-4xl mx-auto">
-            <div class="mb-8 p-4 bg-gray-50 dark:bg-gray-800">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-xl font-semibold">Reviews ({{ $designReviewQty }})</h3>
-                        @if($designRating)
-                        <div class="flex items-center mt-1">
-                            <div class="flex items-center">
-                                @for($i = 1; $i <= 5; $i++)
-                                    @if($i <=round($designRating))
-                                    <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                    </svg>
-                                    @else
-                                    <svg class="w-5 h-5 text-gray-300 dark:text-gray-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                    </svg>
-                                    @endif
-                                    @endfor
-                            </div>
-                            <span class="ml-2 text-gray-600 dark:text-gray-300">{{ number_format($designRating, 1) }} out of 5</span>
-                        </div>
-                        @else
-                        <p class="text-gray-500 dark:text-gray-400">No ratings yet</p>
-                        @endif
-                    </div>
-                    <button
-                        @if(Auth::check())
-                            @click="$refs.reviewForm.scrollIntoView({behavior: 'smooth'})"
-                        @else
-                            onclick="window.location.href='{{ route('login') }}'"
-                        @endif
-                        class="px-4 py-2 bg-brand-950 hover:bg-brand-600 text-white transition-colors">
-                        Write a Review
-                    </button>
-                </div>
-            </div>
-            <div class="space-y-6 mb-10">
-                @forelse($designReviews as $review)
-                <div class="p-4 border border-gray-200 dark:border-gray-700">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h4 class="font-semibold text-lg">{{ $review['title'] }}</h4>
-                            <div class="flex items-center my-1">
-                                @for($i = 1; $i <= 5; $i++)
-                                    @if($i <=$review['rating'])
-                                    <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                    </svg>
-                                    @else
-                                    <svg class="w-4 h-4 text-gray-300 dark:text-gray-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                    </svg>
-                                    @endif
-                                    @endfor
-                            </div>
-                        </div>
-                        <div class="text-sm text-gray-500 dark:text-gray-400">
-                            {{ \Carbon\Carbon::parse($review['created_at'])->format('M d, Y') }}
-                        </div>
-                    </div>
-                    <div class="mt-2 text-gray-700 dark:text-gray-300">
-                        {{ $review['review'] }}
-                    </div>
-                    <div class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        By: {{ $review['author']['name'] ?? 'Anonymous' }}
-                    </div>
-                </div>
+                        <h3 class="text-base font-semibold text-ink">{{ $review['title'] }}</h3>
+                        <p class="whitespace-pre-line text-[15px] !text-ink-2">{{ $review['review'] }}</p>
+                        <p class="sd-num text-xs text-ink-3">By {{ $review['author']['name'] ?? 'Anonymous' }}</p>
+                    </article>
                 @empty
-                <div class="p-6 text-center border border-gray-200 dark:border-gray-700">
-                    <p class="text-gray-500 dark:text-gray-400">No reviews yet. Be the first to review!</p>
-                </div>
+                    <p class="text-sm text-ink-3">No reviews yet. Be the first to review!</p>
                 @endforelse
             </div>
-            @if(Auth::check())
-            <div x-ref="reviewForm" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6">
-                <h3 class="text-xl font-semibold mb-4">Write a Review</h3>
 
-                @if(session()->has('message'))
-                <div class="p-4 mb-4 text-sm text-green-700 bg-green-100 dark:bg-green-200 dark:text-green-800">
-                    {{ session('message') }}
-                </div>
-                @endif
+            @if (Auth::check())
+                <div id="design-review-form" class="scroll-mt-16 border border-rule bg-paper p-4">
+                    <h3 class="sd-title mb-3 text-lg">Write a Review</h3>
 
-                <form wire:submit.prevent="submitReview">
-                    <div class="mb-4">
-                        <label for="reviewTitle" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Review Title</label>
-                        <input wire:model.defer="reviewTitle" type="text" id="reviewTitle" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm focus:ring-link-500 focus:border-link-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Summarize your experience" required>
-                        @error('reviewTitle') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Rating</label>
-                        <div class="flex items-center space-x-1" x-data="{ temporaryRating: @entangle('reviewRating') }">
-                            @for($i = 1; $i <= 5; $i++)
-                                <button
-                                type="button"
-                                wire:click="$set('reviewRating', {{ $i }})"
-                                @click="temporaryRating = {{ $i }}"
-                                class="focus:outline-none">
-                                <svg class="w-8 h-8" :class="{{ $i }} <= temporaryRating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                </svg>
-                                </button>
-                                @endfor
+                    @if (session()->has('message'))
+                        <div class="mb-4 border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+                            {{ session('message') }}
                         </div>
-                        @error('reviewRating') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
-                    </div>
+                    @endif
 
-                    <div class="mb-4">
-                        <label for="reviewContent" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Review Content</label>
-                        <textarea wire:model.defer="reviewContent" id="reviewContent" rows="4" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm focus:ring-link-500 focus:border-link-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Share your experience with this design" required></textarea>
-                        @error('reviewContent') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
-                    </div>
+                    <form wire:submit.prevent="submitReview" class="grid gap-4">
+                        <div>
+                            <label for="reviewTitle" class="sd-label mb-1.5 block">Review Title</label>
+                            <input wire:model.defer="reviewTitle" type="text" id="reviewTitle" class="block w-full rounded-none border-rule bg-white p-2.5 text-sm text-ink focus:border-ink focus:ring-0" placeholder="Summarize your experience" required>
+                            @error('reviewTitle') <span class="mt-1 block text-xs text-red-600">{{ $message }}</span> @enderror
+                        </div>
 
-                    <button type="submit" class="text-white bg-brand-950 hover:bg-brand-600 focus:ring-4 focus:ring-link-300 font-medium text-sm px-5 py-2.5 text-center dark:bg-link-600 dark:hover:bg-link-700 dark:focus:ring-link-800">
-                        Submit Review
-                    </button>
-                </form>
-            </div>
+                        <div>
+                            <span class="sd-label mb-1.5 block" id="reviewRatingLabel">Rating</span>
+                            <div class="flex items-center gap-1" role="group" aria-labelledby="reviewRatingLabel" x-data="{ temporaryRating: @entangle('reviewRating') }">
+                                @for ($i = 1; $i <= 5; $i++)
+                                    <button
+                                        type="button"
+                                        wire:click="$set('reviewRating', {{ $i }})"
+                                        @click="temporaryRating = {{ $i }}"
+                                        aria-label="{{ $i }} {{ $i === 1 ? 'star' : 'stars' }}"
+                                        class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-500">
+                                        <svg class="!w-8 h-8" :class="{{ $i }} <= temporaryRating ? 'text-accent-500' : 'text-hair'" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
+                                        </svg>
+                                    </button>
+                                @endfor
+                            </div>
+                            @error('reviewRating') <span class="mt-1 block text-xs text-red-600">{{ $message }}</span> @enderror
+                        </div>
+
+                        <div>
+                            <label for="reviewContent" class="sd-label mb-1.5 block">Review Content</label>
+                            <textarea wire:model.defer="reviewContent" id="reviewContent" rows="4" class="block w-full rounded-none border-rule bg-white p-2.5 text-sm text-ink focus:border-ink focus:ring-0" placeholder="Share your experience with this design" required></textarea>
+                            @error('reviewContent') <span class="mt-1 block text-xs text-red-600">{{ $message }}</span> @enderror
+                        </div>
+
+                        <div>
+                            <button type="submit" class="sd-btn sd-btn-go">Submit Review</button>
+                        </div>
+                    </form>
+                </div>
             @else
-            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 text-center">
-                <p class="mb-4 text-gray-700 dark:text-gray-300">You need to be logged in to write a review.</p>
-                <a href="{{ route('login') }}" class="text-white bg-brand-950 hover:bg-brand-600 focus:ring-4 focus:ring-link-300 font-medium text-sm px-5 py-2.5 inline-block dark:bg-link-600 dark:hover:bg-link-700 dark:focus:ring-link-800">
-                    Log in to write a review
-                </a>
-            </div>
+                <div class="border border-rule bg-paper p-4">
+                    <p class="mb-3 text-sm text-ink-2">You need to be logged in to write a review.</p>
+                    <a href="{{ route('login') }}" class="sd-btn sd-btn-go">Log in to write a review</a>
+                </div>
             @endif
         </div>
-    </div>
-</div>
+    </x-design.section>
+
+    <x-design.section id="discussion" title="Discussion" data-design-discussion>
+        @if ($thread)
+            @if ($this->canSeeDiscussion)
+                <iframe src="{{ $forum->embedUrl($design->forum_slug) }}" title="Discussion of {{ $design->name }}" loading="lazy"
+                        class="block h-[720px] w-full border border-hair max-sm:h-[600px]"
+                        x-data
+                        x-init="if ('IntersectionObserver' in window) { const seen = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { $dispatch('ga4', {name: 'forum_open', params: {content_type: 'design', item_id: 'design-{{ $design->getKey() }}'}}); seen.disconnect(); } }, {threshold: 0.2}); seen.observe($el); }"></iframe>
+            @else
+                <p class="text-sm text-ink-2" data-discussion-locked>The discussion for this design is open to buyers. {{ auth()->check() ? 'Buy this design to join it.' : 'Log in to buy this design and join it.' }}</p>
+            @endif
+        @else
+            <p class="text-sm text-ink-3">No discussion data available</p>
+        @endif
+    </x-design.section>
 </div>

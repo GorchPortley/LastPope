@@ -9,16 +9,16 @@
     };
 @endphp
 
-<x-marketplace.box class="w-full" data-buy-box="{{ $state['status'] }}">
+<div class="grid w-full gap-2.5 border border-rule bg-paper p-3.5" data-buy-box="{{ $state['status'] }}">
     @if ($label)
-        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ $label }}</p>
+        <p class="sd-label">{{ $label }}</p>
     @endif
 
     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p class="text-3xl font-bold text-gray-900">
+        <p @class(['font-condensed text-[34px] font-bold leading-none', 'text-green-700' => $state['free'], 'text-ink' => ! $state['free']])>
             {{ $state['free'] ? 'Free' : money($state['price']) }}
             @if ($lotWord)
-                <span class="text-sm font-normal text-gray-500">per {{ $lotWord }}</span>
+                <span class="font-sans text-sm font-normal text-ink-2">per {{ $lotWord }}</span>
             @endif
         </p>
         @if (! $state['digital'] && in_array($state['status'], ['add', 'login', 'owner'], true))
@@ -27,7 +27,7 @@
     </div>
 
     @if ($state['shipping'])
-        <p class="mt-2 flex items-start gap-2 text-sm text-gray-600" data-buy-box-shipping>
+        <p class="flex items-start gap-2 text-sm text-ink-2" data-buy-box-shipping>
             <x-phosphor-truck class="mt-0.5 h-4 w-4 flex-shrink-0" />
             <span>
                 Ships from {{ $state['shipping']['from'] }}{{ $state['shipping']['handling'] ? ' within '.$state['shipping']['handling'] : '' }}.
@@ -36,12 +36,12 @@
         </p>
     @endif
 
-    <div class="mt-4 space-y-3">
+    <div class="grid gap-2.5">
         @switch($state['status'])
             @case('owner')
                 <x-marketplace.notice level="info">This is your own {{ $kindWord }}.</x-marketplace.notice>
                 @if ($state['downloadUrl'])
-                    <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($p, 'latest') }}">Download latest files</x-button>
+                    <a href="{{ $state['downloadUrl'] }}" class="sd-btn sd-btn-go w-full" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($p, 'latest') }}">Download latest files</a>
                 @endif
                 @break
 
@@ -50,55 +50,55 @@
                     <x-phosphor-check-circle class="h-5 w-5" /> In your library
                 </div>
                 @if ($state['downloadUrl'])
-                    <x-button tag="a" href="{{ $state['downloadUrl'] }}" class="w-full" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($p, 'latest') }}">Download</x-button>
+                    <a href="{{ $state['downloadUrl'] }}" class="sd-btn sd-btn-go w-full" data-ga4-click="{{ \App\Support\Analytics\Ga4::download($p, 'latest') }}">Download</a>
                 @endif
-                <a href="{{ route('dashboard.library') }}" class="block text-center text-sm text-brand-700 underline hover:text-brand-900">Open my library</a>
+                <a href="{{ route('dashboard.library') }}" class="block text-center text-sm text-brand-800 underline hover:text-brand-900">Open my library</a>
                 @break
 
             @case('revoked')
-                <x-button class="w-full" color="gray" disabled>Not available</x-button>
-                <p class="text-sm text-gray-600">Your access to this {{ $kindWord }} was withdrawn. Contact support if this is a mistake.</p>
+                <button type="button" class="sd-btn w-full opacity-50 hover:bg-white hover:text-ink" disabled>Not available</button>
+                <p class="text-sm text-ink-2">Your access to this {{ $kindWord }} was withdrawn. Contact support if this is a mistake.</p>
                 @break
 
             @case('unavailable')
-                <x-button class="w-full" color="gray" disabled>{{ $state['digital'] ? 'Not available' : (str_contains((string) $state['reason'], 'Sold out') ? 'Sold out' : 'Not available') }}</x-button>
-                <p class="text-sm text-gray-600">{{ $state['reason'] }}</p>
+                <button type="button" class="sd-btn w-full opacity-50 hover:bg-white hover:text-ink" disabled>{{ $state['digital'] ? 'Not available' : (str_contains((string) $state['reason'], 'Sold out') ? 'Sold out' : 'Not available') }}</button>
+                <p class="text-sm text-ink-2">{{ $state['reason'] }}</p>
                 @break
 
             @case('login')
-                <x-button tag="a" href="{{ route('login') }}" class="w-full">{{ $state['free'] ? 'Log in to get it for free' : 'Log in to buy' }}</x-button>
+                <a href="{{ route('login') }}" class="sd-btn sd-btn-go w-full">{{ $state['free'] ? 'Log in to get it for free' : 'Log in to buy' }}</a>
                 @break
 
             @case('free')
-                <x-button class="w-full" color="success" wire:click="add" wire:loading.attr="disabled" wire:target="add">
+                <button type="button" class="sd-btn sd-btn-go w-full disabled:opacity-60" wire:click="add" wire:loading.attr="disabled" wire:target="add">
                     <span wire:loading.remove wire:target="add">Get for free</span>
                     <span wire:loading wire:target="add">Adding...</span>
-                </x-button>
-                <p class="text-xs text-gray-500">Free items go straight to your library.</p>
+                </button>
+                <p class="text-[13px] text-ink-2">Free items go straight to your library.</p>
                 @break
 
             @case('in_cart')
-                <x-button tag="a" href="{{ route('cart') }}" class="w-full" color="gray">
-                    <x-phosphor-shopping-cart class="mr-1 inline h-4 w-4" /> In your cart - view cart
-                </x-button>
+                <a href="{{ route('cart') }}" class="sd-btn w-full">
+                    <x-phosphor-shopping-cart class="inline h-4 w-4" /> In your cart - view cart
+                </a>
                 @break
 
             @default
                 @if (! $state['digital'])
                     <div class="flex items-center gap-3">
-                        <label for="qty-{{ $this->getId() }}" class="text-sm font-medium text-gray-700">Quantity</label>
+                        <label for="qty-{{ $this->getId() }}" class="sd-label">Quantity</label>
                         <input id="qty-{{ $this->getId() }}" type="number" min="1" max="{{ $state['max'] }}" wire:model.live.debounce.300ms="quantity"
-                               class="w-24 border-gray-300 text-gray-700 text-sm">
+                               class="sd-num w-24 rounded-none border-rule text-sm text-ink focus:border-ink focus:ring-0">
                     </div>
                 @endif
-                <x-button class="w-full" wire:click="add" wire:loading.attr="disabled" wire:target="add">
+                <button type="button" class="sd-btn sd-btn-go w-full disabled:opacity-60" wire:click="add" wire:loading.attr="disabled" wire:target="add">
                     <span wire:loading.remove wire:target="add">Add to cart</span>
                     <span wire:loading wire:target="add">Adding...</span>
-                </x-button>
+                </button>
                 @if ($state['inCart'] > 0)
-                    <p class="text-sm text-gray-600">
+                    <p class="text-sm text-ink-2">
                         {{ $state['inCart'] }} already in your cart.
-                        <a href="{{ route('cart') }}" class="text-brand-700 underline hover:text-brand-900">View cart</a>
+                        <a href="{{ route('cart') }}" class="text-brand-800 underline hover:text-brand-900">View cart</a>
                     </p>
                 @endif
         @endswitch
@@ -107,4 +107,4 @@
             <x-marketplace.notice :level="$noticeLevel">{{ $notice }}</x-marketplace.notice>
         @endif
     </div>
-</x-marketplace.box>
+</div>

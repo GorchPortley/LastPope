@@ -46,6 +46,16 @@ it('creates a design with the price typed in dollars and stored as cents', funct
     Storage::disk('public')->assertExists($design->card_image[0]);
 });
 
+it('saves the designer\'s own page styles from the Advanced section', function () {
+    $user = User::factory()->create();
+
+    dashboardPage($this, $user, '/dashboard/designs')
+        ->callTableAction('create', data: createDesignData(['description_css' => 'h2 { color: #7c2d12 }']))
+        ->assertHasNoTableActionErrors();
+
+    expect(Design::where('name', 'Test Monitor')->firstOrFail()->description_css)->toBe('h2 { color: #7c2d12 }');
+});
+
 it('stores uploaded source files on the private disk under the storage key', function () {
     $user = User::factory()->create();
 

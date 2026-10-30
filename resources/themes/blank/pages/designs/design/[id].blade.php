@@ -1,9 +1,13 @@
 <?php
 
 use function Laravel\Folio\{name};
+use App\Models\Design;
+use App\Support\Analytics\Ga4;
+use App\Support\DesignFileList;
+use App\Support\FrequencyResponse;
+use App\Support\ResponseChartData;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Volt\Component;
-use App\Models\Design;
 
 name('design');
 
@@ -25,9 +29,21 @@ new class extends Component {
 
     public function with(): array
     {
+        $design = $this->design;
+        $user = auth()->user();
+        $chart = ResponseChartData::from(FrequencyResponse::forFiles(array_values((array) ($design->frd_files ?? []))));
+        $rating = $design->ratingSummary();
+
         return [
+            // The measured response, its numbers and the files, worked out once for the spec table and the sections.
+            'chart' => $chart,
+            'rating' => $rating,
+            'fileGroups' => DesignFileList::groups($design),
+            'snapshots' => $design->snapshots->sortByDesc('id')->values(),
+            // Same rule as the buy box and the download route: designer, admin, an entitlement, or a free design.
+            'hasAccess' => $user !== null && $user->hasAccessTo($design, false),
             // Kits and finished speakers members sell, built from this design.
-            'builds' => $this->design->listings()->marketplace()->forSale()
+            'builds' => $design->listings()->marketplace()->forSale()
                 ->with(['seller.sellerProfile', 'driver', 'design'])->latest()->get(),
         ];
     }
@@ -35,213 +51,312 @@ new class extends Component {
 
 <x-layouts.marketing>
     @volt('design')
-    <div class="min-h-dvh dark:text-white">
-        <x-analytics.events :events="[\App\Support\Analytics\Ga4::payload('view_item', \App\Support\Analytics\Ga4::ecommerce([\App\Support\Analytics\Ga4::item($design)]))]" />
-        <main class="mx-auto overflow-auto flex-grow bg-white max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
-            <!-- Breadcrumb -->
-            <nav class="mb-6" aria-label="Breadcrumb">
-                <ol class="flex items-center space-x-2">
-                    <li><a href="/designs" class="text-gray-500 hover:text-gray-700">Designs</a></li>
-                    <li class="text-gray-400">/</li>
-                    <li class="text-gray-900">{{ $design->name }}</li>
+    @php
+        $docNo = 'SDL-D-'.str_pad((string) $design->id, 4, '0', STR_PAD_LEFT);
+        $latest = $snapshots->first();
+        $driverCount = (int) $design->components->sum('quantity');
+        $bandCount = $design->components->count();
+        $free = (int) $design->price_cents <= 0;
+        $axis = fn (float $f): float => max(0, min(100, (log10(max($f, 20)) - log10(20)) / 3 * 100));
+        $num = fn ($value) => $value === null || $value === '' ? null : rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
+        $designer = $design->designer;
+    @endphp
+    <div class="min-h-dvh bg-paper pb-10">
+        <x-analytics.events :events="[Ga4::payload('view_item', Ga4::ecommerce([Ga4::item($design)]))]" />
+
+        <div class="mx-auto w-full max-w-7xl pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:px-6 lg:px-8">
+            <nav class="py-3.5 text-sm text-ink-3" aria-label="Breadcrumb">
+                <ol class="flex flex-wrap items-center gap-x-2">
+                    <li><a href="/" class="text-ink-2 hover:text-ink">Home</a></li>
+                    <li aria-hidden="true">/</li>
+                    <li><a href="/designs" class="text-ink-2 hover:text-ink">Designs</a></li>
+                    <li aria-hidden="true">/</li>
+                    <li class="min-w-0 text-ink" aria-current="page">{{ $design->name }}</li>
                 </ol>
             </nav>
-            <hr class="mb-8 border-t-2 border-gray-300">
-            <!-- Content Container -->
-            <div class="space-y-8">
-    <!-- Top Section: Image and Details -->
-    <div class="lg:grid lg:grid-cols-2 lg:gap-8">
-        <!-- Left: Image gallery -->
-        <x-marketplace.gallery
-            class="relative mb-6 lg:mb-0"
-            :images="(array) $design->card_image"
-            :paths="true"
-            :alt="$design->name"
-        />
 
-        <!-- Right: Design Info -->
-        <div class="space-y-6">
-            <!-- Title and Tag -->
-            <div>
-                <h1 class="text-3xl font-bold text-gray-900">{{ $design->name }}</h1>
-                @if($design->tag)
-                    <p class="mt-2 text-lg text-gray-600 italic">{{ $design->tag }}</p>
-                @endif
-            </div>
+            {{-- Photos on the left, the sheet (number, name, price, specs) on the right --}}
+            <div class="grid gap-6 pb-5 lg:grid-cols-12 lg:gap-[30px]">
+                <x-marketplace.gallery
+                    class="lg:col-span-7"
+                    :images="(array) $design->card_image"
+                    :paths="true"
+                    ratio="4:3"
+                    fit="cover"
+                    :alt="$design->name"
+                />
 
-            <!-- Designer Info -->
-            <div>
-                <p class="text-sm text-gray-500">Designed by</p>
-                <a href="{{ url('profile/'.$design->designer->username) }}">
-                    <p class="text-lg font-medium text-gray-900 hover:text-link-400">{{ $design->designer->name ?? 'Speaker Designer' }}</p>
-                </a>
-            </div>
+                <div class="sd-sheet grid content-start lg:col-span-5">
+                    <div class="sd-num flex flex-wrap justify-between gap-x-2.5 gap-y-1 border-b border-rule px-3.5 py-2 text-[11px] text-ink-3">
+                        <span data-design-docno>{{ $docNo }}</span>
+                        <span>{{ $design->category }} &middot; {{ $latest ? 'Files '.$latest->version : 'No files yet' }}</span>
+                    </div>
 
-            <!-- Buy box -->
-            <livewire:buy-box :purchasable="$design" />
+                    <div class="grid gap-3 px-4 pb-4 pt-4 sm:px-[18px] sm:pb-[18px]">
+                        <h1 class="sd-title text-[clamp(34px,5vw,46px)] leading-[0.95]">{{ $design->name }}</h1>
+                        @if ($design->tag)
+                            <p class="text-[17px] !text-ink-2">{{ $design->tag }}</p>
+                        @endif
 
-            <!-- Specifications -->
-            <div class="border-t border-gray-200 pt-6">
-                <h2 class="text-xl font-semibold text-gray-900 mb-4">Specifications</h2>
-                <dl class="grid grid-cols-2 gap-x-6 gap-y-4">
-                    <div>
-                        <dt class="text-sm text-gray-500">Power Handling</dt>
-                        <dd class="mt-1 text-lg font-medium text-gray-900">{{ $design->power }}W</dd>
+                        <p class="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[15px] !text-ink-2">
+                            <span>by
+                                @if ($designer && $designer->username)
+                                    <a href="{{ url('profile/'.$designer->username) }}" class="font-semibold text-ink hover:underline">{{ $designer->name ?? 'Speaker Designer' }}</a>
+                                @else
+                                    <b class="font-semibold text-ink">{{ $designer?->name ?? 'Speaker Designer' }}</b>
+                                @endif
+                            </span>
+                            @if ($design->official)
+                                <span class="sd-seal">Official</span>
+                            @endif
+                            <a href="#sec-reviews" class="inline-flex items-center gap-2 text-ink-2 no-underline hover:text-ink" data-design-rating>
+                                @if ($rating['count'] > 0)
+                                    <span class="sd-stars" style="--p: {{ round($rating['average'] * 20) }}%" role="img" aria-label="{{ number_format($rating['average'], 1) }} out of 5"></span>
+                                    <span class="sd-num text-xs">{{ number_format($rating['average'], 1) }} ({{ $rating['count'] }})</span>
+                                @else
+                                    <span class="text-[13px] text-ink-3">No reviews yet</span>
+                                @endif
+                            </a>
+                        </p>
+
+                        <livewire:buy-box :purchasable="$design" label="Plans, drawings and measurements" />
+
+                        <table class="w-full border-collapse text-[15px]" data-design-specs>
+                            <tbody class="[&_td]:border-b [&_td]:border-dotted [&_td]:border-rule [&_td]:py-1.5 [&_td:last-child]:text-right [&_td:last-child]:font-mono [&_td:last-child]:text-[13px] [&_td:last-child]:tabular-nums [&_tr:last-child_td]:border-b-0">
+                                <tr><td>Type</td><td>{{ $design->category ?: '-' }}</td></tr>
+                                <tr><td>Impedance</td><td>{{ $num($design->impedance) !== null ? $num($design->impedance).' Ω' : '-' }}</td></tr>
+                                <tr><td>Power</td><td>{{ $num($design->power) !== null ? $num($design->power).' W' : '-' }}</td></tr>
+                                <tr><td>Drivers</td><td>{{ $driverCount }} ({{ $bandCount }} {{ $bandCount === 1 ? 'band' : 'bands' }})</td></tr>
+                                <tr><td>&minus;3 dB low end</td><td>{{ $chart && $chart['f3'] !== null ? ResponseChartData::hz($chart['f3']) : '-' }}</td></tr>
+                                <tr><td>Build cost</td><td>{{ $design->build_cost_cents ? '≈ '.money((int) $design->build_cost_cents) : '-' }}</td></tr>
+                                <tr><td>Published</td><td>{{ $design->created_at?->format('j M Y') ?? '-' }}</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <div>
-                        <dt class="text-sm text-gray-500">Impedance</dt>
-                        <dd class="mt-1 text-lg font-medium text-gray-900">{{ $design->impedance }}Ω</dd>
-                    </div>
-                    <div>
-                        <dt class="text-sm text-gray-500">Plans Price</dt>
-                        <dd class="mt-1 text-lg font-medium text-gray-900">
-                            {{ $design->price_cents > 0 ? money($design->price_cents) : 'Free' }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-sm text-gray-500">Estimated Build Cost</dt>
-                        <dd class="mt-1 text-lg font-medium text-gray-900">
-                            {{ money((int) $design->build_cost_cents) }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-sm text-gray-500">Category</dt>
-                        <dd class="mt-1 text-lg font-medium text-gray-900">{{ $design->category }}</dd>
-                    </div>
-                </dl>
+                </div>
             </div>
         </div>
-    </div>
-</div>
-                <!-- Kits & builds for sale -->
-                @if ($builds->isNotEmpty())
-                    <x-marketplace.section title="Kits & builds for sale" :count="$builds->count()" class="mt-8 pb-8" data-design-builds>
-                        <x-marketing.listing-card-container :listings="$builds" cols="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" :padded="false" />
-                    </x-marketplace.section>
+
+        {{-- Sticky row of links to the sections --}}
+        <nav class="sticky top-[env(safe-area-inset-top,0px)] z-20 mb-5 border-b border-rule bg-paper" aria-label="On this page" data-design-jump>
+            <div class="sd-jump-row mx-auto max-w-7xl pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:px-6 lg:px-8">
+                @foreach ([
+                    ['response', 'Response'],
+                    ['about', 'About'],
+                    ['drivers', 'Drivers'],
+                    ['parts', 'Parts list'],
+                    ['files', 'Files'],
+                    $builds->isNotEmpty() ? ['builds', 'Kits for sale'] : null,
+                    ['reviews', 'Reviews'],
+                    ['discussion', 'Discussion'],
+                ] as $link)
+                    @continue($link === null)
+                    <a href="#sec-{{ $link[0] }}" class="flex-none border-b-2 border-transparent px-3 py-[11px] font-condensed text-sm font-semibold uppercase tracking-[0.05em] text-ink-2 no-underline hover:border-brand-800 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-500">{{ $link[1] }}</a>
+                @endforeach
+            </div>
+        </nav>
+
+        <div class="mx-auto w-full max-w-7xl pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:px-6 lg:px-8">
+            {{-- Measured response --}}
+            <x-design.response-chart :chart="$chart" />
+
+            {{-- About: summary, then description --}}
+            @php
+                $css = $design->descriptionStyles();
+                $aboutHtml = trim(strip_tags((string) tiptap_converter()->asHtml((string) $design->summary).tiptap_converter()->asHtml((string) $design->description), '<img><table>'));
+            @endphp
+            <x-design.section id="about" title="About this design">
+                @if ($css !== '')
+                    {{-- the designer's own CSS, cleaned and limited to .sd-rich-{id} by App\Support\ScopedCss --}}
+                    <style data-design-css>
+{!! $css !!}
+                    </style>
                 @endif
-                <!-- Components Section -->
-                @if($design->components->count() > 0)
-                    <div x-data="{ isOpen: true }" class="border-t border-gray-200 pt-8">
-                        <button @click="isOpen = !isOpen" class="flex items-center justify-between w-full text-xl font-semibold text-gray-900 pb-4 border-b-2 border-zinc-400">
-                            <span>File Overview</span>
-                            <svg
-                                class="w-6 h-6 transition-transform"
-                                :class="{ 'rotate-90': isOpen }"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                            </svg>
-                        </button>
+                @if ($aboutHtml !== '')
+                    <div class="grid gap-7">
+                        <x-design.rich :content="$design->summary" :design="$design" class="text-[19px]" data-design-summary />
+                        <x-design.rich :content="$design->description" :design="$design" data-design-description />
+                    </div>
+                @else
+                    <p class="text-sm text-ink-3">No summary or description yet.</p>
+                @endif
+            </x-design.section>
 
-                        <div
-                            x-show="isOpen"
-                            x-transition:enter="transition ease-out duration-200"
-                            x-transition:enter-start="opacity-0 -translate-y-2"
-                            x-transition:enter-end="opacity-100 translate-y-0"
-                            x-transition:leave="transition ease-in duration-150"
-                            x-transition:leave-start="opacity-100 translate-y-0"
-                            x-transition:leave-end="opacity-0 -translate-y-2"
-                            class="divide-y divide-gray-200"
-                        >
-                            <div class="w-full my-4 gap-4">
-                                <dl class="space-y-1 text-gray-900">
-                                    <div class="flex justify-between">
-                                        <dt class="">Design Enclosure Files:</dt>
-                                        <dd>{{ count($design->enclosure_files ?? []) }}</dd>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <dt class="">Design Electronics Files:</dt>
-                                        <dd>{{ count($design->electronic_files ?? []) }}</dd>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <dt class="">Design Other Files:</dt>
-                                        <dd>{{ count($design->design_other_files ?? []) }}</dd>
-                                    </div>
-                                </dl>
-                            </div>
-                            @foreach($design->components as $component)
-                                <div x-data="{ showDetails: true }" class="border-b last:border-b-0">
-                                    <div
-                                        @click="showDetails = !showDetails"
-                                        class="py-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                                    >
-                                        <div class="flex justify-between items-start">
-                                            <div class="flex-1">
-                                                <div class="flex items-center gap-2">
-                        <span
-                            class="transform transition-transform duration-200"
-                            :class="{ 'rotate-90': showDetails }"
-                        >
-                                                        <svg
-                                class="w-6 h-6 transition-transform"
-                                :class="{ 'rotate-180': isOpen }"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                            </svg>
-                        </span>
-                                                    <h4 class="text-lg font-medium text-gray-900">
-                                                        {{$component->driver->brand}} - {{$component->driver->model}}
-                                                    </h4>
-                                                </div>
-                                                <div class="mt-1 flex items-center space-x-4 text-sm text-gray-900">
-                                                    <span>{{$component->position}}</span>
-                                                    <span>•</span>
-                                                    <span>{{$component->driver->size}}</span>
-                                                    <span>•</span>
-                                                    <span>{{$component->driver->category}}</span>
-                                                </div>
-                                            </div>
-                                            <div class="ml-4 text-right">
-                                                <span class="text-sm font-medium text-gray-900">Qty: {{$component->quantity}}</span>
-                                                <div class="mt-1 text-sm text-gray-500">
-                                                    {{$component->low_frequency}} Hz - {{$component->high_frequency}} Hz
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+            {{-- Drivers --}}
+            <x-design.section id="drivers" title="Drivers" hint="Bar = the band each driver plays, on a 20 Hz to 20 kHz axis">
+                @if ($design->components->isEmpty())
+                    <p class="text-sm text-ink-3">No drivers listed yet.</p>
+                @else
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse" data-design-drivers>
+                            <thead>
+                                <tr class="[&_th]:border-b-2 [&_th]:border-ink [&_th]:py-1.5 [&_th]:pr-2 [&_th]:text-left [&_th]:font-condensed [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.06em] [&_th]:text-ink-3">
+                                    <th>Band</th>
+                                    <th>Driver</th>
+                                    <th>Qty</th>
+                                    <th>Range</th>
+                                    <th>Air volume</th>
+                                    <th class="min-w-[180px]">
+                                        <div class="sd-num flex min-w-[160px] justify-between text-[10px] font-normal normal-case tracking-normal"><span>20</span><span>200</span><span>2k</span><span>20k</span></div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="[&_td]:border-b [&_td]:border-hair [&_td]:py-[9px] [&_td]:pr-2 [&_td]:align-middle [&_td]:text-[15px] [&_td.m]:whitespace-nowrap [&_td.m]:font-mono [&_td.m]:text-xs [&_td.m]:tabular-nums">
+                                @foreach ($design->components as $band)
+                                    @php
+                                        $low = $band->low_frequency ? (float) $band->low_frequency : null;
+                                        $high = $band->high_frequency ? (float) $band->high_frequency : null;
+                                        $from = $axis($low ?? 20);
+                                        $to = $axis($high ?? 20000);
+                                        $air = (float) $band->air_volume;
+                                        $driver = $band->driver;
+                                    @endphp
+                                    <tr data-design-driver>
+                                        <td class="m">{{ $band->position }}</td>
+                                        <td>
+                                            @if ($driver)
+                                                <a href="{{ url('drivers/driver/'.$driver->id) }}" class="font-semibold text-brand-800 underline hover:text-brand-900">{{ $driver->fullName() }}</a>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
+                                        <td class="m">{{ $band->quantity }}</td>
+                                        <td class="m">{{ $low ? ResponseChartData::hz($low) : '?' }} &ndash; {{ $high ? ResponseChartData::hz($high) : '?' }}</td>
+                                        <td class="m" data-air-volume>{{ $air > 0 ? $num($air).' L' : '-' }}</td>
+                                        <td><div class="sd-lane" role="img" aria-label="{{ $low ? ResponseChartData::hz($low) : 'low end' }} to {{ $high ? ResponseChartData::hz($high) : 'high end' }}"><i style="left: {{ number_format($from, 1, '.', '') }}%; width: {{ number_format(max(1, $to - $from), 1, '.', '') }}%"></i></div></td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
 
-                                    <!-- Expandable Details Section -->
-                                    <div
-                                        x-show="showDetails"
-                                        x-transition:enter="transition ease-out duration-200"
-                                        x-transition:enter-start="opacity-0 transform -translate-y-2"
-                                        x-transition:enter-end="opacity-100 transform translate-y-0"
-                                        x-transition:leave="transition ease-in duration-150"
-                                        x-transition:leave-start="opacity-100 transform translate-y-0"
-                                        x-transition:leave-end="opacity-0 transform -translate-y-2"
-                                        class="bg-gray-50 p-4"
-                                    >
-                                        <div class="w-full gap-4">
-                                            <dl class="space-y-1">
-                                                <div class="flex justify-between">
-                                                    <dt class="text-gray-600">Frequency Files:</dt>
-                                                    <dd class="text-gray-900">{{ count($component->frequency_files ?? []) }}</dd>
-                                                </div>
-                                                <div class="flex justify-between">
-                                                    <dt class="text-gray-600">Impedance Files:</dt>
-                                                    <dd class="text-gray-900">{{ count($component->impedance_files ?? []) }}</dd>
-                                                </div>
-                                                <div class="flex justify-between">
-                                                    <dt class="text-gray-600">Other Files:</dt>
-                                                    <dd class="text-gray-900">{{ count($component->other_files ?? []) }}</dd>
-                                                </div>
-                                            </dl>
-                                        </div>
-                                    </div>
+                    <div class="mt-4">
+                        @foreach ($design->components as $band)
+                            <details open class="border-t border-hair" data-driver-notes>
+                                <summary class="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3.5 gap-y-1 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
+                                    <span class="sd-num w-3.5 text-base font-medium text-brand-800" aria-hidden="true">+</span>
+                                    <span>{{ $band->position }} &middot; {{ $band->driver?->fullName() ?? 'Driver' }}</span>
+                                    <span class="sd-num text-xs font-normal text-ink-2">{{ $band->quantity }} &times;{{ (float) $band->air_volume > 0 ? ' · '.$num($band->air_volume).' L' : '' }}</span>
+                                </summary>
+                                <div class="pb-4 pl-6 max-sm:pl-0">
+                                    @if (trim(strip_tags((string) tiptap_converter()->asHtml((string) $band->description), '<img><table>')) !== '')
+                                        <x-design.rich :content="$band->description" :design="$design" class="text-base" />
+                                    @else
+                                        <p class="text-[13px] text-ink-3">No notes for this driver.</p>
+                                    @endif
                                 </div>
-                            @endforeach
-                        </div>
+                            </details>
+                        @endforeach
                     </div>
                 @endif
-                <!-- Description Section -->
-                <div class="border-t border-gray-200 pt-8">
-                    <livewire:design-description :design="$design"/>
-                                </div>
-            </div>
-        </main>
+            </x-design.section>
+
+            {{-- Parts list --}}
+            @php
+                $parts = collect((array) $design->bill_of_materials)->filter(fn ($value, $key) => filled($key) || filled($value));
+            @endphp
+            <x-design.section id="parts" title="Parts list" hint="From the designer's bill of materials">
+                @if ($parts->isEmpty())
+                    <p class="text-sm text-ink-3">No parts list yet.</p>
+                @else
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse text-[15px]" data-design-bom>
+                            <thead>
+                                <tr class="[&_th]:border-b-2 [&_th]:border-ink [&_th]:py-1.5 [&_th]:pr-2.5 [&_th]:text-left [&_th]:font-condensed [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.06em] [&_th]:text-ink-3">
+                                    <th>Part</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody class="[&_td]:border-b [&_td]:border-hair [&_td]:py-2 [&_td]:pr-2.5 [&_td]:align-top [&_td:first-child]:whitespace-nowrap [&_td:first-child]:font-semibold">
+                                @foreach ($parts as $part => $details)
+                                    <tr><td>{{ $part }}</td><td>{{ is_scalar($details) ? $details : json_encode($details) }}</td></tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </x-design.section>
+
+            {{-- What you download --}}
+            @php
+                $groupFiles = fn (string ...$titles) => collect($fileGroups)->filter(fn ($g) => collect($titles)->contains(fn ($t) => str_starts_with($g['title'], $t)))->sum(fn ($g) => count($g['files']));
+                $measurementFiles = collect($fileGroups)->filter(fn ($g) => str_contains($g['title'], ':') || $g['title'] === 'Response previews')->sum(fn ($g) => count($g['files']));
+            @endphp
+            <x-design.section id="files" title="What you download" data-design-files>
+                <x-slot:header>
+                    <span class="inline-flex items-center gap-1.5 text-[13px] text-ink-2" data-files-access>
+                        <x-phosphor-lock-simple class="h-4 w-4" />
+                        @if ($hasAccess)
+                            You have access to these files
+                        @elseif ($free)
+                            Free with an account
+                        @else
+                            Available after purchase
+                        @endif
+                    </span>
+                </x-slot:header>
+
+                <div class="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] border border-hair [&>div]:grid [&>div]:content-start [&>div]:gap-0.5 [&>div]:border-r [&>div]:border-hair [&>div]:px-3 [&>div]:py-2.5">
+                    <div><b class="sd-num text-[22px] font-medium leading-none">{{ $groupFiles('Enclosure') }}</b><span class="text-[13px] text-ink-2">Enclosure files</span></div>
+                    <div><b class="sd-num text-[22px] font-medium leading-none">{{ $groupFiles('Crossover') }}</b><span class="text-[13px] text-ink-2">Crossover / electronics files</span></div>
+                    <div><b class="sd-num text-[22px] font-medium leading-none">{{ $groupFiles('Other design') }}</b><span class="text-[13px] text-ink-2">Other design files</span></div>
+                    <div><b class="sd-num text-[22px] font-medium leading-none">{{ $measurementFiles }}</b><span class="text-[13px] text-ink-2">Measurement files</span></div>
+                    <div><b class="sd-num text-[22px] font-medium leading-none">1</b><span class="text-[13px] text-ink-2">Build guide PDF with your name on every page</span></div>
+                </div>
+
+                @foreach ($fileGroups as $group)
+                    <div class="mt-5" data-file-group>
+                        <h3 class="sd-label border-b-2 border-ink pb-1">{{ $group['title'] }}</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full table-fixed border-collapse text-[15px] max-sm:min-w-[440px]">
+                                <colgroup><col><col class="w-[210px]"><col class="w-[80px]"></colgroup>
+                                <tbody class="[&_td]:border-b [&_td]:border-hair [&_td]:py-2 [&_td]:pr-3 [&_td]:align-baseline">
+                                    @foreach ($group['files'] as $file)
+                                        <tr data-file>
+                                            <td class="break-all font-medium text-ink">{{ $file['name'] }}</td>
+                                            <td class="whitespace-nowrap text-ink-2">{{ $file['type'] }}</td>
+                                            <td class="sd-num whitespace-nowrap text-right text-xs text-ink-2">{{ \App\Support\DesignFileList::size($file['size']) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                @endforeach
+                @if ($fileGroups === [])
+                    <p class="mt-4 text-sm text-ink-3">No source files are listed for this design yet.</p>
+                @endif
+
+                <div class="mt-6">
+                    <h3 class="sd-label border-b-2 border-ink pb-1">Versions</h3>
+                    @forelse ($snapshots as $snapshot)
+                        <div class="sd-num flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1.5 border-b border-dotted border-rule py-2 text-[13px]" data-design-version>
+                            <span class="font-medium text-ink">{{ $snapshot->version }}</span>
+                            <span class="text-ink-2">{{ $snapshot->created_at?->format('j M Y') }}</span>
+                            <span class="text-ink-2">{{ $snapshot->file_size ? \App\Support\DesignFileList::size((int) $snapshot->file_size) : '-' }}</span>
+                            @if ($hasAccess)
+                                <a href="{{ route('design-snapshots.download', $snapshot->id) }}" class="sd-btn sd-btn-sm" data-ga4-click="{{ Ga4::download($design, $snapshot->snapshot_name) }}">Download {{ $snapshot->snapshot_name }}</a>
+                            @endif
+                        </div>
+                    @empty
+                        <p class="mt-2 text-sm text-ink-3">No files published yet.</p>
+                    @endforelse
+                    @if ($snapshots->isNotEmpty() && ! $hasAccess)
+                        <p class="mt-3 text-sm text-ink-2">{{ auth()->check() ? ($free ? 'Get this design to download its files.' : 'Buy this design to download its files.') : 'Log in to download this design\'s files.' }} Every version comes as one ZIP, with the build guide PDF made for you.</p>
+                    @endif
+                </div>
+            </x-design.section>
+
+            {{-- Kits & builds for sale --}}
+            @if ($builds->isNotEmpty())
+                <x-design.section id="builds" title="Kits & builds for sale" data-design-builds>
+                    <x-marketing.listing-card-container :listings="$builds" cols="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" :padded="false" />
+                </x-design.section>
+            @endif
+
+            {{-- Reviews and Discussion --}}
+            <livewire:design-description :design="$design" />
+        </div>
     </div>
     @endvolt
 </x-layouts.marketing>

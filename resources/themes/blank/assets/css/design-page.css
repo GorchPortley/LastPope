@@ -1,0 +1,34 @@
+/*
+ * Design detail page (resources/themes/blank/pages/designs/design/[id].blade.php and resources/themes/blank/components/design/*).
+ * Plain CSS for the few things utilities cannot say: the rating stars, the response chart's SVG text and grid, and
+ * the band bars. Colours are the tokens of tailwind.config.js (ink #161b26, ink-3 #7a8396, hair #e5e9ef, trace #7c3fc2).
+ */
+
+/* five stars, filled to --p percent in amber */
+.sd-stars {
+    display: inline-block;
+    width: 80px;
+    height: 16px;
+    flex: none;
+    background: linear-gradient(90deg, rgb(var(--accent-500)) var(--p, 0%), #e5e9ef var(--p, 0%));
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 1.5l2.6 5.6 6.1.7-4.5 4.2 1.2 6L10 15l-5.4 3 1.2-6L1.3 7.8l6.1-.7z'/%3E%3C/svg%3E") 0 0 / 16px 16px repeat-x;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 1.5l2.6 5.6 6.1.7-4.5 4.2 1.2 6L10 15l-5.4 3 1.2-6L1.3 7.8l6.1-.7z'/%3E%3C/svg%3E") 0 0 / 16px 16px repeat-x;
+}
+
+/* the response chart (drawn by assets/js/response-chart.js) */
+svg.sd-chart { display: block; width: auto; max-width: 100%; height: auto; user-select: none; -webkit-user-select: none; }
+.sd-chart text { font: 400 10px "Azeret Mono", ui-monospace, monospace; fill: #7a8396; }
+.sd-chart .gridl { stroke: #e5e9ef; stroke-width: 1; shape-rendering: crispEdges; }
+
+/* a band driver plays, as a bar on a 20 Hz - 20 kHz log axis (grid at 200 Hz and 2 kHz) */
+.sd-lane {
+    position: relative;
+    height: 14px;
+    min-width: 160px;
+    background: linear-gradient(90deg, #cfd5df 1px, transparent 1px) 0 0 / 33.333% 100%, #f2f4f7;
+}
+.sd-lane > i { position: absolute; top: 2px; bottom: 2px; background: #7c3fc2; }
+
+/* sticky row of section links: scrolls sideways on a phone, without a scrollbar */
+.sd-jump-row { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.sd-jump-row::-webkit-scrollbar { display: none; }

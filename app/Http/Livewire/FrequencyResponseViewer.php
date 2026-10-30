@@ -12,6 +12,7 @@ class FrequencyResponseViewer extends Component
     public $design;
     public array $chartData = [];
     public array $summedResponse = [];
+    /** Phase lines (not drawn by the chart any more; kept for anything that reads them). */
     public array $phaseData = [];
     public string $activeTab = 'amplitude';
 

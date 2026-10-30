@@ -59,7 +59,7 @@ it('shows the "Sold by SDLabs" buy box when the store has the driver in stock', 
         ->assertSee('In stock, ships in 2 days')
         ->assertSee('data-buy-box-shipping', false)->assertSee('Ships from United States')->assertSee('$8.99 in-country')
         ->assertSee('Quantity')->assertSee('Add to cart')
-        ->assertSee('Manufacturer list price: $210.00')
+        ->assertSeeText('Manufacturer list price: $210.00')
         ->assertDontSee('Out of stock at SDLabs')
         ->assertDontSee('Buy from the manufacturer');
 });

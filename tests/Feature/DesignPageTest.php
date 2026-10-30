@@ -62,8 +62,8 @@ it('lists the parts list and the drivers with their air volume', function () {
         ->assertSee('sd-rich-'.$design->id, false);
 });
 
-it('names the files and never prints their storage paths', function () {
-    $design = documentedDesign(['price_cents' => 2500]);
+it('names the files of a free design and never prints their storage paths', function () {
+    $design = documentedDesign(['price_cents' => 0]);
 
     $this->get('/designs/design/'.$design->id)
         ->assertOk()
@@ -77,7 +77,7 @@ it('names the files and never prints their storage paths', function () {
         ->assertSee('Aurelia A16-W: impedance files')
         ->assertDontSee('missing.frd')
         ->assertSee('Build guide PDF with your name on every page')
-        ->assertSee('Available after purchase')
+        ->assertSee('Free with an account')
         ->assertDontSee('designs/page-test');
 
     $this->get('/designs/design/'.documentedDesign(['price_cents' => 0])->id)->assertSee('Free with an account');
@@ -170,8 +170,10 @@ it('shows a paid design\'s summary to everyone but sends its description, driver
         ->assertDontSee('Driver notes about the woofer.')
         ->assertDontSee('18 mm birch plywood')
         ->assertDontSee('12.5 L')
-        // the file list and the response stay visible: they show what the buyer gets
-        ->assertSee('cut-list.pdf');
+        // which drivers it uses, with a link to each driver page, stays visible
+        ->assertSee('data-design-driver-names', false)->assertSee('Aurelia A16-W')
+        // the files are counted by kind, without their names
+        ->assertSee('data-file-kinds', false)->assertDontSee('cut-list.pdf')->assertDontSee('crossover.xlsx');
 
     $locked($this->get('/designs/design/'.$design->id));
     $locked($this->actingAs(\App\Models\User::factory()->create())->get('/designs/design/'.$design->id));
@@ -184,6 +186,7 @@ it('shows a paid design\'s summary to everyone but sends its description, driver
             ->assertSee('Secret build notes for buyers.')
             ->assertSee('Driver notes about the woofer.')
             ->assertSee('18 mm birch plywood')
+            ->assertSee('cut-list.pdf')
             ->assertDontSee('data-design-locked', false);
     }
 });
@@ -200,4 +203,12 @@ it('gives signed-in members a dashboard link in the header', function () {
     $this->get('/designs')->assertOk()->assertDontSee('data-header-dashboard', false);
     $this->actingAs(\App\Models\User::factory()->create())->get('/designs')->assertOk()
         ->assertSee('data-header-dashboard', false)->assertSee(route('dashboard'), false);
+});
+
+it('tells an onboarded seller the fee from the settings', function () {
+    config(['marketplace.fee_bps' => 1250, 'marketplace.fee_fixed_cents' => 30]);
+
+    $this->actingAs(onboardedSeller())->get('/dashboard/selling')->assertOk()
+        ->assertSee('data-fee-note', false)
+        ->assertSeeText('keeps 12.5 % of the item price plus $0.30 per order on each sale');
 });

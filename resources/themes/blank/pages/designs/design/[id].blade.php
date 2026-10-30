@@ -195,7 +195,20 @@ new class extends Component {
             {{-- Drivers --}}
             <x-design.section id="drivers" title="Drivers" hint="Bar = the band each driver plays, on a 20 Hz to 20 kHz axis">
                 @if ($locked)
-                    <x-design.locked what="Every driver with the band it plays, its box volume and the designer's notes for it." />
+                    {{-- which drivers it uses is public (it helps people choose); bands, box volumes and notes are for buyers --}}
+                    @if ($design->components->isNotEmpty())
+                        <ul class="mb-4 grid gap-0 border-t border-hair" data-design-driver-names>
+                            @foreach ($design->components->unique('driver_id') as $band)
+                                <li class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-hair py-2.5">
+                                    <span class="font-medium text-ink">{{ $band->driver ? $band->driver->brand.' '.$band->driver->model : 'Driver no longer listed' }}</span>
+                                    @if ($band->driver && $band->driver->active)
+                                        <a href="{{ route('driver', ['id' => $band->driver->id]) }}" class="text-sm font-semibold text-brand-800 underline hover:text-brand-900">View driver →</a>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                    <x-design.locked what="The band each driver plays, its box volume and the designer's notes for it." />
                 @else
                 @if ($design->components->isEmpty())
                     <p class="text-sm text-ink-3">No drivers listed yet.</p>
@@ -325,6 +338,12 @@ new class extends Component {
                 @foreach ($fileGroups as $group)
                     <div class="mt-5" data-file-group>
                         <h3 class="sd-label border-b-2 border-ink pb-1">{{ $group['title'] }}</h3>
+                        @if ($locked)
+                            {{-- paid design, no access: how many files of which kind, not their names --}}
+                            <p class="py-2 text-[15px] text-ink-2" data-file-kinds>
+                                {{ collect($group['files'])->countBy('type')->map(fn ($n, $type) => $n.' × '.$type)->implode(' · ') }}
+                            </p>
+                        @else
                         <div class="overflow-x-auto">
                             <table class="w-full table-fixed border-collapse text-[15px] max-sm:min-w-[440px]">
                                 <colgroup><col><col class="w-[210px]"><col class="w-[80px]"></colgroup>
@@ -339,6 +358,7 @@ new class extends Component {
                                 </tbody>
                             </table>
                         </div>
+                        @endif
                     </div>
                 @endforeach
                 @if ($fileGroups === [])

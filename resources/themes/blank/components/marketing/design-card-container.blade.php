@@ -1,6 +1,6 @@
 {{--
     A grid of design cards (docs/STYLE.md "Cards"): photo first (4:3), type pill and Official seal on it, then name,
-    byline, one row of mono specs, a dotted rule, price and rating. The whole card is a link (stretched on the name).
+    byline, stacked specs (card-specs), a dotted rule, price and rating. The whole card is a link (stretched on the name).
     Eager-load designer.roles, designer.sellerProfile and withAvg('reviews','rating')/withCount('reviews') (and
     withCount('components') for the driver count) so the grid costs no extra queries.
 --}}
@@ -34,12 +34,12 @@
                     <a href="/designs/design/{{ $design->id }}" data-ga4-click="{{ $select }}" class="text-ink no-underline after:absolute after:inset-0 after:content-['']">{{ $design->name }}</a>
                 </h2>
                 <p class="truncate text-sm text-ink-2">By: {{ $design->designer?->name }}</p>
-                <p class="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs leading-snug text-ink-2">
-                    @if($design->impedance)<span>{{ $design->impedance }} &Omega;</span>@endif
-                    @if($design->power)<span>{{ $design->power }} W</span>@endif
-                    @if($driverCount)<span>{{ $driverCount }} {{ \Illuminate\Support\Str::plural('driver', $driverCount) }}</span>@endif
-                    @if($design->build_cost_cents)<span>Build {{ money((int) $design->build_cost_cents) }}</span>@endif
-                </p>
+                <x-marketing.card-specs :rows="[
+                    ['Impedance', $design->impedance ? $design->impedance.' Ω' : null],
+                    ['Power', $design->power ? $design->power.' W' : null],
+                    ['Drivers', $driverCount ?: null],
+                    ['Build cost', $design->build_cost_cents ? money((int) $design->build_cost_cents) : null],
+                ]" />
                 <div class="mt-auto flex items-center justify-between gap-2.5 border-t border-dotted border-rule pt-2.5">
                     @if($design->price_cents > 0)
                         <span class="font-condensed text-xl font-bold leading-none text-ink">{{ money($design->price_cents) }}</span>

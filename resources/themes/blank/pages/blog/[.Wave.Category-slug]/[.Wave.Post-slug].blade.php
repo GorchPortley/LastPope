@@ -31,21 +31,24 @@
             @endif
 
             @if ($post->category)
-                <a href="{{ route('blog.category', ['category' => $post->category]) }}" class="inline-block rounded-full bg-brand-950 px-2 py-1 text-xs font-semibold text-white hover:bg-brand-800">{{ $post->category->name }}</a>
+                <a href="{{ route('blog.category', ['category' => $post->category]) }}" class="sd-pill inline-block no-underline hover:bg-brand-800">{{ $post->category->name }}</a>
             @endif
 
-            <h1 class="mt-3 text-3xl font-bold leading-tight text-gray-900 sm:text-4xl">{{ $post->title }}</h1>
+            <h1 class="sd-title mt-3 text-[clamp(32px,5vw,46px)] leading-[0.98]">{{ $post->title }}</h1>
 
-            <p class="mt-3 text-gray-600 italic">
+            <p class="mt-3 text-[15px] text-ink-2">
                 @if ($post->user)By {{ $post->user->name }} &middot; @endif
                 <time datetime="{{ $post->created_at?->toIso8601String() }}">{{ $post->created_at?->format('F j, Y') }}</time>
                 &middot; {{ max(1, (int) round($words / 220)) }} min read
             </p>
 
-            <img src="{{ $post->image() }}" alt="{{ $post->title }}" class="mt-6 aspect-video w-full rounded-lg border-2 border-gray-100 bg-brand-950 object-cover shadow-sm">
+            <img src="{{ $post->image() }}" alt="{{ $post->title }}" class="mt-6 aspect-video w-full border border-rule bg-hair object-cover">
 
-            <div class="prose prose-lg mt-8 max-w-none prose-headings:font-semibold prose-headings:text-gray-900 prose-a:text-brand-700 hover:prose-a:text-brand-900 prose-img:rounded-lg prose-blockquote:border-l-accent-400">
-                {!! $post->body !!}
+            {{-- the same text styles as design and driver pages (.sd-rich, app.css) --}}
+            <div class="sd-sheet mt-6 px-5 py-6 sm:px-8 sm:py-8">
+                <div class="sd-rich" data-post-body>
+                    {!! $post->body !!}
+                </div>
             </div>
         </article>
 

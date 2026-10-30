@@ -212,3 +212,14 @@ it('tells an onboarded seller the fee from the settings', function () {
         ->assertSee('data-fee-note', false)
         ->assertSeeText('keeps 12.5 % of the item price plus $0.30 per order on each sale');
 });
+
+it('offers the full picture in a viewer and lists card specs as stacked rows', function () {
+    $design = documentedDesign(['price_cents' => 0, 'power' => 120]);
+
+    $this->get('/designs/design/'.$design->id)->assertOk()
+        ->assertSee('data-gallery-expand', false)->assertSee('data-gallery-lightbox', false)
+        ->assertSee('/storage/demo/Design_Placeholder.jpg', false); // the original, not a thumbnail, for the viewer
+
+    $this->get('/designs')->assertOk()
+        ->assertSee('data-card-specs', false)->assertSee('Impedance')->assertSee('120 W');
+});

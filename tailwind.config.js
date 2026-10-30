@@ -32,7 +32,19 @@ export default {
 
     theme: {
         extend: {
+            // Datasheet look (docs/STYLE.md): Archivo (narrowed with `font-condensed` for headings) and Azeret Mono for
+            // numbers. Served from the build (npm @fontsource), so no font request leaves the site.
+            fontFamily: {
+                sans: ['"Archivo Variable"', 'Archivo', ...defaultTheme.fontFamily.sans],
+                mono: ['"Azeret Mono"', ...defaultTheme.fontFamily.mono],
+            },
             colors: {
+                // neutrals of the datasheet look: ink text, paper page, rules between things, trace for chart lines
+                ink: { DEFAULT: '#161b26', 2: '#4a5366', 3: '#7a8396' },
+                paper: '#f2f4f7',
+                rule: '#cfd5df',
+                hair: '#e5e9ef',
+                trace: '#7c3fc2',
                 brand: palette('brand'),   // purple: header, footer, buttons, badges, links
                 accent: palette('accent'), // amber: hover highlights on the dark header/footer, cart badge
                 link: palette('link'),     // blue: link hover, focus rings, carousel dots
@@ -51,5 +63,10 @@ export default {
         },
     },
 
-    plugins: [forms, require('@tailwindcss/typography')],
+    plugins: [
+        forms,
+        require('@tailwindcss/typography'),
+        // Narrow Archivo for headings and labels: `font-condensed` (Archivo's width axis, see docs/STYLE.md).
+        ({ addUtilities }) => addUtilities({ '.font-condensed': { 'font-stretch': '72%' } }),
+    ],
 };

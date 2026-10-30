@@ -54,7 +54,8 @@ new class extends Component {
         <!-- Left: Image gallery -->
         <x-marketplace.gallery
             class="relative mb-6 lg:mb-0"
-            :images="array_map(fn ($image) => Storage::url($image), (array) $design->card_image)"
+            :images="(array) $design->card_image"
+            :paths="true"
             :alt="$design->name"
         />
 

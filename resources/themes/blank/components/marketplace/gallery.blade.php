@@ -1,10 +1,16 @@
 {{--
     Image carousel with the look of the one on the design and driver pages (square, rounded, round arrow
-    buttons, dots), driven by Alpine so it needs no extra script. `images` is a list of URLs.
+    buttons, dots), driven by Alpine so it needs no extra script. `images` is a list of URLs, or (to show resized
+    copies) a list of stored public-disk paths with `paths` set: those become 960 px WebP thumbnails with a 1600 px
+    one for high-density screens (App\Support\Thumbnails).
 --}}
-@props(['images' => [], 'alt' => ''])
+@props(['images' => [], 'alt' => '', 'paths' => false])
 
-@php($images = array_values(array_filter($images)))
+@php
+    $images = collect($images)->filter()->values()->map(fn ($image) => $paths
+        ? ['src' => \App\Support\Thumbnails::url($image, 960), 'srcset' => \App\Support\Thumbnails::srcset($image, [960, 1600])]
+        : ['src' => $image, 'srcset' => ''])->all();
+@endphp
 
 <div
     x-data="{ index: 0, count: {{ count($images) }}, next() { this.index = (this.index + 1) % this.count }, prev() { this.index = (this.index - 1 + this.count) % this.count } }"
@@ -12,10 +18,12 @@
     {{ $attributes->class(['relative w-full']) }}
 >
     <div class="relative overflow-hidden rounded-lg aspect-square w-full">
-        @forelse ($images as $url)
+        @forelse ($images as $image)
             <div class="w-full h-full" @if (! $loop->first) x-cloak @endif x-show="index === {{ $loop->index }}">
                 <img
-                    src="{{ $url }}"
+                    src="{{ $image['src'] }}"
+                    @if ($image['srcset'] !== '') srcset="{{ $image['srcset'] }}" sizes="(min-width: 1024px) 600px, 100vw" @endif
+                    decoding="async"
                     alt="{{ $alt }} - image {{ $loop->iteration }}"
                     class="absolute block w-full h-full object-contain"
                     @if (! $loop->first) loading="lazy" @endif
@@ -30,7 +38,7 @@
 
         @if (count($images) > 1)
             <div class="absolute z-30 flex justify-center w-full space-x-3 bottom-5">
-                @foreach ($images as $url)
+                @foreach ($images as $image)
                     <button type="button" @click="index = {{ $loop->index }}" aria-label="Slide {{ $loop->iteration }}"
                             :aria-current="index === {{ $loop->index }}"
                             :class="index === {{ $loop->index }} ? 'bg-white' : 'bg-white/50'"

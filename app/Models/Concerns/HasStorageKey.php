@@ -27,6 +27,8 @@ trait HasStorageKey
             foreach (['private', 'public'] as $disk) {
                 Storage::disk($disk)->deleteDirectory($model->storageDirectory());
             }
+
+            \App\Support\Thumbnails::forget($model->storageDirectory());
         });
     }
 

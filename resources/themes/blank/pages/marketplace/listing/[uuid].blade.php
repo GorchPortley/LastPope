@@ -80,7 +80,7 @@ render(function (View $view, string $uuid) {
             <!-- Top Section: Image and Details -->
             <div class="lg:grid lg:grid-cols-2 lg:gap-8">
                 <!-- Left: Image gallery -->
-                <x-marketplace.gallery :images="$photos" :alt="$listing->title" class="relative mb-6 lg:mb-0" />
+                <x-marketplace.gallery :images="$listing->photos ?? []" :paths="true" :alt="$listing->title" class="relative mb-6 lg:mb-0" />
 
                 <!-- Right: Listing Info -->
                 <div class="space-y-6">

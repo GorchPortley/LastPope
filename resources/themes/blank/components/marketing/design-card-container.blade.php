@@ -9,6 +9,7 @@
 <div {{ $attributes->class(['grid gap-4', $cols, 'p-4' => $padded]) }}>
     @foreach($designs as $design)
         @php($select = \App\Support\Analytics\Ga4::selectItem($listName, $design))
+        @php($rating = $design->ratingSummary())
         <div x-data="{ showSpecs: false }" wire:key="{{ $design->id }}" class="relative flex flex-col bg-white rounded-lg border-2 border-gray-100 hover:shadow-lg shadow-sm overflow-hidden h-full">
             <!-- Design image section -->
             <div class="relative pt-4 px-4">
@@ -21,12 +22,8 @@
                 
                 <a href="/designs/design/{{$design->id}}" data-ga4-click="{{ $select }}" class="block w-full">
                     <div class="flex justify-center items-center h-48 md:h-56">
-                        <img
-                            src="/storage/{{ is_array($design->card_image) && !empty($design->card_image) ? $design->card_image[0] : $design->card_image }}"
-                            class="max-h-full max-w-full object-contain"
-                            alt="{{ $design->name }}"
-                            onerror="this.src='/images/placeholder.jpg'"
-                        >
+                        @php($cover = is_array($design->card_image) ? ($design->card_image[0] ?? null) : $design->card_image)
+                        <x-marketing.card-image :path="$cover" :alt="$design->name" />
                     </div>
                 </a>
             </div>
@@ -57,10 +54,10 @@
                                 <td class="py-1 font-medium">Rating</td>
                                 <td class="text-gray-600 text-right">
                                     <div class="flex items-center justify-end">
-                                        @if($design->averageRating() > 0)
+                                        @if($rating['average'] > 0)
                                             <div class="flex">
                                                 @for($i = 1; $i <= 5; $i++)
-                                                    @if($i <= round($design->averageRating()))
+                                                    @if($i <= round($rating['average']))
                                                         <svg class="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                                                             <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
                                                         </svg>
@@ -71,7 +68,7 @@
                                                     @endif
                                                 @endfor
                                             </div>
-                                            <span class="ml-1">({{ $design->numberOfReviews() }})</span>
+                                            <span class="ml-1">({{ $rating['count'] }})</span>
                                         @else
                                             <span>No ratings</span>
                                         @endif

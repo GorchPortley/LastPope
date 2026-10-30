@@ -14,8 +14,7 @@ new class extends Component {
     {
         $query = Driver::query()
             ->where('active', 1)
-            ->withCount('designs')  // Add count of designs
-            ->with('designs')       // Eager load designs
+            ->withCount('designs')  // the cards show the count; no need to load every design of every driver
             ->with('activeStoreListing.supplier'); // SDLabs' store listing, for the "In stock at SDLabs" line on the cards
 
         // Filter by manufacturer (the filter form submits `manufacturer`; `brand` still works for old links)
@@ -43,8 +42,11 @@ new class extends Component {
         }
 
         // Custom sorting
-        $sortField = $request->sort ?? 'created_at';
-        $sortDirection = $request->direction ?? 'desc';
+        // Only known columns and directions: anything else is ignored instead of becoming a database error.
+        // ("power_handling" is what the sort menu sends for Power; there is no such column.)
+        $sortField = $request->sort === 'power_handling' ? 'power' : $request->sort;
+        $sortField = in_array($sortField, ['created_at', 'brand', 'model', 'size', 'power', 'impedance', 'designs'], true) ? $sortField : 'created_at';
+        $sortDirection = $request->direction === 'asc' ? 'asc' : 'desc';
 
         // Handle special sort case for designs count
         if ($sortField === 'designs') {

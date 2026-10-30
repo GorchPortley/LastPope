@@ -20,12 +20,8 @@
                 
                 <a href="/drivers/driver/{{$driver->id}}" data-ga4-click="{{ $select }}" class="block w-full">
                     <div class="flex justify-center items-center h-48 md:h-56">
-                        <img
-                            src="/storage/{{ is_array($driver->card_image) && !empty($driver->card_image) ? $driver->card_image[0] : $driver->card_image }}"
-                            class="max-h-full max-w-full object-contain"
-                            alt="{{ $driver->model }}"
-                            onerror="this.src='/images/placeholder.jpg'"
-                        >
+                        @php($cover = is_array($driver->card_image) ? ($driver->card_image[0] ?? null) : $driver->card_image)
+                        <x-marketing.card-image :path="$cover" :alt="$driver->model" />
                     </div>
                 </a>
             </div>
@@ -54,7 +50,7 @@
                             </tr>
                             <tr>
                                 <td class="py-1 font-medium">Designs</td>
-                                <td class="text-gray-600 text-right">{{$driver->designs->count()}}</td>
+                                <td class="text-gray-600 text-right">{{ $driver->designs_count ?? $driver->designs()->count() }}</td>
                             </tr>
                         </tbody>
                     </table>

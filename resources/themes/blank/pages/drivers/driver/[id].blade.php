@@ -146,7 +146,8 @@ new class extends Component {
                     <!-- Left: Image gallery -->
                     <x-marketplace.gallery
                         class="relative mb-6 lg:mb-0"
-                        :images="array_map(fn ($image) => Storage::url($image), (array) $driver->card_image)"
+                        :images="(array) $driver->card_image"
+            :paths="true"
                         :alt="$driver->fullName()"
                     />
 

@@ -6,7 +6,7 @@
 
 <article {{ $attributes->class(['group relative flex h-full flex-col overflow-hidden rounded-lg border-2 border-gray-100 bg-white shadow-sm hover:shadow-lg']) }} id="post-{{ $post->id }}">
     <div class="relative aspect-video overflow-hidden bg-brand-950">
-        <img src="{{ $post->image() }}" alt="" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
+        <img src="{{ filled($post->image) ? \App\Support\Thumbnails::url($post->image, 480) : $post->image() }}" @if (filled($post->image)) srcset="{{ \App\Support\Thumbnails::srcset($post->image, [480, 960]) }}" sizes="(min-width: 1024px) 400px, (min-width: 640px) 50vw, 100vw" @endif alt="" loading="lazy" decoding="async" class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
         @if ($post->category)
             <span class="absolute left-3 top-3 max-w-[70%] truncate rounded-full bg-brand-950 px-2 py-1 text-xs font-semibold text-white">{{ $post->category->name }}</span>
         @endif

@@ -95,6 +95,27 @@ class Design extends Model implements Purchasable
         return $this->hasMany(DesignDriver::class);
     }
 
+    /**
+     * Average rating and number of reviews for the cards, from withAvg('reviews', 'rating') + withCount('reviews') when
+     * the query loaded them, otherwise from one query (the package's averageRating()/numberOfReviews() each run one).
+     *
+     * @return array{average: float, count: int}
+     */
+    public function ratingSummary(): array
+    {
+        if (array_key_exists('reviews_count', $this->attributes)) {
+            return ['average' => (float) ($this->attributes['reviews_avg_rating'] ?? 0), 'count' => (int) $this->attributes['reviews_count']];
+        }
+
+        if ($this->relationLoaded('reviews')) {
+            return ['average' => (float) $this->reviews->avg('rating'), 'count' => $this->reviews->count()];
+        }
+
+        $row = $this->reviews()->reorder()->toBase()->selectRaw('AVG(rating) as average, COUNT(*) as total')->first();
+
+        return ['average' => (float) ($row->average ?? 0), 'count' => (int) ($row->total ?? 0)];
+    }
+
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('active', true);

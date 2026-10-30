@@ -65,7 +65,13 @@ class UserResource extends Resource
                         Forms\Components\FileUpload::make('avatar')
                             ->image()
                             ->avatar()
-                            ->directory('avatars'),
+                            ->disk('public')
+                            ->directory('avatars')
+                            ->imageCropAspectRatio('1:1')
+                            ->imageResizeMode('cover')
+                            ->imageResizeTargetWidth((string) \App\Support\Avatars::SIZE)
+                            ->imageResizeTargetHeight((string) \App\Support\Avatars::SIZE)
+                            ->helperText('Empty = the default avatar.'),
                     ]),
 
                 Forms\Components\Section::make('Verification and trial')
@@ -111,7 +117,7 @@ class UserResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('avatar')
                     ->circular()
-                    ->defaultImageUrl(url('storage/demo/default.png')),
+                    ->state(fn (User $record): string => $record->avatar()),
                 Tables\Columns\TextColumn::make('id')->sortable(),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()

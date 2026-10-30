@@ -95,6 +95,19 @@ class User extends WaveUser
             $user->syncRoles([]);
             $user->assignRole( config('wave.default_user_role', 'registered') );
         });
+
+        // The forum shows the same avatar as the site.
+        static::updated(function (self $user) {
+            if ($user->wasChanged('avatar')) {
+                \App\Jobs\SyncForumAvatar::queueFor($user);
+            }
+        });
+    }
+
+    /** The avatar URL: the user's own picture, or the site's default avatar (see App\Support\Avatars). */
+    public function avatar()
+    {
+        return \App\Support\Avatars::url($this->avatar);
     }
 
     public function designs(): HasMany

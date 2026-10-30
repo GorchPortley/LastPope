@@ -597,3 +597,33 @@ it('reports a discussion Flarum does not know, and does nothing while the forum 
 
     Http::assertSentCount(1);
 });
+
+it('uploads the users avatar to their forum account as the admin, the default one when they have none', function () {
+    Http::fake([
+        FORUM_API.'/users?*' => Http::response(['data' => [['id' => '42']]]),
+        FORUM_API.'/users/42/avatar' => Http::response(['data' => ['id' => '42']]),
+    ]);
+
+    $user = User::factory()->create(['avatar' => 'demo/default.png', 'forum_user_id' => null]);
+
+    expect(flarum()->syncAvatar($user))->toBeTrue();
+
+    $upload = Http::recorded()->map(fn (array $pair) => $pair[0])->first(fn (Request $request) => str_ends_with($request->url(), '/users/42/avatar'));
+
+    expect($upload)->not->toBeNull()
+        ->and($upload->method())->toBe('POST')
+        ->and($upload->isMultipart())->toBeTrue()
+        ->and($upload->header('Authorization')[0])->toBe('Token master-key-123; userId=1')
+        ->and($upload->data()[0]['name'])->toBe('avatar')
+        ->and($upload->data()[0]['filename'])->toBe('avatar.png')
+        ->and($upload->data()[0]['contents'])->toBe(file_get_contents(public_path('images/avatar-default.png')));
+});
+
+it('reports a refused avatar upload', function () {
+    Http::fake([
+        FORUM_API.'/users?*' => Http::response(['data' => [['id' => '42']]]),
+        FORUM_API.'/users/42/avatar' => Http::response(['errors' => [['code' => 'validation_error', 'detail' => 'Too big']]], 422),
+    ]);
+
+    flarum()->syncAvatar(User::factory()->create(['forum_user_id' => null]));
+})->throws(ForumException::class, 'upload the avatar');

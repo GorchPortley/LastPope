@@ -3,6 +3,7 @@
 namespace App\Services\Forum;
 
 use App\Models\User;
+use App\Support\Avatars;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -122,6 +123,40 @@ class FlarumClient implements ForumClient
 
             return null;
         }
+    }
+
+    public function syncAvatar(User $user): bool
+    {
+        if (! $this->usable()) {
+            return false;
+        }
+
+        $id = $this->ensureUser($user);
+
+        if ($id === null) {
+            return false;
+        }
+
+        $contents = Avatars::contents($user);
+        $extension = match ((new \finfo(FILEINFO_MIME_TYPE))->buffer($contents)) {
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+            default => 'jpg',
+        };
+
+        // Multipart, so not request() (which sends JSON). Acting as the admin, who may change anybody's avatar.
+        $response = Http::baseUrl($this->apiUrl())
+            ->acceptJson()
+            ->withHeaders(['Authorization' => 'Token '.$this->apiKey.'; userId='.$this->adminUserId])
+            ->connectTimeout($this->connectTimeout)
+            ->timeout($this->timeout)
+            ->attach('avatar', $contents, 'avatar.'.$extension)
+            ->post('users/'.$id.'/avatar');
+
+        $this->throwUnlessSuccessful($response, 'upload the avatar');
+
+        return true;
     }
 
     public function issueRememberToken(User $user): ?string

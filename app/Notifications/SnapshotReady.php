@@ -38,7 +38,7 @@ class SnapshotReady extends Notification
                 ? "Snapshot {$this->version} of {$this->name} is ready to download."
                 : "Snapshot {$this->version} of {$this->name} could not be built: {$this->error}",
             'link' => url($this->kind === 'driver' ? '/dashboard/drivers' : '/dashboard/designs'),
-            'icon' => '/storage/demo/default.png',
+            'icon' => \App\Support\Avatars::defaultUrl(),
             'user' => ['name' => config('app.name')],
             'status' => $this->error === null ? 'ready' : 'failed',
             'kind' => $this->kind,

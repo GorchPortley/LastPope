@@ -68,7 +68,7 @@ trait DescribesOrders
     protected function sender(): array
     {
         return [
-            'icon' => '/storage/demo/default.png',
+            'icon' => \App\Support\Avatars::defaultUrl(),
             'user' => ['name' => config('app.name')],
         ];
     }

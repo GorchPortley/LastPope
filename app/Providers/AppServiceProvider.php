@@ -26,6 +26,8 @@ class AppServiceProvider extends ServiceProvider
         // another person's real-time channel (see App\Support\Chatify\ChannelAuthorizer).
         $this->app->bind(\Chatify\Http\Controllers\MessagesController::class, \App\Http\Controllers\Chatify\MessagesController::class);
         $this->app->bind(\Chatify\Http\Controllers\Api\MessagesController::class, \App\Http\Controllers\Chatify\Api\MessagesController::class);
+        // Chatify's avatars come from App\Support\Avatars like everywhere else (its own avatar folder is unused here).
+        $this->app->bind('ChatifyMessenger', fn () => new \App\Support\Chatify\Messenger);
     }
 
     /**

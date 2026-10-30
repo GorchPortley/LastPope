@@ -82,15 +82,14 @@
 
 		@endfor
 	@else
+		{{-- Avatar URLs change on every upload (App\Support\Avatars), so no cache buster; the profile page sends the new URL. --}}
 		<x-filament::avatar
-            x-data="{ src: '', refreshAvatarSrc(){ this.src='{{ $src }}' + '?' + new Date().getTime() } }" 
-            x-init="refreshAvatarSrc(); $nextTick(function(){ $el.style.display='block'; })" 
-            @refresh-avatar.window="refreshAvatarSrc()" 
-            x-bind:src="src"
+			:src="$src"
+			x-data
+			@refresh-avatar.window="$event.detail?.src && ($el.src = $event.detail.src)"
 			:alt="$alt"
 			:size="$avatarSize"
-			:circular="$circular"
-		    style="display:none" />
+			:circular="$circular" />
 	@endif
 
     @if (filter_var($indicator, FILTER_VALIDATE_BOOLEAN) && $size != '2xs')

@@ -19,7 +19,7 @@ class Post extends Model
 
     /** The post's picture, or the site's woofer placeholder when it has none. */
     public function image(){
-        return filled($this->image) ? Storage::url($this->image) : asset('images/blog/post-placeholder.svg');
+        return filled($this->image) ? Storage::url($this->image) : \App\Support\VersionedAsset::url('images/blog/post-placeholder.svg');
     }
 
     public function scopePublished($query){

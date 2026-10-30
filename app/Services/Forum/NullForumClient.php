@@ -17,6 +17,11 @@ class NullForumClient implements ForumClient
         return null;
     }
 
+    public function syncAvatar(User $user): bool
+    {
+        return false;
+    }
+
     public function issueRememberToken(User $user): ?string
     {
         return null;

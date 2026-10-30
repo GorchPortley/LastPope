@@ -8,6 +8,7 @@ The guides link to each other with the blog URL `/blog/guides/<slug>`. Create ea
 
 | File | Post title | Slug |
 |---|---|---|
+| `introduction-to-sdlabs.md` | Introduction to SDLabs | `introduction-to-sdlabs` |
 | `adding-a-driver.md` | Adding a driver to the database | `adding-a-driver` |
 | `publishing-a-design.md` | Publishing a speaker design | `publishing-a-design` |
 | `getting-paid-with-stripe.md` | Getting paid: setting up Stripe | `getting-paid-with-stripe` |

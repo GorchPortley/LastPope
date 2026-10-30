@@ -33,19 +33,19 @@
                     <a href="/drivers/driver/{{ $driver->id }}" data-ga4-click="{{ $select }}" class="text-ink no-underline after:absolute after:inset-0 after:content-['']">{{ $driver->model }}</a>
                 </h2>
                 <p class="truncate text-sm text-ink-2">By: {{ $driver->brand }}</p>
-                <p class="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs leading-snug text-ink-2">
-                    @if($driver->size)<span>{{ $driver->size }}</span>@endif
-                    @if($driver->impedance)<span>{{ $driver->impedance }} &Omega;</span>@endif
-                    @if($driver->power)<span>{{ $driver->power }} W</span>@endif
-                    <span>{{ $designCount }} {{ \Illuminate\Support\Str::plural('design', $designCount) }}</span>
-                </p>
+                <x-marketing.card-specs :rows="[
+                    ['Size', $driver->size ? $driver->size.'″' : null],
+                    ['Impedance', $driver->impedance ? $driver->impedance.' Ω' : null],
+                    ['Power', $driver->power ? $driver->power.' W' : null],
+                    ['Used in', $designCount.' '.\Illuminate\Support\Str::plural('design', $designCount)],
+                ]" />
                 <div class="mt-auto flex items-center justify-between gap-2.5 border-t border-dotted border-rule pt-2.5">
                     @if($stocked)
                         <span class="font-condensed text-base font-bold leading-tight text-green-700" data-driver-in-stock>In stock at SDLabs &middot; {{ money($stocked->price_cents) }}</span>
                     @elseif($driver->msrp_cents)
-                        <span class="font-mono text-xs text-ink-2">MSRP {{ money((int) $driver->msrp_cents) }}</span>
+                        <span class="text-sm text-ink-2">MSRP {{ money((int) $driver->msrp_cents) }}</span>
                     @else
-                        <span class="font-mono text-xs text-ink-3">{{ $driver->tag }}</span>
+                        <span class="text-sm text-ink-3">{{ $driver->tag }}</span>
                     @endif
                 </div>
             </div>

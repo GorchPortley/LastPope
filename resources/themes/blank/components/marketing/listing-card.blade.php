@@ -33,11 +33,11 @@
             <a href="{{ $url }}" data-ga4-click="{{ $select }}" class="text-ink no-underline after:absolute after:inset-0 after:content-['']">{{ $listing->title }}</a>
         </h2>
         <p class="truncate text-sm text-ink-2">By: {{ $shop }}</p>
-        <p class="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs leading-snug text-ink-2">
-            <span>{{ $listing->condition->label() }}</span>
-            <span>Ships from {{ $listing->ships_from_country }}</span>
-            <span>{{ $listing->quantity }} in stock</span>
-        </p>
+        <x-marketing.card-specs :rows="[
+            ['Condition', $listing->condition->label()],
+            ['Ships from', $listing->ships_from_country],
+            ['In stock', (string) $listing->quantity],
+        ]" />
         <div class="mt-auto flex items-center justify-between gap-2.5 border-t border-dotted border-rule pt-2.5">
             <span class="font-condensed text-xl font-bold leading-none text-ink">{{ money($listing->price_cents) }}@if ($listing->isLot()) <span class="font-sans text-xs font-normal text-ink-2">per {{ $listing->units_per_lot === 2 ? 'pair' : 'set' }}</span>@endif</span>
             <button type="button" @click="showSpecs = true" x-show="!showSpecs" class="sd-btn sd-btn-sm relative z-10 whitespace-nowrap">Specs</button>
@@ -63,27 +63,27 @@
                 <tbody>
                     <tr class="border-b border-hair">
                         <td class="py-2 text-ink-2">Condition</td>
-                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->condition->label() }}</td>
+                        <td class="py-2 text-right text-sm font-medium tabular-nums text-ink">{{ $listing->condition->label() }}</td>
                     </tr>
                     <tr class="border-b border-hair">
                         <td class="py-2 text-ink-2">Sold as</td>
-                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $soldAs }}</td>
+                        <td class="py-2 text-right text-sm font-medium tabular-nums text-ink">{{ $soldAs }}</td>
                     </tr>
                     <tr class="border-b border-hair">
                         <td class="py-2 text-ink-2">In stock</td>
-                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->quantity }}</td>
+                        <td class="py-2 text-right text-sm font-medium tabular-nums text-ink">{{ $listing->quantity }}</td>
                     </tr>
                     <tr class="border-b border-hair">
                         <td class="py-2 text-ink-2">Shipping ({{ $listing->ships_from_country }})</td>
-                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $domestic }}</td>
+                        <td class="py-2 text-right text-sm font-medium tabular-nums text-ink">{{ $domestic }}</td>
                     </tr>
                     <tr class="border-b border-hair">
                         <td class="py-2 text-ink-2">Handling time</td>
-                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->handling_days }} {{ \Illuminate\Support\Str::plural('day', $listing->handling_days) }}</td>
+                        <td class="py-2 text-right text-sm font-medium tabular-nums text-ink">{{ $listing->handling_days }} {{ \Illuminate\Support\Str::plural('day', $listing->handling_days) }}</td>
                     </tr>
                     <tr class="border-b border-hair">
                         <td class="py-2 text-ink-2">Returns</td>
-                        <td class="py-2 text-right font-mono text-xs text-ink">{{ $listing->returns_accepted ? 'Accepted' : 'No returns' }}</td>
+                        <td class="py-2 text-right text-sm font-medium tabular-nums text-ink">{{ $listing->returns_accepted ? 'Accepted' : 'No returns' }}</td>
                     </tr>
                 </tbody>
             </table>

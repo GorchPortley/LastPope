@@ -53,3 +53,11 @@ it('uses the uploaded picture when a post has one', function () {
 
     expect($post->image())->toEndWith('/storage/posts/cover.jpg');
 });
+
+it('sets the post body in the same text styles as design and driver pages', function () {
+    $post = blogPost(['body' => '<h2>Section</h2><p>Body text.</p>']);
+
+    $this->get('/blog/guides/'.$post->slug)->assertOk()
+        ->assertSee('class="sd-rich" data-post-body', false)
+        ->assertDontSee('prose-lg', false);
+});

@@ -96,6 +96,10 @@
                             <a href="{{ route('register') }}" class="ml-2 border-2 border-brand-700 bg-brand-800 px-5 py-2.5 font-condensed text-[15px] font-semibold uppercase tracking-[0.05em] text-white transition duration-150 hover:bg-brand-700" type="button">Register</a>
                         </div>
                     @else
+                        {{-- a direct way to the dashboard (it is also in the user menu) --}}
+                        <a href="{{ route('dashboard') }}" class="hidden items-center gap-2 border-2 border-white/70 px-4 py-2 font-condensed text-[15px] font-semibold uppercase tracking-[0.05em] text-white transition duration-150 hover:border-accent-300 hover:text-accent-200 lg:inline-flex mr-4" data-header-dashboard>
+                            <x-phosphor-squares-four class="h-4 w-4" aria-hidden="true" />Dashboard
+                        </a>
                         <div class="hidden lg:block mr-6">
                             <x-app.user-menu position="top"/>
                         </div>
@@ -173,6 +177,7 @@
                             <a href="{{ route('register') }}" class="sd-btn sd-btn-go w-full">Register</a>
                         </div>
                     @else
+                        <a href="{{ route('dashboard') }}" class="sd-btn sd-btn-go mb-3 w-full" data-header-dashboard>Dashboard</a>
                         <x-app.user-menu position="bottom" class="border-black" />
                     @endif
                 </div>

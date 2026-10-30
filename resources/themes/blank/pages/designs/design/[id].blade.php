@@ -42,6 +42,9 @@ new class extends Component {
             'snapshots' => $design->snapshots->sortByDesc('id')->values(),
             // Same rule as the buy box and the download route: designer, admin, an entitlement, or a free design.
             'hasAccess' => $user !== null && $user->hasAccessTo($design, false),
+            // A paid design shows its summary, response, specs and file list to everyone; the description, the drivers
+            // and the parts list only to people with access (they are what the buyer pays for). Not sent otherwise.
+            'locked' => (int) $design->price_cents > 0 && ! ($user !== null && $user->hasAccessTo($design, false)),
             // Kits and finished speakers members sell, built from this design.
             'builds' => $design->listings()->marketplace()->forSale()
                 ->with(['seller.sellerProfile', 'driver', 'design'])->latest()->get(),
@@ -119,7 +122,9 @@ new class extends Component {
                             </a>
                         </p>
 
-                        <livewire:buy-box :purchasable="$design" label="Plans, drawings and measurements" />
+                        <div id="buy" class="scroll-mt-16">
+                            <livewire:buy-box :purchasable="$design" label="Plans, drawings and measurements" />
+                        </div>
 
                         <table class="w-full border-collapse text-[15px]" data-design-specs>
                             <tbody class="[&_td]:border-b [&_td]:border-dotted [&_td]:border-rule [&_td]:py-1.5 [&_td:last-child]:text-right [&_td:last-child]:font-mono [&_td:last-child]:text-[13px] [&_td:last-child]:tabular-nums [&_tr:last-child_td]:border-b-0">
@@ -172,7 +177,12 @@ new class extends Component {
 {!! $css !!}
                     </style>
                 @endif
-                @if ($aboutHtml !== '')
+                @if ($locked)
+                    <div class="grid gap-7">
+                        <x-design.rich :content="$design->summary" :design="$design" class="text-[19px]" data-design-summary />
+                        <x-design.locked what="The full description: build notes, the crossover and how it was tuned." />
+                    </div>
+                @elseif ($aboutHtml !== '')
                     <div class="grid gap-7">
                         <x-design.rich :content="$design->summary" :design="$design" class="text-[19px]" data-design-summary />
                         <x-design.rich :content="$design->description" :design="$design" data-design-description />
@@ -184,6 +194,9 @@ new class extends Component {
 
             {{-- Drivers --}}
             <x-design.section id="drivers" title="Drivers" hint="Bar = the band each driver plays, on a 20 Hz to 20 kHz axis">
+                @if ($locked)
+                    <x-design.locked what="Every driver with the band it plays, its box volume and the designer's notes for it." />
+                @else
                 @if ($design->components->isEmpty())
                     <p class="text-sm text-ink-3">No drivers listed yet.</p>
                 @else
@@ -249,6 +262,7 @@ new class extends Component {
                         @endforeach
                     </div>
                 @endif
+                @endif
             </x-design.section>
 
             {{-- Parts list --}}
@@ -256,6 +270,9 @@ new class extends Component {
                 $parts = collect((array) $design->bill_of_materials)->filter(fn ($value, $key) => filled($key) || filled($value));
             @endphp
             <x-design.section id="parts" title="Parts list" hint="From the designer's bill of materials">
+                @if ($locked)
+                    <x-design.locked :what="'The parts list'.($parts->isNotEmpty() ? ' ('.$parts->count().' '.\Illuminate\Support\Str::plural('line', $parts->count()).')' : '').'.'" />
+                @else
                 @if ($parts->isEmpty())
                     <p class="text-sm text-ink-3">No parts list yet.</p>
                 @else
@@ -274,6 +291,7 @@ new class extends Component {
                             </tbody>
                         </table>
                     </div>
+                @endif
                 @endif
             </x-design.section>
 

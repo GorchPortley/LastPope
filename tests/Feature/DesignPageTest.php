@@ -155,3 +155,49 @@ it('lets an admin save a design\'s own CSS from the Advanced section', function 
 
     expect($design->fresh()->description_css)->toBe('h2 { color: red }');
 });
+
+it('shows a paid design\'s summary to everyone but sends its description, drivers and parts list only to people with access', function () {
+    $design = documentedDesign([
+        'price_cents' => 2900,
+        'summary' => '<p>Public summary of the paid design.</p>',
+        'description' => '<p>Secret build notes for buyers.</p>',
+    ]);
+
+    $locked = fn ($response) => $response->assertOk()
+        ->assertSee('Public summary of the paid design.')
+        ->assertSee('data-design-locked', false)
+        ->assertDontSee('Secret build notes for buyers.')
+        ->assertDontSee('Driver notes about the woofer.')
+        ->assertDontSee('18 mm birch plywood')
+        ->assertDontSee('12.5 L')
+        // the file list and the response stay visible: they show what the buyer gets
+        ->assertSee('cut-list.pdf');
+
+    $locked($this->get('/designs/design/'.$design->id));
+    $locked($this->actingAs(\App\Models\User::factory()->create())->get('/designs/design/'.$design->id));
+
+    $buyer = \App\Models\User::factory()->create();
+    $buyer->grantEntitlement($design, \App\Enums\EntitlementSource::PURCHASE);
+
+    foreach ([$buyer, $design->designer] as $user) {
+        $this->actingAs($user)->get('/designs/design/'.$design->id)->assertOk()
+            ->assertSee('Secret build notes for buyers.')
+            ->assertSee('Driver notes about the woofer.')
+            ->assertSee('18 mm birch plywood')
+            ->assertDontSee('data-design-locked', false);
+    }
+});
+
+it('shows everything of a free design to everyone', function () {
+    $design = documentedDesign(['price_cents' => 0, 'description' => '<p>Free build notes.</p>']);
+
+    $this->get('/designs/design/'.$design->id)->assertOk()
+        ->assertSee('Free build notes.')->assertSee('18 mm birch plywood')
+        ->assertDontSee('data-design-locked', false);
+});
+
+it('gives signed-in members a dashboard link in the header', function () {
+    $this->get('/designs')->assertOk()->assertDontSee('data-header-dashboard', false);
+    $this->actingAs(\App\Models\User::factory()->create())->get('/designs')->assertOk()
+        ->assertSee('data-header-dashboard', false)->assertSee(route('dashboard'), false);
+});

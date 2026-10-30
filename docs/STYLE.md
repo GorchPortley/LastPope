@@ -43,7 +43,7 @@ The header and footer stay dark (`bg-header`, `bg-footer`). Seasonal themes reco
 - `.sd-btn-go`: the one main action of a page or card (purple). Use `.sd-btn-sm` in tables and rows.
 - `.sd-pill`: type tag on photos (ink). `.sd-seal`: "Official" (amber).
 - `.sd-title`, `.sd-label`, `.sd-num`.
-- `.sd-rich`: the default look for text members write in the rich editor (summary, description, driver notes). Always use it for that content.
+- `.sd-rich`: the default look for text members write in the rich editor (summary, description, driver notes). Always use it for that content. It takes the full width of its section, as the editor does in the form, so text alignment matches.
 
 ## Cards (designs, drivers, listings)
 

@@ -64,6 +64,11 @@ new class extends Component {
             return Driver::distinct('category')->pluck('category');
         });
 
+        // Published drivers per category, for the counts next to the filter list.
+        $categoryCounts = cache()->remember('driver-category-counts', 3600, function() {
+            return Driver::query()->where('active', 1)->selectRaw('category, count(*) as total')->groupBy('category')->pluck('total', 'category');
+        });
+
         $impedances = cache()->remember('driver-impedances', 3600, function() {
             return Driver::distinct('impedance')->pluck('impedance')->sort();
         });
@@ -78,121 +83,133 @@ new class extends Component {
             'impedances' => $impedances,
             'maxPower' => $maxPower,
             'categories' => $categories,
+            'categoryCounts' => $categoryCounts,
         ];
     }
 } ?>
 
 <x-layouts.marketing>
     @volt('drivers')
-    <div>
-        <div class="flex h-full w-full bg-gray-300 rounded-md">
-
-            <livewire:banner-display location="driver_page">
-        </div>
-        <div class="lg:flex flex-row w-full h-full mt-5">
-            <div class=" h-full lg:w-1/5 rounded-md p-4 bg-white shadow">
-                <form method="GET" class="space-y-6">
-
-                    <!-- Sort -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
-                        <div class="flex gap-2">
-                            <select name="sort" class="w-1/2 rounded-md border-gray-300">
-                                <option value="created_at" {{ request('sort') === 'created_at' ? 'selected' : '' }}>Date</option>
-                                <option value="power_handling" {{ request('sort') === 'power_handling' ? 'selected' : '' }}>Power</option>
-                                <option value="designs" {{request('sort') === 'designs'? 'selected' : ''}}>Design Number</option>
-                            </select>
-                            <select name="direction" class="w-1/2 rounded-md border-gray-300">
-                                <option value="asc" {{ request('direction') === 'asc' ? 'selected' : '' }}>Ascending</option>
-                                <option value="desc" {{ request('direction') === 'desc' ? 'selected' : '' }}>Descending</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Manufacturer Filter -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Manufacturer</label>
-                        <select name="manufacturer" class="w-full rounded-md border-gray-300">
-                            <option value="">All Manufacturers</option>
-                            @foreach($manufacturers as $manufacturer)
-                                <option value="{{ $manufacturer }}" {{ request('manufacturer') === $manufacturer ? 'selected' : '' }}>
-                                    {{ $manufacturer }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <!-- Category Filter -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                        <select name="category" class="w-full rounded-md border-gray-300">
-                            <option value="">All Categories</option>
-                            @foreach($categories as $category)
-                                <option value="{{ $category }}" {{ request('category') === $category ? 'selected' : '' }}>
-                                    {{ $category }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <!-- Impedance Filter -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Impedance (Ω)</label>
-                        <select name="impedance" class="w-full rounded-md border-gray-300">
-                            <option value="">All Impedances</option>
-                            @foreach($impedances as $impedance)
-                                <option value="{{ $impedance }}" {{ request('impedance') == $impedance ? 'selected' : '' }}>
-                                    {{ $impedance }}Ω
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <!-- Power Handling Filter -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Power Handling (W)</label>
-                        <div class="flex items-center gap-2">
-                            <input
-                                type="number"
-                                name="min_power"
-                                value="{{ request('min_power') }}"
-                                placeholder="Min"
-                                min="0"
-                                max="{{ $maxPower }}"
-                                class="w-1/2 rounded-md border-gray-300"
-                            >
-                            <span>-</span>
-                            <input
-                                type="number"
-                                name="max_power"
-                                value="{{ request('max_power') }}"
-                                placeholder="Max"
-                                min="0"
-                                max="{{ $maxPower }}"
-                                class="w-1/2 rounded-md border-gray-300"
-                            >
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="flex gap-2">
-                        <x-button type="submit" class="flex-1 px-4 py-2">
-                            Apply Filters
-                        </x-button>
-                        <a href="{{ request()->url() }}" class="flex-1 px-4 py-2 bg-gray-100 text-center text-gray-700 rounded-md hover:bg-gray-200">
-                            Clear
-                        </a>
-                    </div>
-                </form>
+    <div class="min-h-[60vh] bg-paper">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="pt-4">
+                <livewire:banner-display location="driver_page">
             </div>
 
-            <div class="flex flex-col h-full w-full lg:w-4/5 rounded-md lg:pl-6">
-                <x-marketing.driver-card-container
-                    :drivers="$drivers"
-                />
-                <div class="flex gap-4 justify-center mt-8">
-                    {{ $drivers->links() }}
-                </div>
+            <div class="grid gap-7 pb-12 pt-6 lg:grid-cols-[230px_minmax(0,1fr)]" x-data="{ filters: false }">
+                <aside class="lg:self-start">
+                    <button type="button" @click="filters = ! filters" class="sd-btn mb-4 w-full justify-between lg:hidden" :aria-expanded="filters">
+                        <span>Filters</span>
+                        <span x-text="filters ? '-' : '+'" aria-hidden="true"></span>
+                    </button>
+
+                    <form id="driver-filters" method="GET" :class="filters ? 'grid' : 'hidden lg:grid'" class="gap-5">
+                        <!-- Category Filter -->
+                        <fieldset>
+                            <legend class="sd-label mb-2 w-full border-b border-rule pb-1.5 text-ink">Category</legend>
+                            <label class="flex cursor-pointer items-center justify-between gap-2 py-1 text-[15px] text-ink">
+                                <span class="flex items-center gap-2"><input type="radio" name="category" value="" class="h-4 w-4 border-rule text-brand-800 focus:ring-brand-800" {{ request('category') ? '' : 'checked' }}> All</span>
+                                <em class="font-mono text-xs not-italic text-ink-3">{{ $categoryCounts->sum() }}</em>
+                            </label>
+                            @foreach($categories as $category)
+                                <label class="flex cursor-pointer items-center justify-between gap-2 py-1 text-[15px] text-ink">
+                                    <span class="flex items-center gap-2"><input type="radio" name="category" value="{{ $category }}" class="h-4 w-4 border-rule text-brand-800 focus:ring-brand-800" {{ request('category') === $category ? 'checked' : '' }}> {{ $category }}</span>
+                                    <em class="font-mono text-xs not-italic text-ink-3">{{ $categoryCounts[$category] ?? 0 }}</em>
+                                </label>
+                            @endforeach
+                        </fieldset>
+
+                        <!-- Manufacturer Filter -->
+                        <div>
+                            <label for="f-manufacturer" class="sd-label mb-2 block w-full border-b border-rule pb-1.5 text-ink">Manufacturer</label>
+                            <select id="f-manufacturer" name="manufacturer" class="w-full rounded-none border-rule bg-white py-1.5 text-sm focus:border-ink focus:ring-0">
+                                <option value="">All Manufacturers</option>
+                                @foreach($manufacturers as $manufacturer)
+                                    <option value="{{ $manufacturer }}" {{ request('manufacturer') === $manufacturer ? 'selected' : '' }}>
+                                        {{ $manufacturer }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <!-- Impedance Filter -->
+                        <div>
+                            <label for="f-impedance" class="sd-label mb-2 block w-full border-b border-rule pb-1.5 text-ink">Impedance (&Omega;)</label>
+                            <select id="f-impedance" name="impedance" class="w-full rounded-none border-rule bg-white py-1.5 font-mono text-sm focus:border-ink focus:ring-0">
+                                <option value="">All Impedances</option>
+                                @foreach($impedances as $impedance)
+                                    <option value="{{ $impedance }}" {{ request('impedance') == $impedance ? 'selected' : '' }}>
+                                        {{ $impedance }}&Omega;
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <!-- Power Handling Filter -->
+                        <fieldset>
+                            <legend class="sd-label mb-2 w-full border-b border-rule pb-1.5 text-ink">Power handling (W)</legend>
+                            <div class="flex items-center gap-2">
+                                <input
+                                    type="number"
+                                    name="min_power"
+                                    value="{{ request('min_power') }}"
+                                    placeholder="Min"
+                                    aria-label="Minimum power"
+                                    min="0"
+                                    max="{{ $maxPower }}"
+                                    class="w-1/2 rounded-none border-rule bg-white py-1.5 font-mono text-sm focus:border-ink focus:ring-0"
+                                >
+                                <span class="text-ink-3">-</span>
+                                <input
+                                    type="number"
+                                    name="max_power"
+                                    value="{{ request('max_power') }}"
+                                    placeholder="Max"
+                                    aria-label="Maximum power"
+                                    min="0"
+                                    max="{{ $maxPower }}"
+                                    class="w-1/2 rounded-none border-rule bg-white py-1.5 font-mono text-sm focus:border-ink focus:ring-0"
+                                >
+                            </div>
+                        </fieldset>
+
+                        <!-- Action Buttons -->
+                        <div class="flex gap-2">
+                            <button type="submit" class="sd-btn sd-btn-go sd-btn-sm flex-1">Apply filters</button>
+                            <a href="{{ request()->url() }}" class="sd-btn sd-btn-sm flex-1">Clear</a>
+                        </div>
+                    </form>
+                </aside>
+
+                <section class="min-w-0">
+                    <!-- Top bar: heading, result count and sort -->
+                    <div class="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+                        <div>
+                            <h1 class="sd-title text-3xl sm:text-4xl">Drivers</h1>
+                            <p class="mt-1.5 font-mono text-[13px] text-ink-2" data-result-count>{{ number_format($drivers->total()) }} {{ \Illuminate\Support\Str::plural('driver', $drivers->total()) }}</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 text-sm">
+                            <label class="sd-label" for="driver-sort">Sort</label>
+                            <select id="driver-sort" name="sort" form="driver-filters" onchange="this.form.submit()" class="rounded-none border-rule bg-white py-1.5 text-sm focus:border-ink focus:ring-0">
+                                <option value="created_at" {{ request('sort') === 'created_at' ? 'selected' : '' }}>Date</option>
+                                <option value="power_handling" {{ request('sort') === 'power_handling' ? 'selected' : '' }}>Power</option>
+                                <option value="designs" {{ request('sort') === 'designs' ? 'selected' : '' }}>Design Number</option>
+                            </select>
+                            <select name="direction" form="driver-filters" aria-label="Sort direction" onchange="this.form.submit()" class="rounded-none border-rule bg-white py-1.5 text-sm focus:border-ink focus:ring-0">
+                                <option value="asc" {{ request('direction') === 'asc' ? 'selected' : '' }}>Ascending</option>
+                                <option value="desc" {{ request('direction') !== 'asc' ? 'selected' : '' }}>Descending</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <x-marketing.driver-card-container
+                        :drivers="$drivers"
+                        :padded="false"
+                    />
+                    <div class="mt-8 flex justify-center gap-4">
+                        {{ $drivers->links() }}
+                    </div>
+                </section>
             </div>
         </div>
     </div>

@@ -1,145 +1,55 @@
+{{--
+    A grid of design cards (docs/STYLE.md "Cards"): photo first (4:3), type pill and Official seal on it, then name,
+    byline, one row of mono specs, a dotted rule, price and rating. The whole card is a link (stretched on the name).
+    Eager-load designer.roles, designer.sellerProfile and withAvg('reviews','rating')/withCount('reviews') (and
+    withCount('components') for the driver count) so the grid costs no extra queries.
+--}}
 @props([
     'designs',
-    'cols' => 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
+    'cols' => 'grid-cols-[repeat(auto-fill,minmax(250px,1fr))]',
     'padded' => true,
     'listName' => 'Designs',
 ])
 <div>
 <x-analytics.events :events="count($designs) ? [\App\Support\Analytics\Ga4::itemList($listName, $designs)] : []" />
-<div {{ $attributes->class(['grid gap-4', $cols, 'p-4' => $padded]) }}>
+<div {{ $attributes->class(['grid gap-[18px]', $cols, 'p-4' => $padded]) }}>
     @foreach($designs as $design)
         @php($select = \App\Support\Analytics\Ga4::selectItem($listName, $design))
         @php($rating = $design->ratingSummary())
-        <div x-data="{ showSpecs: false }" wire:key="{{ $design->id }}" class="relative flex flex-col bg-white rounded-lg border-2 border-gray-100 hover:shadow-lg shadow-sm overflow-hidden h-full">
-            <!-- Design image section -->
-            <div class="relative pt-4 px-4">
-                <!-- Official badge -->
-                @if($design->official)
-                    <div class="absolute right-6 top-6 bg-yellow-400 text-white px-2 py-1 rounded-full flex items-center gap-1 z-10">
-                        <i class="ph ph-seal-check"></i>
-                    </div>
+        @php($cover = is_array($design->card_image) ? ($design->card_image[0] ?? null) : $design->card_image)
+        @php($driverCount = array_key_exists('components_count', $design->getAttributes()) ? (int) $design->components_count : null)
+        <article wire:key="{{ $design->id }}" class="group relative flex flex-col border border-rule bg-white transition-colors hover:border-ink" data-design-card="{{ $design->id }}">
+            <div class="relative aspect-[4/3] overflow-hidden bg-hair">
+                <x-marketing.card-image :path="$cover" :alt="$design->name" fit="cover" class="transition-transform duration-300 group-hover:scale-[1.04]" />
+                @if($design->category)
+                    <span class="sd-pill absolute left-2.5 top-2.5 max-w-[60%] truncate">{{ $design->category }}</span>
                 @endif
-                
-                <a href="/designs/design/{{$design->id}}" data-ga4-click="{{ $select }}" class="block w-full">
-                    <div class="flex justify-center items-center h-48 md:h-56">
-                        @php($cover = is_array($design->card_image) ? ($design->card_image[0] ?? null) : $design->card_image)
-                        <x-marketing.card-image :path="$cover" :alt="$design->name" />
-                    </div>
-                </a>
+                @if($design->official)
+                    <span class="sd-seal absolute right-2.5 top-2.5">Official</span>
+                @endif
             </div>
-            
-            <!-- Design details section -->
-            <div class="flex flex-col flex-grow p-4">
-                <h2 class="text-lg font-semibold text-center mb-1 line-clamp-1">{{$design->name}}</h2>
-                <p class="text-gray-600 text-center text-sm mb-1 line-clamp-1">By: {{$design->designer?->name}}</p>
-                <p class="text-gray-800 text-center text-sm mb-3 line-clamp-1">{{$design->tag ?? 'A Nice Design'}}</p>
-                
-                <!-- Specs table -->
-                <div class="mt-auto">
-                    <table class="w-full mb-4 text-sm">
-                        <tbody>
-                            <tr>
-                                <td class="py-1 font-medium">Category</td>
-                                <td class="text-gray-600 text-right line-clamp-1">{{$design->category}}</td>
-                            </tr>
-                            <tr>
-                                <td class="py-1 font-medium">Price</td>
-                                <td class="text-gray-600 text-right">{{ $design->price_cents > 0 ? money($design->price_cents) : 'Free' }}</td>
-                            </tr>
-                            <tr>
-                                <td class="py-1 font-medium">Build Cost</td>
-                                <td class="text-gray-600 text-right">{{ money((int) $design->build_cost_cents) }}</td>
-                            </tr>
-                            <tr>
-                                <td class="py-1 font-medium">Rating</td>
-                                <td class="text-gray-600 text-right">
-                                    <div class="flex items-center justify-end">
-                                        @if($rating['average'] > 0)
-                                            <div class="flex">
-                                                @for($i = 1; $i <= 5; $i++)
-                                                    @if($i <= round($rating['average']))
-                                                        <svg class="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                                        </svg>
-                                                    @else
-                                                        <svg class="w-3 h-3 text-gray-300" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                                        </svg>
-                                                    @endif
-                                                @endfor
-                                            </div>
-                                            <span class="ml-1">({{ $rating['count'] }})</span>
-                                        @else
-                                            <span>No ratings</span>
-                                        @endif
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
 
-                <!-- Button section -->
-                <div class="flex mt-2 gap-2">
-                    <x-button tag="a" href="/designs/design/{{$design->id}}" data-ga4-click="{{ $select }}" class="flex-grow">View</x-button>
-                    <x-button 
-                        @click="showSpecs = true" 
-                        x-show="!showSpecs" 
-                        color="success" 
-                        class="px-3 whitespace-nowrap">
-                        Specs
-                    </x-button>
+            <div class="flex flex-1 flex-col gap-2 px-3.5 pb-3.5 pt-3">
+                <h2 class="font-condensed text-[21px] font-bold leading-[1.1] text-ink line-clamp-2">
+                    <a href="/designs/design/{{ $design->id }}" data-ga4-click="{{ $select }}" class="text-ink no-underline after:absolute after:inset-0 after:content-['']">{{ $design->name }}</a>
+                </h2>
+                <p class="truncate text-sm text-ink-2">By: {{ $design->designer?->name }}</p>
+                <p class="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs leading-snug text-ink-2">
+                    @if($design->impedance)<span>{{ $design->impedance }} &Omega;</span>@endif
+                    @if($design->power)<span>{{ $design->power }} W</span>@endif
+                    @if($driverCount)<span>{{ $driverCount }} {{ \Illuminate\Support\Str::plural('driver', $driverCount) }}</span>@endif
+                    @if($design->build_cost_cents)<span>Build {{ money((int) $design->build_cost_cents) }}</span>@endif
+                </p>
+                <div class="mt-auto flex items-center justify-between gap-2.5 border-t border-dotted border-rule pt-2.5">
+                    @if($design->price_cents > 0)
+                        <span class="font-condensed text-xl font-bold leading-none text-ink">{{ money($design->price_cents) }}</span>
+                    @else
+                        <span class="font-condensed text-xl font-bold leading-none text-green-700">Free</span>
+                    @endif
+                    <x-marketing.stars :average="$rating['average']" :count="$rating['count']" />
                 </div>
             </div>
-            
-            <!-- Sliding specs panel -->
-            <div
-                x-show="showSpecs"
-                x-transition:enter="transition ease-out duration-300"
-                x-transition:enter-start="translate-y-full"
-                x-transition:enter-end="translate-y-0"
-                x-transition:leave="transition ease-in duration-300"
-                x-transition:leave-start="translate-y-0"
-                x-transition:leave-end="translate-y-full"
-                class="absolute inset-0 bg-white shadow-lg flex flex-col">
-                
-                <div class="p-4 flex-grow overflow-auto">
-                    <h3 class="text-lg font-semibold text-center mb-4">{{$design->name}} Specifications</h3>
-                    
-                    <table class="w-full border-collapse text-sm">
-                        <tbody>
-                            <tr class="border-b">
-                                <td class="py-2 font-medium">Impedance</td>
-                                <td class="py-2 text-right">{{$design->impedance}}Ω</td>
-                            </tr>
-                            <tr class="border-b">
-                                <td class="py-2 font-medium">Power Handling</td>
-                                <td class="py-2 text-right">{{$design->power}}W</td>
-                            </tr>
-                            <tr class="border-b">
-                                <td class="py-2 font-medium">Category</td>
-                                <td class="py-2 text-right">{{$design->category}}</td>
-                            </tr>
-                            <tr class="border-b">
-                                <td class="py-2 font-medium">Build Cost</td>
-                                <td class="py-2 text-right">{{ money((int) $design->build_cost_cents) }}</td>
-                            </tr>
-                            <tr class="border-b">
-                                <td class="py-2 font-medium">Price</td>
-                                <td class="py-2 text-right">{{ $design->price_cents > 0 ? money($design->price_cents) : 'Free' }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div class="p-4 pt-0">
-                    <div class="flex gap-2">
-                    <x-button tag="a" href="/designs/design/{{$design->id}}" data-ga4-click="{{ $select }}" class="flex-grow">View Details</x-button>
-                        <x-button @click="showSpecs = false" color="danger" class="flex-grow">Close</x-button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        </article>
     @endforeach
 </div>
 </div>

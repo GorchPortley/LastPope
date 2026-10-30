@@ -2,6 +2,7 @@
 
 namespace App\Listeners;
 
+use App\Jobs\SyncForumAvatar;
 use App\Services\Forum\ForumClient;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -35,8 +36,15 @@ class UserCreated implements ShouldQueue
             return;
         }
 
-        if ($this->forum->ensureUser($event->user) === null && $this->attempts() < $this->tries) {
-            $this->release(30);
+        if ($this->forum->ensureUser($event->user) === null) {
+            if ($this->attempts() < $this->tries) {
+                $this->release(30);
+            }
+
+            return;
         }
+
+        // The new forum account gets the site avatar (the default one until they upload a picture).
+        SyncForumAvatar::queueFor($event->user);
     }
 }

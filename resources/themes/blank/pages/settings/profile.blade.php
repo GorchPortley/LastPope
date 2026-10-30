@@ -65,13 +65,11 @@
 		}
 
 		private function saveNewUserAvatar(){
-			$path = 'avatars/' . auth()->user()->username . '.png';
-			$image = \Intervention\Image\ImageManagerStatic::make($this->avatar)->resize(800, 800);
-			Storage::disk('public')->put($path, $image->encode());
-			auth()->user()->avatar = $path;
-			auth()->user()->save();
+			// New file name on every upload (see App\Support\Avatars): browsers cache images for a year.
+			\App\Support\Avatars::store(auth()->user(), $this->avatar);
+			$this->avatar = null;
 			// This will update/refresh the avatar in the sidebar
-			$this->js('window.dispatchEvent(new CustomEvent("refresh-avatar"));');
+			$this->js('window.dispatchEvent(new CustomEvent("refresh-avatar", { detail: { src: '.json_encode(auth()->user()->avatar()).' } }));');
 		}
 
 		private function saveFormFields($state){
@@ -167,7 +165,7 @@
 			<form wire:submit="save" class="w-full">
 				<div class="relative flex flex-col mt-5 lg:px-10">
 					<div class="relative flex-shrink-0 w-32 h-32 cursor-pointer group">
-						<img id="preview" src="{{ auth()->user()->avatar() . '?' . time() }}" class="w-32 h-32 border border-black">
+						<img id="preview" src="{{ auth()->user()->avatar() }}" class="w-32 h-32 border border-black object-cover">
                         
 						
 						<div class="absolute inset-0 w-full h-full">

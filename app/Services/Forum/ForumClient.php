@@ -27,6 +27,13 @@ interface ForumClient
     public function ensureUser(User $user): ?int;
 
     /**
+     * Upload the user's site avatar (or the site's default avatar) as their Flarum avatar, creating the Flarum account
+     * when needed. False when the forum is off or the account could not be made. Throws ForumException when Flarum
+     * refuses the upload.
+     */
+    public function syncAvatar(User $user): bool;
+
+    /**
      * Log the user in at Flarum and return the "remember" access token that goes into the
      * `flarum_remember` cookie (path /forum). Creates the Flarum account on first use.
      */

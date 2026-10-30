@@ -9,10 +9,9 @@
     <button @click="dropdownOpen=!dropdownOpen"
             class="flex px-3 py-2.5 w-full text-[13px] hover:bg-gray-100 justify-start justify-between items-center w-full hover:text-black border border-white space-x-1.5 overflow-hidden group-hover:autoflow-auto items">
         <span class="relative flex items-center space-x-2">
-            <img
-                x-data="{ src: '', refreshAvatarSrc(){ this.src='{{ auth()->user()->avatar() }}' + '?' + new Date().getTime() } }"
-                x-init="refreshAvatarSrc()" @refresh-avatar.window="refreshAvatarSrc()" :src="src"
-                class="w-5 h-5 border border-black" alt="{{ auth()->user()->name }}" x-cloak/>
+            {{-- Avatars get a new file name on every upload, so the browser may cache them; the profile page sends the new URL. --}}
+            <img src="{{ auth()->user()->avatar() }}" @refresh-avatar.window="$event.detail?.src && ($el.src = $event.detail.src)"
+                width="20" height="20" class="w-5 h-5 border border-black object-cover" alt="{{ auth()->user()->name }}"/>
             <span @class(
                     'flex-shrink-0 ease-out duration-50'
                 )>{{ Auth::user()->name }}</span>

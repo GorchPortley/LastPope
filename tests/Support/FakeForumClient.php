@@ -72,6 +72,16 @@ class FakeForumClient implements ForumClient
         return 100 + $user->getKey();
     }
 
+    /** @var array<int, int> ids of the users whose avatar was uploaded, in order */
+    public array $avatarSyncs = [];
+
+    public function syncAvatar(User $user): bool
+    {
+        $this->avatarSyncs[] = $user->getKey();
+
+        return true;
+    }
+
     public function issueRememberToken(User $user): ?string
     {
         $this->tokenRequests[] = $user->getKey();

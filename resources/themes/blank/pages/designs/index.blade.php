@@ -15,7 +15,11 @@ new class extends Component {
     {
         $query = Design::query()
             ->where('active', 1)
-            ->with('designer','reviews');
+            // The designer's roles and shop decide whether a card can be bought (analytics item data); load them once.
+            ->with(['designer.roles', 'designer.sellerProfile'])
+            // Rating on the cards from one query for the page, not several per card (Design::ratingSummary()).
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews');
 
         // Filter by category
         if ($request->category) {
@@ -31,8 +35,9 @@ new class extends Component {
         }
 
         // Sort
-        $sortField = $request->sort === 'price' ? 'price_cents' : ($request->sort ?? 'created_at');
-        $sortDirection = $request->direction ?? 'desc';
+        // Only known columns and directions: anything else is ignored instead of becoming a database error.
+        $sortField = $request->sort === 'price' ? 'price_cents' : (in_array($request->sort, ['created_at', 'name'], true) ? $request->sort : 'created_at');
+        $sortDirection = $request->direction === 'asc' ? 'asc' : 'desc';
         $query->orderBy($sortField, $sortDirection);
 
         // Get distinct categories for filter dropdown

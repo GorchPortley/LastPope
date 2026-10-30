@@ -18,6 +18,12 @@ use Wave\Facades\Wave;
 // Wave routes
 Wave::routes();
 
+// Thumbnails: only reached when nginx has no file at /storage/thumbs/... yet; the controller makes it, and nginx
+// serves it as a static file from then on (App\Support\Thumbnails).
+Route::get('/storage/thumbs/{width}/{path}', \App\Http\Controllers\ThumbnailController::class)
+    ->where(['width' => '[0-9]+', 'path' => '.+'])
+    ->name('thumbnail');
+
 // Snapshot downloads: files live on the private disk and are streamed after a policy check.
 // Design files need a login (owner, admin, buyer or a free design); driver measurement snapshots are
 // public for active drivers (the policy still limits inactive ones to their owner and admins).

@@ -6,7 +6,7 @@
 @props(['listing', 'listName' => 'Marketplace'])
 
 @php
-    $photo = $listing->mainPhotoUrl();
+    $photo = $listing->photos[0] ?? null;
     $shop = $listing->seller?->sellerProfile?->shop_name ?: $listing->seller?->name;
     $url = route('listing', ['uuid' => $listing->uuid]);
     $select = \App\Support\Analytics\Ga4::selectItem($listName, $listing);
@@ -30,7 +30,7 @@
         <a href="{{ $url }}" data-ga4-click="{{ $select }}" class="block w-full">
             <div class="flex justify-center items-center h-48 md:h-56">
                 @if ($photo)
-                    <img src="{{ $photo }}" class="max-h-full max-w-full object-contain" alt="{{ $listing->title }}">
+                    <x-marketing.card-image :path="$photo" :alt="$listing->title" />
                 @else
                     <x-phosphor-image-duotone class="h-16 w-16 text-gray-300" />
                 @endif

@@ -8,9 +8,19 @@ use Chatify\ChatifyMessenger;
 /**
  * Chatify looks for avatars in its own folder (storage/users-avatar/{avatar}), where this site keeps none: the users'
  * avatars live where the profile page puts them. Serve the same picture as everywhere else, default included.
+ *
+ * getUserWithAvatar() is overridden as well as getUserAvatarUrl(): the package calls the latter as
+ * self::getUserAvatarUrl(), which always runs the package's own version.
  */
 class Messenger extends ChatifyMessenger
 {
+    public function getUserWithAvatar($user)
+    {
+        $user->avatar = Avatars::url($user->avatar);
+
+        return $user;
+    }
+
     public function getUserAvatarUrl($user_avatar_name)
     {
         return Avatars::url($user_avatar_name);

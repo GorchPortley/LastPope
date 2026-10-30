@@ -48,11 +48,17 @@ Today there's a frequency-response viewer (`app/Http/Livewire/FrequencyResponseV
 
 ## Also noted in earlier chats
 
-- **Image serving, next steps** (avatars were fixed on 2026-10-30, see `app/Support/Avatars.php`). nginx already sends every image, CSS and JS file with a one-year `immutable` cache header and Caddy compresses text, so what's left is mostly image *size*:
-  - Design, driver and listing photos are shown at card size (about 300 px) but served as the full upload (often several MB). Generate resized copies on upload (for example 400 px for cards, 1600 px for the gallery, as WebP or JPEG) and use them in `<img srcset>`. Intervention Image (already installed) can do it in a queued job; old uploads need a one-off backfill command.
-  - Add `loading="lazy"` and `width`/`height` to card images, so off-screen cards don't load and the page doesn't jump.
-  - Any public file that is replaced in place keeps its URL, so browsers keep the old copy for a year. Use `App\Support\VersionedAsset::url()` for files in `public/`, and new file names for uploads.
-  - Later, if traffic grows: put the public disk behind a CDN (Cloudflare in front of the domain is the simplest option and needs no code change).
+- **Image serving.** Done (2026-10-30):
+  - Avatars (`app/Support/Avatars.php`).
+  - Resized WebP thumbnails, made on first request (`app/Support/Thumbnails.php`), on cards, galleries and blog cards.
+  - Lazy loading.
+  - Browse-page query counts (`/designs` went from 67 to 10).
+
+  Still open:
+  - The admin panel's image columns show originals.
+  - Blog post bodies, Tiptap images inside descriptions, and banners are not resized.
+  - Thumbnails of replaced listing photos are never deleted. They're harmless; to clean up, delete `storage/app/public/thumbs`, and the thumbnails are made again on use.
+  - Later, a CDN (Cloudflare in front of the domain) for the static files.
 
 - **Driver CSV import (admins only).** Either Filament's `ImportAction` + an Importer (needs new migrations for `imports`, `failed_import_rows`, `job_batches`, `notifications` and database notifications on the panel), or a simple custom upload action. Decide: who owns imported drivers, update vs. skip duplicates (brand + model), and which spec columns. Measurement files can't come through a CSV.
 - **Supplier payment tracking.** Suppliers and dropshippers are paid outside the site, by hand. Purchase orders track ordering and shipping only. A "paid on / amount / reference" field on purchase orders and an unpaid-bills list would help bookkeeping.

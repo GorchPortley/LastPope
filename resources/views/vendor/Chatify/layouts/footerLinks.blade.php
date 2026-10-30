@@ -7,10 +7,13 @@
       * window.chatify.pusher is config('chatify.client'): the public key and the connection options of the
         BROWSER. The package printed config('chatify.pusher') here, i.e. the app id and the SECRET, to every
         visitor. Only the keys listed below ever reach the page, whatever else is added to the client block.
+      * The header's home button is hidden: the chat runs in an iframe on the dashboard (Chat and Messages), where
+        it opened the whole site inside the frame.
 --}}
 @php
     $chatifyClient = \Illuminate\Support\Arr::only((array) config('chatify.client'), ['debug', 'key', 'options']);
 @endphp
+<style>.messenger .m-header-right a[href="/"] { display: none !important; }</style>
 <script src="{{ asset('js/chatify/pusher.min.js') }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/@joeattardi/emoji-button@3.0.3/dist/index.min.js"></script>
 <script >

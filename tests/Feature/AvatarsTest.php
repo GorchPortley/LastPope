@@ -96,3 +96,21 @@ it('no longer reloads the header avatar on every page with a timestamp', functio
         ->assertOk()
         ->assertDontSee("+ '?' + new Date().getTime()", false);
 });
+
+it('gives chat contacts and the conversation header the site avatar', function () {
+    $me = User::factory()->create(['avatar' => 'avatars/me-abc12345.jpg']);
+    $other = User::factory()->create(['avatar' => 'demo/default.png']);
+    \App\Models\ChMessage::forceCreate(['id' => (string) \Illuminate\Support\Str::uuid(), 'from_id' => $other->id, 'to_id' => $me->id, 'body' => 'hi', 'seen' => 0]);
+
+    $info = $this->actingAs($me)->post('/'.trim(config('chatify.routes.prefix'), '/').'/idInfo', ['id' => $other->id])->assertOk()->json();
+    expect($info['user_avatar'])->toContain('/images/avatar-default.png');
+
+    $contacts = $this->actingAs($other)->get(route('contacts.get'))->assertOk()->json('contacts');
+    expect($contacts)->toContain('/storage/avatars/me-abc12345.jpg')->not->toContain('users-avatar');
+});
+
+it('hides the chat home button, which opened the site inside the dashboard frame', function () {
+    $this->actingAs(User::factory()->create())->get('/'.trim(config('chatify.routes.prefix'), '/'))
+        ->assertOk()
+        ->assertSee('.m-header-right a[href="/"] { display: none !important; }', false);
+});

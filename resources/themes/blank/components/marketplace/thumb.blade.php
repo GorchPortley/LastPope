@@ -4,11 +4,12 @@
 @php
     $url = null;
 
+    // 160 px WebP thumbnails (App\Support\Thumbnails) for an 80 px box: sharp on high-density screens, small to load.
     if ($purchasable instanceof \App\Models\Listing) {
-        $url = $purchasable->mainPhotoUrl();
+        $url = \App\Support\Thumbnails::url($purchasable->photos[0] ?? null, 160);
     } elseif ($purchasable instanceof \App\Models\Design) {
         $image = is_array($purchasable->card_image) ? ($purchasable->card_image[0] ?? null) : $purchasable->card_image;
-        $url = $image ? \Illuminate\Support\Facades\Storage::url($image) : null;
+        $url = \App\Support\Thumbnails::url($image, 160);
     }
 @endphp
 

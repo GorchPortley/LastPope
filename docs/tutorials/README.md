@@ -1,10 +1,10 @@
 # Tutorial drafts
 
-Drafts for the blog's **Guides** category. Each file is one post. Copy the body into the post editor and skip this README.
+Drafts for the blog's **Tutorials** category. Each file is one post. Copy the body into the post editor and skip this README.
 
 ## Slugs and links
 
-The guides link to each other with the blog URL `/blog/guides/<slug>`. Create each post with the slug below, or those links will break.
+The guides link to each other with the blog URL `/blog/tutorials/<slug>`. Create each post with the slug below, or those links will break.
 
 | File | Post title | Slug |
 |---|---|---|
@@ -15,7 +15,7 @@ The guides link to each other with the blog URL `/blog/guides/<slug>`. Create ea
 | `selling-in-the-marketplace.md` | Selling kits, speakers and used gear | `selling-in-the-marketplace` |
 | `buying-on-sdlabs.md` | Buying designs and gear | `buying-on-sdlabs` |
 
-If the category slug isn't `guides`, find and replace `/blog/guides/` across the files.
+If the category slug isn't `tutorials`, find and replace `/blog/tutorials/` across the files.
 
 ## Screenshots
 

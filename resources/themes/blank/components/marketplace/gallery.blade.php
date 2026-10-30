@@ -91,7 +91,10 @@
         <template x-teleport="body">
             <div x-show="full" x-cloak x-transition.opacity @click.self="close()" role="dialog" aria-modal="true" aria-label="{{ $alt }} - full picture"
                  class="fixed inset-0 z-[100] flex items-center justify-center bg-ink/95 p-[max(1rem,env(safe-area-inset-top,0px))_max(1rem,env(safe-area-inset-right,0px))_max(1rem,env(safe-area-inset-bottom,0px))_max(1rem,env(safe-area-inset-left,0px))]" data-gallery-lightbox>
-                <img :src="full ? fullUrls[index] : ''" alt="{{ $alt }}" class="max-h-full max-w-full object-contain" @click.self="close()">
+                {{-- only rendered while open, so a closed viewer is not an empty (broken) image --}}
+                <template x-if="full">
+                    <img :src="fullUrls[index]" alt="{{ $alt }}" class="max-h-full max-w-full object-contain" @click.self="close()">
+                </template>
                 <button type="button" x-ref="close" @click="close()" aria-label="Close" class="absolute end-[max(0.75rem,env(safe-area-inset-right,0px))] top-[max(0.75rem,env(safe-area-inset-top,0px))] flex h-11 w-11 items-center justify-center border border-white/70 text-white hover:bg-white hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-500">
                     <x-phosphor-x class="h-5 w-5 !w-5" aria-hidden="true" />
                 </button>

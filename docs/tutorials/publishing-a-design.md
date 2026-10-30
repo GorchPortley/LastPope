@@ -6,8 +6,8 @@ The form is long, but only the name, one photo and the category are required. Yo
 
 ## Before you start
 
-- **Every driver in your design needs to be in the database.** Check now, because you can't pick a driver that isn't there. If one is missing, add it first ([Adding a driver to the database](/blog/guides/adding-a-driver)) and switch it to active.
-- **To charge for the design**, you need a Stripe account connected for payouts. You can build the whole design without one, but a paid design can't be published until Stripe is set up. See [Getting paid: setting up Stripe](/blog/guides/getting-paid-with-stripe).
+- **Every driver in your design needs to be in the database.** Check now, because you can't pick a driver that isn't there. If one is missing, add it first ([Adding a driver to the database](/blog/tutorials/adding-a-driver)) and switch it to active.
+- **To charge for the design**, you need a Stripe account connected for payouts. You can build the whole design without one, but a paid design can't be published until Stripe is set up. See [Getting paid: setting up Stripe](/blog/tutorials/getting-paid-with-stripe).
 - Gather your files: photos, FRD/ZMA measurements, enclosure drawings or CAD, crossover schematic, parts list.
 
 ## 1. Open My Designs
@@ -55,7 +55,7 @@ Open **Design Drivers** and click **Add Driver To Design** once per driver posit
 
 For each one:
 
-- **Driver**: search by brand or model. Only active drivers show up. If yours is missing, see [Adding a driver to the database](/blog/guides/adding-a-driver).
+- **Driver**: search by brand or model. Only active drivers show up. If yours is missing, see [Adding a driver to the database](/blog/tutorials/adding-a-driver).
 - **Position**: which band it covers: LF, LMF, MF, HMF, HF, or Other.
 - **Quantity**: how many of that driver per speaker. Two woofers in a 2.5-way is `2`.
 - **Frequency Range**: the low and high frequency it plays in your design, in Hz.
@@ -104,5 +104,5 @@ Once it's live, the design shows up on the **Designs** page and in search.
 
 - **Reviews**: people who build it can leave a rating and review on the design page.
 - **Discussion**: each design gets a forum thread. On paid designs the thread is only visible to you, your buyers and admins, so you can talk details without giving the design away.
-- **Sales**: when someone buys a paid design, you're paid straight away (minus the platform fee). See [Getting paid: setting up Stripe](/blog/guides/getting-paid-with-stripe) for how and when the money arrives.
-- **Kits**: if you want to sell kits or finished pairs of your design, list them in the marketplace and link them to the design. See [Selling kits, speakers and used gear](/blog/guides/selling-in-the-marketplace).
+- **Sales**: when someone buys a paid design, you're paid straight away (minus the platform fee). See [Getting paid: setting up Stripe](/blog/tutorials/getting-paid-with-stripe) for how and when the money arrives.
+- **Kits**: if you want to sell kits or finished pairs of your design, list them in the marketplace and link them to the design. See [Selling kits, speakers and used gear](/blog/tutorials/selling-in-the-marketplace).

@@ -59,7 +59,16 @@ new class extends Component {
     }
 } ?>
 
-<x-layouts.marketing>
+@php
+    // the page head (title, description, share image); the page itself loads the driver in its Volt component
+    $driverSeo = \App\Models\Driver::find($id);
+@endphp
+<x-layouts.marketing :seo="$driverSeo ? [
+    'title' => trim($driverSeo?->brand.' '.$driverSeo?->model).' - '.$driverSeo?->category.' driver - '.config('app.name'),
+    'description' => \Illuminate\Support\Str::limit(trim((string) ($driverSeo?->summary ?: $driverSeo?->tag ?: $driverSeo?->brand.' '.$driverSeo?->model.': factory specs, measurements and the designs that use it.')), 160),
+    'image' => \App\Support\Thumbnails::url(is_array($driverSeo?->card_image) ? ($driverSeo?->card_image[0] ?? null) : $driverSeo?->card_image, 960) ?? url('/og_image.png'),
+    'type' => 'product',
+] : null">
     @volt('driver')
     @php
         $docNo = 'SDL-R-'.str_pad((string) $driver->id, 4, '0', STR_PAD_LEFT);

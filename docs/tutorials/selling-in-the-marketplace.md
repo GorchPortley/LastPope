@@ -8,7 +8,7 @@ The marketplace is where builders sell to each other. You can list three kinds o
 
 New drivers aren't sold in the marketplace. SDLabs sells those itself from each driver's page.
 
-You'll need Stripe connected before a listing can go live. If you haven't done that yet, start with [Getting paid: setting up Stripe](/blog/guides/getting-paid-with-stripe). You can still write the listing first and save it as a draft.
+You'll need Stripe connected before a listing can go live. If you haven't done that yet, start with [Getting paid: setting up Stripe](/blog/tutorials/getting-paid-with-stripe). You can still write the listing first and save it as a draft.
 
 ## 1. Create a listing
 
@@ -20,8 +20,8 @@ In your dashboard, open **Marketplace → My Listings** and click **New listing*
 
 - **Type**: kit, completed speaker or used gear.
 - **Title**: be specific. "Pair of SB17NRX woofers, 2 years old" sells better than "Woofers".
-- **Built from a design**: for kits and completed speakers, pick the design on SDLabs it's based on. Buyers can then click through to the full design, measurements and reviews. If it's your own design, this is how you sell kits of it (see [Publishing a speaker design](/blog/guides/publishing-a-design)).
-- **Driver from the catalogue**: for used drivers, pick the driver from the database so buyers see its specs and measurements. If it isn't there, you can add it ([Adding a driver to the database](/blog/guides/adding-a-driver)).
+- **Built from a design**: for kits and completed speakers, pick the design on SDLabs it's based on. Buyers can then click through to the full design, measurements and reviews. If it's your own design, this is how you sell kits of it (see [Publishing a speaker design](/blog/tutorials/publishing-a-design)).
+- **Driver from the catalogue**: for used drivers, pick the driver from the database so buyers see its specs and measurements. If it isn't there, you can add it ([Adding a driver to the database](/blog/tutorials/adding-a-driver)).
 - **Condition**: from new down to "for parts". Used gear can't be listed as new.
 - **Photos**: up to 8. The first one is the cover; drag them to reorder. Take a photo of any damage. It saves arguments later.
 - **Description**: what's included, what condition it's in, how it's been used, anything you measured.
@@ -76,7 +76,7 @@ If you need to ask the buyer something, use **More → Contact buyer**.
 
 [SCREENSHOT: the Sales page with the Mark as shipped dialog open]
 
-Your payout is sent 14 days after you mark the order shipped, minus the 10% platform fee (which isn't taken from shipping). [Getting paid: setting up Stripe](/blog/guides/getting-paid-with-stripe) explains the timing.
+Your payout is sent 14 days after you mark the order shipped, minus the 10% platform fee (which isn't taken from shipping). [Getting paid: setting up Stripe](/blog/tutorials/getting-paid-with-stripe) explains the timing.
 
 ## If the buyer reports a problem
 

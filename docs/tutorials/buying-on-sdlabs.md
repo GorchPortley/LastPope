@@ -77,5 +77,5 @@ The seller isn't paid for an order while a problem is open, so reporting it does
 
 ## Related
 
-- [Publishing a speaker design](/blog/guides/publishing-a-design): when you've built something worth sharing
-- [Selling kits, speakers and used gear](/blog/guides/selling-in-the-marketplace)
+- [Publishing a speaker design](/blog/tutorials/publishing-a-design): when you've built something worth sharing
+- [Selling kits, speakers and used gear](/blog/tutorials/selling-in-the-marketplace)

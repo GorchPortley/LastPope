@@ -4,7 +4,7 @@ Every design on SDLabs is built from drivers, and every driver in a design has t
 
 Adding a driver is free. You don't need a Stripe account or anything else set up.
 
-A driver entry holds **the manufacturer's information only**: their datasheet numbers and the measurement files they publish. Your own measurements of a driver belong in your design, where you add the driver to it (see [Publishing a speaker design](/blog/guides/publishing-a-design)). That way the catalogue stays a clean reference, and everyone's real-world measurements sit next to the builds they came from.
+A driver entry holds **the manufacturer's information only**: their datasheet numbers and the measurement files they publish. Your own measurements of a driver belong in your design, where you add the driver to it (see [Publishing a speaker design](/blog/tutorials/publishing-a-design)). That way the catalogue stays a clean reference, and everyone's real-world measurements sit next to the builds they came from.
 
 ## Before you start
 
@@ -49,7 +49,7 @@ In your dashboard, open **Manage My Data → My Drivers** in the sidebar. This l
 
 The **Factory Specs** table has a fixed list of parameters: Re, Fs, Qms, Qes, Qts, Rms, Mms, Cms, Vas, Sd, BL, Xmax, Le, SPL, EBP, Vd and Mmd. Copy them from the datasheet. Leave any blank that the datasheet doesn't give.
 
-Put your own measurements somewhere else. Designers record what *they* measured when they add the driver to a design (see [Publishing a speaker design](/blog/guides/publishing-a-design)). This table is for the manufacturer's numbers, so the two can be compared.
+Put your own measurements somewhere else. Designers record what *they* measured when they add the driver to a design (see [Publishing a speaker design](/blog/tutorials/publishing-a-design)). This table is for the manufacturer's numbers, so the two can be compared.
 
 [SCREENSHOT: the Factory Specs table partly filled in]
 
@@ -88,5 +88,5 @@ Contact us if you're a manufacturer and your account doesn't have this yet.
 
 ## Next
 
-- [Publishing a speaker design](/blog/guides/publishing-a-design)
-- [Selling kits, speakers and used gear](/blog/guides/selling-in-the-marketplace): if you have spare drivers to sell
+- [Publishing a speaker design](/blog/tutorials/publishing-a-design)
+- [Selling kits, speakers and used gear](/blog/tutorials/selling-in-the-marketplace): if you have spare drivers to sell

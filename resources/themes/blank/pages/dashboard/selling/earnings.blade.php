@@ -148,7 +148,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
 
             <dl class="grid grid-cols-2 gap-6 lg:grid-cols-4" data-earnings-balance>
                 @foreach ($cards as [$label, $value, $hint, $key])
-                    <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5" data-earnings-card="{{ $key }}">
+                    <div class="sd-sheet p-6" data-earnings-card="{{ $key }}">
                         <dt class="text-sm font-medium text-gray-500">{{ $label }}</dt>
                         <dd class="mt-2 text-3xl font-semibold tracking-tight text-gray-950">{{ $value }}</dd>
                         <p class="mt-2 text-sm text-gray-500">{{ $hint }}</p>

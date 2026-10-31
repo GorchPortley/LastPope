@@ -7,11 +7,11 @@
      :class="{ 'block z-50 bg-white dark:bg-gray-900 dark:border-gray-800' : open, 'hidden': ! open }"
      class="relative flex-shrink-0 sm:p-0 sm:flex w-auto sm:bg-white sm:items-center" x-cloak>
     <button @click="dropdownOpen=!dropdownOpen"
-            class="flex px-3 py-2.5 w-full text-[13px] hover:bg-gray-100 justify-start justify-between items-center w-full hover:text-black border border-white space-x-1.5 overflow-hidden group-hover:autoflow-auto items">
+            class="flex px-3 py-2.5 w-full text-[13px] text-ink hover:bg-paper justify-start justify-between items-center w-full border-t border-rule bg-white space-x-1.5 overflow-hidden group-hover:autoflow-auto items">
         <span class="relative flex items-center space-x-2">
             {{-- Avatars get a new file name on every upload, so the browser may cache them; the profile page sends the new URL. --}}
             <img src="{{ auth()->user()->avatar() }}" @refresh-avatar.window="$event.detail?.src && ($el.src = $event.detail.src)"
-                width="20" height="20" class="w-5 h-5 border border-black object-cover" alt="{{ auth()->user()->name }}"/>
+                width="20" height="20" class="w-5 h-5 border border-rule object-cover" alt="{{ auth()->user()->name }}"/>
             <span @class(
                     'flex-shrink-0 ease-out duration-50'
                 )>{{ Auth::user()->name }}</span>
@@ -32,10 +32,10 @@
          x-transition:leave-end="transform opacity-0 sm:scale-95" @class([ 'z-50' , 'left-0  absolute w-full bottom-0 sm:origin-bottom mb-12'=> ($position == 'bottom'),
         'top-0 right-0 sm:origin-top mr-5 mt-14 w-full max-w-xs fixed' => ($position != 'bottom')
         ]) x-cloak>
-        <div class="pt-0 mt-1 text-gray-600 bg-white border-black sm:space-y-0.5 border">
+        <div class="pt-0 mt-1 text-ink-2 bg-white border-rule sm:space-y-0.5 border">
             <div
-                class="py-4 px-5 text-[13px] font-bold text-ellipsis overflow-hidden whitespace-nowrap">{{ auth()->user()->email }}</div>
-            <div class="my-2 w-full h-px bg-slate-100 dark:bg-gray-700"></div>
+                class="py-4 px-5 text-[13px] font-semibold text-ink text-ellipsis overflow-hidden whitespace-nowrap">{{ auth()->user()->email }}</div>
+            <div class="my-2 w-full h-px bg-hair"></div>
             <div class="flex relative flex-col p-2 space-y-1">
                 <x-app.sidebar-link href="/dashboard">View Dashboard</x-app.sidebar-link>
 {{--                <x-app.sidebar-link href="/notifications">Notifications</x-app.sidebar-link>--}}
@@ -48,7 +48,7 @@
                 <form method="POST" action="{{ route('logout') }}" class="w-full">
                     @csrf
                     <button onclick="event.preventDefault(); this.closest('form').submit();"
-                            class="relative w-full flex cursor-pointer hover:text-gray-700 select-none hover:bg-gray-100 font-medium items-center px-3 py-2.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                            class="relative w-full flex cursor-pointer text-ink-2 hover:text-ink select-none hover:bg-paper font-medium items-center px-3 py-2 text-[14px] outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
                         <span>Log out</span>
                     </button>
                 </form>

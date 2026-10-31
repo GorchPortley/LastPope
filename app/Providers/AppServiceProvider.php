@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Support\SeasonalTheme;
+use Filament\Support\Colors\Color;
+use Filament\Support\Facades\FilamentColor;
 use Filament\Tables\Actions\Action as TableAction;
 use Filament\Tables\Contracts\HasTable;
 use Illuminate\Support\Facades\Validator;
@@ -42,6 +44,17 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->setSchemaDefaultLength();
+
+        // Datasheet look (docs/STYLE.md): Filament components in the member dashboard use the site's purple and a cool
+        // slate grey. The admin panel registers its own primary (AdminPanelProvider) on top of this.
+        FilamentColor::register([
+            'primary' => Color::hex('#6b21a8'),
+            'gray' => Color::Slate,
+            'danger' => Color::Red,
+            'success' => Color::Green,
+            'warning' => Color::Amber,
+            'info' => Color::Blue,
+        ]);
 
         // Dashboard form modals that keep a draft while open (see AutosavesFormDrafts). They also stop closing on a
         // stray click outside or on Escape; the close button and Cancel still work.

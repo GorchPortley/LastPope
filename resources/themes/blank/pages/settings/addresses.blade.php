@@ -133,7 +133,7 @@ new class extends Component
             </div>
 
             @if ($showForm)
-                <form wire:submit="save" class="mt-5 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5">
+                <form wire:submit="save" class="mt-5 sd-sheet p-6">
                     <h4 class="mb-4 text-base font-semibold text-gray-950">{{ $editingId ? 'Edit address' : 'New address' }}</h4>
                     <x-marketplace.address-fields :countries="$countries" id="settings-address" />
                     <div class="mt-5 flex items-center gap-3">
@@ -149,7 +149,7 @@ new class extends Component
 
             <div class="mt-5 grid gap-4 md:grid-cols-2">
                 @foreach ($addresses as $address)
-                    <div class="flex flex-col rounded-xl bg-white p-5 text-sm shadow-sm ring-1 ring-gray-950/5" wire:key="address-{{ $address->id }}">
+                    <div class="flex flex-col sd-sheet p-5 text-sm" wire:key="address-{{ $address->id }}">
                         <div class="flex items-start justify-between gap-2">
                             <p class="font-semibold text-gray-950">{{ $address->name }}</p>
                             @if ($address->is_default)<x-marketplace.badge color="primary">Default</x-marketplace.badge>@endif

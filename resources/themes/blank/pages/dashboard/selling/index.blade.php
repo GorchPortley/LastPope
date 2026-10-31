@@ -236,7 +236,7 @@ new class extends Component implements HasForms, Tables\Contracts\HasTable {
                 ['Paid out', money($stats['payouts']), $stats['payoutsConfirmed'] ? 'sent to your Stripe account, as Stripe shows it' : 'sent to your Stripe account', 'payouts'],
                 ['Pending payouts', money($stats['pending']), $stats['held'] > 0 ? $stats['held'].' on hold: open '.\Illuminate\Support\Str::plural('problem', $stats['held']) : ($stats['toShip'] > 0 ? $stats['toShip'].' to ship' : 'see when each is released'), 'pending'],
             ] as [$label, $value, $hint, $key])
-                <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5" data-stat="{{ $key }}">
+                <div class="sd-sheet p-6" data-stat="{{ $key }}">
                     <dt class="text-sm font-medium text-gray-500">{{ $label }}</dt>
                     <dd class="mt-2 text-3xl font-semibold tracking-tight text-gray-950">{{ $value }}</dd>
                     <p class="mt-2 text-sm text-gray-500">{{ $hint }}</p>

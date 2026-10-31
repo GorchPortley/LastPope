@@ -273,3 +273,95 @@ html, body{
  * reload, so the fullscreen button is not offered there. (The admin panel edits on full pages and keeps it.)
  */
 .fi-modal-window .tiptap-toolbar-right [x-tooltip*="fullScreenMode"] { display: none !important; }
+
+/*
+ * Filament components in the member dashboard (forms, modals, notifications), in the datasheet look: square, 1 px
+ * rules instead of rings and shadows, purple primary, ink-bordered secondary buttons. Colours come from the Filament
+ * colour variables (AppServiceProvider registers primary = brand purple, gray = slate), so this only sets shape.
+ * The admin panel uses its own stylesheet and is not affected.
+ */
+.fi-btn, .fi-input-wrp, .fi-select-input, .fi-section, .fi-modal-window, .fi-dropdown-panel, .fi-badge,
+.fi-fo-file-upload .filepond--root, .fi-fo-file-upload .filepond--panel-root, .fi-fo-file-upload .filepond--drop-label,
+.fi-fo-key-value, .fi-fo-key-value table, .fi-fo-repeater-item, .fi-fo-builder-item, .fi-fo-tabs, .fi-fo-wizard,
+.fi-fo-checkbox-list, .fi-fo-radio, .fi-no-notification, .fi-tabs, .fi-tabs-item,
+.tiptap-editor, .tiptap-wrapper, .tiptap-editor .tiptap-toolbar, .filament-tiptap-editor,
+.fi-fo-rich-editor, .fi-fo-markdown-editor, .fi-fo-color-picker-panel, .fi-icon-btn {
+  border-radius: 0;
+}
+.fi-fo-toggle { border-radius: 9999px; } /* switches stay round */
+.fi-badge { border-radius: 2px; }
+
+/* no shadows, no rings: a 1 px rule instead */
+.fi-section, .fi-modal-window, .fi-dropdown-panel, .fi-no-notification, .fi-fo-repeater-item,
+.fi-fo-builder-item, .fi-fo-tabs, .fi-fo-wizard, .fi-fo-key-value, .fi-input-wrp, .tiptap-editor, .fi-fo-file-upload .filepond--root {
+  box-shadow: none;
+  --tw-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+}
+.fi-section, .fi-modal-window, .fi-dropdown-panel, .fi-no-notification, .fi-fo-repeater-item, .fi-fo-builder-item,
+.fi-fo-tabs, .fi-fo-wizard, .fi-fo-key-value {
+  @apply border border-rule bg-white;
+}
+.fi-modal-window { @apply border-ink; }
+.fi-modal-close-overlay { background-color: rgb(22 27 38 / .5); }
+
+/* inputs: 1 px rule border, ink on focus (purple ring like the site's focus outline) */
+.fi-input-wrp { @apply border border-rule bg-white;  }
+.fi-input-wrp:focus-within, .fi-input-wrp.ring-primary-600 { @apply border-brand-800; box-shadow: 0 0 0 1px rgb(var(--brand-800)); }
+.fi-input-wrp .fi-input, .fi-input-wrp input, .fi-input-wrp select, .fi-input-wrp textarea { @apply text-[15px] text-ink; box-shadow: none; }
+.fi-input-wrp input:focus, .fi-input-wrp select:focus, .fi-input-wrp textarea:focus { box-shadow: none; outline: none; }
+.fi-input-wrp-prefix, .fi-input-wrp-suffix { @apply text-ink-2; }
+.fi-input-wrp-has-error, .fi-input-wrp.ring-danger-600 { @apply border-red-700; }
+.fi-input::placeholder, .fi-input-wrp input::placeholder, .fi-input-wrp textarea::placeholder { @apply text-ink-3; }
+.fi-fo-checkbox-list input[type=checkbox], input.fi-checkbox-input, input.fi-radio-input { border-radius: 0; @apply border-ink-3; }
+input.fi-radio-input { border-radius: 9999px; }
+input.fi-checkbox-input:checked, input.fi-radio-input:checked { @apply bg-brand-800 border-brand-800; }
+
+/* labels, hints, headings */
+.fi-fo-field-wrp-label, .fi-fo-field-wrp-label span { @apply text-sm font-semibold leading-6 text-ink; }
+.fi-fo-field-wrp .fi-fo-field-wrp-hint, .fi-fo-field-wrp-hint { @apply text-ink-3; }
+.fi-fo-field-wrp p.text-gray-500, .fi-fo-field-wrp [class*="text-gray-500"], .fi-fo-field-wrp [class*="text-gray-400"] { @apply text-ink-3; }
+.fi-fo-field-wrp p.fi-fo-field-wrp-error-message { @apply text-red-700; }
+.fi-section-header-heading, .fi-modal-heading, .fi-header-heading { @apply font-sans text-base font-semibold normal-case tracking-normal text-ink; }
+.fi-modal-heading { @apply text-lg; }
+.fi-section-header-description, .fi-modal-description { @apply text-ink-3; }
+.fi-section-header { @apply border-b border-hair; }
+.fi-section-content-ctn { @apply border-rule; }
+.fi-modal-header { @apply border-b border-hair pb-4; }
+.fi-modal-footer { @apply border-t border-hair; }
+.fi-modal-window .fi-modal-close-btn { @apply text-ink-3 hover:text-ink; }
+
+/* buttons: primary = the site's main button (purple, narrow uppercase label); secondary = ink border */
+.fi-btn { @apply font-condensed text-[15px] font-semibold uppercase leading-none tracking-[0.05em] no-underline; box-shadow: none; }
+.fi-btn.fi-size-sm, .fi-btn.fi-btn-size-sm { @apply px-3 py-2 text-[13px]; }
+.fi-btn.fi-color-primary, .fi-btn.fi-btn-color-primary { @apply border-2 border-brand-800 bg-brand-800 text-white hover:border-brand-900 hover:bg-brand-900; }
+.fi-btn.fi-color-gray, .fi-btn.fi-btn-color-gray { @apply border-2 border-ink bg-white text-ink ring-0 hover:bg-ink hover:text-white; }
+.fi-btn.fi-color-danger, .fi-btn.fi-btn-color-danger { @apply border-2 border-red-700 bg-red-700 text-white hover:border-red-800 hover:bg-red-800; }
+.fi-btn.fi-color-success, .fi-btn.fi-btn-color-success { @apply border-2 border-green-700 bg-green-700 text-white hover:bg-green-800; }
+.fi-btn.fi-color-warning { @apply border-2 border-accent-500 bg-accent-500 text-ink hover:bg-accent-400; }
+.fi-btn:focus-visible, .fi-icon-btn:focus-visible, a:focus-visible { @apply outline outline-2 outline-offset-2 outline-accent-500; box-shadow: none; }
+.fi-btn.fi-btn-outlined { @apply bg-white; }
+.fi-btn .fi-btn-label, .fi-btn span { letter-spacing: inherit; }
+
+/* dropdowns, badges, tabs, uploads, editor */
+.fi-dropdown-list-item { @apply text-[14px] text-ink; }
+.fi-dropdown-list-item:hover, .fi-dropdown-list-item:focus-visible { @apply bg-paper; }
+.fi-badge { @apply font-sans text-xs font-semibold ring-1 ring-inset; }
+.fi-tabs-item { @apply font-sans text-sm font-semibold; }
+.fi-fo-file-upload .filepond--root { @apply font-sans; }
+.fi-fo-file-upload .filepond--panel-root { @apply border border-dashed border-rule bg-paper; }
+.fi-fo-file-upload .filepond--item-panel { border-radius: 0; background-color: rgb(var(--brand-800)); }
+.fi-fo-file-upload .filepond--drop-label { @apply text-ink-2; }
+.fi-fo-file-upload .filepond--file-action-button { border-radius: 0; }
+.fi-fo-file-upload .filepond--image-preview-wrapper { border-radius: 0; }
+.tiptap-editor { @apply border border-rule bg-white; }
+.tiptap-editor .tiptap-toolbar { @apply border-b border-rule bg-paper; }
+.fi-no-notification { @apply font-sans; }
+.fi-fo-key-value table { @apply border-0; }
+
+/* the page itself: paper background, quiet headings */
+.sd-dash-page .fi-ta-header-heading { @apply font-sans text-base font-semibold normal-case text-ink; }
+
+/* modals and notifications sit above the dashboard sidebar (z-50) */
+.fi-modal { position: relative; z-index: 60; }
+.fi-no { z-index: 70; }
